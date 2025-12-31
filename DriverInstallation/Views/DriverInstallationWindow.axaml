@@ -1,0 +1,300 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:Vaani.DriverInstallation.ViewModels"
+        mc:Ignorable="d" d:DesignWidth="600" d:DesignHeight="500"
+        x:Class="Vaani.DriverInstallation.Views.DriverInstallationWindow"
+        x:DataType="vm:DriverInstallationViewModel"
+		Icon="/Assets/icon.ico"
+        Title="Vaani"
+         Width="400" Height="650"
+        MinWidth="400" MinHeight="600"
+        CanResize="False"
+        WindowStartupLocation="CenterScreen"
+        Background="#1E1E1E">
+
+    <Window.Styles>
+        <Style Selector="Button.primary">
+            <Setter Property="Background" Value="#0078D4"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Padding" Value="20,12"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="Button.primary:pointerover">
+            <Setter Property="Background" Value="#1084D8"/>
+        </Style>
+        <Style Selector="Button.primary:disabled">
+            <Setter Property="Background" Value="#404040"/>
+            <Setter Property="Foreground" Value="#808080"/>
+            <Setter Property="Cursor" Value="Arrow"/>
+        </Style>
+        
+        <Style Selector="Button.secondary">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="#CCCCCC"/>
+            <Setter Property="BorderBrush" Value="#404040"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="20,12"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="Button.secondary:pointerover">
+            <Setter Property="Background" Value="#2A2A2A"/>
+        </Style>
+
+        <Style Selector="TextBlock.title">
+            <Setter Property="FontSize" Value="22"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Margin" Value="0,0,0,10"/>
+        </Style>
+
+        <Style Selector="TextBlock.description">
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Foreground" Value="#CCCCCC"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="LineHeight" Value="22"/>
+        </Style>
+
+        <Style Selector="TextBlock.status">
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="Foreground" Value="#CCCCCC"/>
+            <Setter Property="Margin" Value="0,0,0,8"/>
+        </Style>
+    </Window.Styles>
+
+    <Grid RowDefinitions="Auto,*,Auto">
+        <!-- Header -->
+        <Border Grid.Row="0" Background="#252526" Padding="30,25">
+            <StackPanel>
+                <TextBlock Classes="title" Text="{Binding StatusMessage}"/>
+                <TextBlock Classes="description" 
+                          Text="{Binding ProgressMessage}"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Content Area -->
+        <Border Grid.Row="1" Padding="30">
+            <Grid>
+                <!-- Consent Screen -->
+                <StackPanel IsVisible="{Binding ShowConsentScreen}" Spacing="20">
+                    <!--<TextBlock Classes="description" TextWrapping="Wrap">
+                        Vaani requires VB-CABLE virtual audio driver to route audio between your microphone, speakers, and meeting applications.
+                    </TextBlock>-->
+
+                    <Border Background="#2D2D30" Padding="20" CornerRadius="4" Margin="0,10,0,0">
+                        <StackPanel Spacing="12">
+                            <TextBlock FontWeight="SemiBold" Foreground="White" FontSize="14">
+                                What will be installed:
+                            </TextBlock>
+                            <StackPanel Spacing="8">
+                                <TextBlock Classes="description">
+                                    • VB-CABLE virtual audio driver (by VB-Audio Software)
+                                </TextBlock>
+                                <TextBlock Classes="description">
+                                    • Virtual audio input and output devices
+                                </TextBlock>
+                                <TextBlock Classes="description">
+                                    • Required for real-time audio translation
+                                </TextBlock>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Background="#2D2D30" Padding="20" CornerRadius="4">
+                        <StackPanel Spacing="12">
+                            <TextBlock FontWeight="SemiBold" Foreground="White" FontSize="14">
+                                Installation Process:
+                            </TextBlock>
+                            <StackPanel Spacing="8">
+                                <TextBlock Classes="description">
+                                    1. Download driver package (~2-3 MB)
+                                </TextBlock>
+                                <TextBlock Classes="description">
+                                    2. Extract driver files
+                                </TextBlock>
+                                <TextBlock Classes="description">
+                                    3. Install driver (requires administrator approval)
+                                </TextBlock>
+                                <TextBlock Classes="description">
+                                    4. Complete setup
+                                </TextBlock>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <TextBlock Classes="description" Foreground="#888888" FontSize="12" Margin="0,10,0,0">
+                        You can also download VB-CABLE manually from: https://vb-audio.com/Cable/
+                    </TextBlock>
+                </StackPanel>
+
+                <!-- Progress Screen -->
+                <StackPanel IsVisible="{Binding ShowProgressScreen}" 
+                           VerticalAlignment="Center" 
+                           Spacing="25">
+                    
+                    <!-- Status Icon/Spinner Area -->
+                    <Border Width="80" Height="80" 
+                           CornerRadius="40"
+                           Background="#2D2D30"
+                           HorizontalAlignment="Center">
+                        <TextBlock Text="⚙" 
+                                  FontSize="40" 
+                                  HorizontalAlignment="Center" 
+                                  VerticalAlignment="Center"
+                                  Foreground="#0078D4"/>
+                    </Border>
+
+                    <TextBlock Classes="status" 
+                              Text="{Binding ProgressMessage}"
+                              TextAlignment="Center"
+                              TextWrapping="Wrap"/>
+
+                    <!-- Progress Bar -->
+                    <ProgressBar Value="{Binding ProgressPercentage}"
+                                Minimum="0" Maximum="100"
+                                Height="6"
+                                Foreground="#0078D4"
+                                Background="#2D2D30"/>
+
+                    <TextBlock Text="{Binding ProgressPercentage, StringFormat='{}{0}%'}"
+                              FontSize="14"
+                              Foreground="#888888"
+                              HorizontalAlignment="Center"/>
+                </StackPanel>
+
+                <!-- Completion Screen -->
+                <StackPanel IsVisible="{Binding ShowCompletionScreen}" 
+                           VerticalAlignment="Center" 
+                           Spacing="25">
+                    
+                    <!-- Success Icon -->
+                    <Border Width="80" Height="80" 
+                           CornerRadius="40"
+                           HorizontalAlignment="Center"
+                           IsVisible="{Binding !HasError}">
+                        <Border.Background>
+                            <SolidColorBrush Color="#32C832"/>
+                        </Border.Background>
+                        <TextBlock Text="✓"
+                                  FontSize="40" 
+                                  HorizontalAlignment="Center" 
+                                  VerticalAlignment="Center"
+                                  Foreground="White"/>
+                    </Border>
+
+                    <!-- Error Icon -->
+                    <Border Width="80" Height="80" 
+                           CornerRadius="40"
+                           HorizontalAlignment="Center"
+                           IsVisible="{Binding HasError}">
+                        <Border.Background>
+                            <SolidColorBrush Color="#DC3232"/>
+                        </Border.Background>
+                        <TextBlock Text="✗"
+                                  FontSize="40" 
+                                  HorizontalAlignment="Center" 
+                                  VerticalAlignment="Center"
+                                  Foreground="White"/>
+                    </Border>
+
+                    <StackPanel Spacing="15">
+                        <TextBlock Text="{Binding StatusMessage}"
+                                  FontSize="20"
+                                  FontWeight="SemiBold"
+                                  Foreground="White"
+                                  HorizontalAlignment="Center"/>
+
+                        <TextBlock Text="{Binding ProgressMessage}"
+                                  Classes="description"
+                                  TextAlignment="Center"
+                                  TextWrapping="Wrap"
+                                  HorizontalAlignment="Center"
+                                  MaxWidth="450"/>
+
+                        <!-- Error Message -->
+                        <Border IsVisible="{Binding HasError}"
+                               Background="#3D2626"
+                               BorderBrush="#6B2626"
+                               BorderThickness="1"
+                               Padding="15"
+                               CornerRadius="4"
+                               Margin="0,10,0,0">
+                            <TextBlock Text="{Binding ErrorMessage}"
+                                      Classes="description"
+                                      Foreground="#FF8888"
+                                      TextWrapping="Wrap"/>
+                        </Border>
+
+                        <!-- Restart Warning -->
+                        <Border IsVisible="{Binding RequiresRestart}"
+                               Background="#3D3626"
+                               BorderBrush="#6B5F26"
+                               BorderThickness="1"
+                               Padding="15"
+                               CornerRadius="4"
+                               Margin="0,10,0,0">
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="⚠ Restart Required"
+                                          FontWeight="SemiBold"
+                                          Foreground="#FFD700"
+                                          FontSize="14"/>
+                                <TextBlock Text="Please restart your computer to complete the driver installation. Vaani may not work correctly until you restart."
+                                          Classes="description"
+                                          Foreground="#CCCCCC"
+                                          TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Footer Actions -->
+        <Border Grid.Row="2" Background="#252526" Padding="30,20">
+            <Grid>
+                <!-- Consent Screen Buttons -->
+                <StackPanel Orientation="Horizontal" 
+                           HorizontalAlignment="Right" 
+                           Spacing="10"
+                           IsVisible="{Binding ShowConsentScreen}">
+                    <Button Classes="secondary" 
+                           Content="Cancel" 
+                           Command="{Binding CancelCommand}"
+                           IsEnabled="{Binding !IsProcessing}"/>
+                    <Button Classes="primary" 
+                           Content="Install Driver" 
+                           Command="{Binding InstallCommand}"
+                           IsEnabled="{Binding CanInstall}"/>
+                </StackPanel>
+
+                <!-- Progress Screen -->
+                <TextBlock IsVisible="{Binding ShowProgressScreen}"
+                          Text="Installation in progress..."
+                          Foreground="#888888"
+                          FontSize="12"
+                          HorizontalAlignment="Center"/>
+
+                <!-- Completion Screen Buttons -->
+                <StackPanel Orientation="Horizontal" 
+                           HorizontalAlignment="Right" 
+                           Spacing="10"
+                           IsVisible="{Binding ShowCompletionScreen}">
+                    <Button Classes="secondary" 
+                           Content="Restart Later" 
+                           Command="{Binding RestartLaterCommand}"
+                           IsVisible="{Binding RequiresRestart}"/>
+                    <Button Classes="primary" 
+                           Content="Close" 
+                           Command="{Binding CloseCommand}"
+                           IsEnabled="{Binding CanClose}"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>
