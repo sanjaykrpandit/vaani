@@ -1,0 +1,8 @@
+<Solution>
+  <Project Path="Vaani.Admin/Vaani.Admin.esproj">
+    <Build />
+    <Deploy />
+  </Project>
+  <Project Path="Vaani.API/Vaani.API.csproj" Id="b2b3d902-9d38-4b39-bc33-caa5952368b3" />
+  <Project Path="Vaani/Vaani.csproj" />
+</Solution>

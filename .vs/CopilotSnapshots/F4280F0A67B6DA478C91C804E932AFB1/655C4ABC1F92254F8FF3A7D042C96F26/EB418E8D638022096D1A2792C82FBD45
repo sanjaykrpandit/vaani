@@ -1,0 +1,114 @@
+﻿using Microsoft.EntityFrameworkCore;
+using Vaani.API.Models.Entities;
+
+namespace Vaani.API.Data;
+
+/// <summary>
+/// Database context for Vaani API
+/// </summary>
+public class VaaniDbContext : DbContext
+{
+    public VaaniDbContext(DbContextOptions<VaaniDbContext> options) : base(options)
+    {
+    }
+
+    public DbSet<Meeting> Meetings { get; set; }
+    public DbSet<Session> Sessions { get; set; }
+    public DbSet<SessionLog> SessionLogs { get; set; }
+    public DbSet<AdminUser> AdminUsers { get; set; }
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        base.OnModelCreating(modelBuilder);
+
+        // AdminUser configuration
+        modelBuilder.Entity<AdminUser>(entity =>
+        {
+            entity.ToTable("admin_users");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.UserId).IsUnique();
+            entity.HasIndex(e => e.Email).IsUnique();
+            
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.UserId).HasColumnName("user_id").IsRequired().HasMaxLength(50);
+            entity.Property(e => e.PasswordHash).HasColumnName("password_hash").IsRequired().HasMaxLength(255);
+            entity.Property(e => e.FullName).HasColumnName("full_name").IsRequired().HasMaxLength(100);
+            entity.Property(e => e.Email).HasColumnName("email").IsRequired().HasMaxLength(100);
+            entity.Property(e => e.IsActive).HasColumnName("is_active").HasDefaultValue(true);
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.Property(e => e.LastLoginAt).HasColumnName("last_login_at");
+        });
+
+        // Meeting configuration
+        modelBuilder.Entity<Meeting>(entity =>
+        {
+            entity.ToTable("meetings");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.MeetingId).IsUnique();
+            
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.MeetingId).HasColumnName("meeting_id").IsRequired().HasMaxLength(50);
+            entity.Property(e => e.MeetingName).HasColumnName("meeting_name").IsRequired().HasMaxLength(255);
+            entity.Property(e => e.AzureSubscriptionKey).HasColumnName("azure_subscription_key").IsRequired().HasMaxLength(255);
+            entity.Property(e => e.AzureRegion).HasColumnName("azure_region").IsRequired().HasMaxLength(50);
+            entity.Property(e => e.VendorLanguageCode).HasColumnName("vendor_language_code").IsRequired().HasMaxLength(10);
+            entity.Property(e => e.VendorVoice).HasColumnName("vendor_voice").IsRequired().HasMaxLength(50);
+            entity.Property(e => e.OrganizerLanguageCode).HasColumnName("organizer_language_code").IsRequired().HasMaxLength(10);
+            entity.Property(e => e.OrganizerVoice).HasColumnName("organizer_voice").IsRequired().HasMaxLength(50);
+            entity.Property(e => e.ValidFrom).HasColumnName("valid_from");
+            entity.Property(e => e.ValidUntil).HasColumnName("valid_until");
+            entity.Property(e => e.AllowReconnect).HasColumnName("allow_reconnect").HasDefaultValue(true);
+            entity.Property(e => e.HeartbeatIntervalSeconds).HasColumnName("heartbeat_interval_seconds").HasDefaultValue(60);
+            entity.Property(e => e.EnableLocalCache).HasColumnName("enable_local_cache").HasDefaultValue(false);
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
+            entity.Property(e => e.IsActive).HasColumnName("is_active").HasDefaultValue(true);
+
+            entity.HasMany(e => e.Sessions)
+                .WithOne(e => e.Meeting)
+                .HasForeignKey(e => e.MeetingId)
+                .HasPrincipalKey(e => e.MeetingId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Session configuration
+        modelBuilder.Entity<Session>(entity =>
+        {
+            entity.ToTable("sessions");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.SessionToken).IsUnique();
+            entity.HasIndex(e => e.MeetingId);
+            
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.SessionToken).HasColumnName("session_token").IsRequired().HasMaxLength(500);
+            entity.Property(e => e.MeetingId).HasColumnName("meeting_id").IsRequired().HasMaxLength(50);
+            entity.Property(e => e.DeviceId).HasColumnName("device_id").IsRequired().HasMaxLength(50);
+            entity.Property(e => e.DeviceName).HasColumnName("device_name").IsRequired().HasMaxLength(255);
+            entity.Property(e => e.AppVersion).HasColumnName("app_version").HasMaxLength(20);
+            entity.Property(e => e.StartedAt).HasColumnName("started_at").HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.Property(e => e.LastHeartbeat).HasColumnName("last_heartbeat").HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.Property(e => e.EndedAt).HasColumnName("ended_at");
+            entity.Property(e => e.Status).HasColumnName("status").HasMaxLength(20).HasDefaultValue("Active");
+            entity.Property(e => e.DurationMinutes).HasColumnName("duration_minutes").HasDefaultValue(0);
+
+            entity.HasMany(e => e.SessionLogs)
+                .WithOne(e => e.Session)
+                .HasForeignKey(e => e.SessionId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // SessionLog configuration
+        modelBuilder.Entity<SessionLog>(entity =>
+        {
+            entity.ToTable("session_logs");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.SessionId);
+            
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.SessionId).HasColumnName("session_id");
+            entity.Property(e => e.EventType).HasColumnName("event_type").IsRequired().HasMaxLength(50);
+            entity.Property(e => e.Timestamp).HasColumnName("timestamp").HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.Property(e => e.Details).HasColumnName("details").HasColumnType("text");
+        });
+    }
+}

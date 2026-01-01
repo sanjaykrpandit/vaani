@@ -1,0 +1,21 @@
+﻿namespace Vaani.API.Models.DTOs;
+
+/// <summary>
+/// Request model for creating a new meeting
+/// </summary>
+public class CreateMeetingRequest
+{
+    public string MeetingId { get; set; } = string.Empty;
+    public string MeetingName { get; set; } = string.Empty;
+    public string AzureSubscriptionKey { get; set; } = string.Empty;
+    public string AzureRegion { get; set; } = string.Empty;
+    public string VendorLanguageCode { get; set; } = string.Empty;
+    public string VendorVoice { get; set; } = string.Empty;
+    public string OrganizerLanguageCode { get; set; } = string.Empty;
+    public string OrganizerVoice { get; set; } = string.Empty;
+    public DateTime ValidFrom { get; set; }
+    public DateTime ValidUntil { get; set; }
+    public bool AllowReconnect { get; set; } = true;
+    public int HeartbeatIntervalSeconds { get; set; } = 60;
+    public bool EnableLocalCache { get; set; } = false;
+}

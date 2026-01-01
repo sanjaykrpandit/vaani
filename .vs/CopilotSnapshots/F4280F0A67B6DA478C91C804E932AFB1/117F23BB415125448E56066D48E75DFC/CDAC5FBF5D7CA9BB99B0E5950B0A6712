@@ -1,0 +1,232 @@
+﻿using Vaani.API.Interfaces;
+using Vaani.API.Models.DTOs;
+using Vaani.API.Models.Entities;
+
+namespace Vaani.API.Services;
+
+/// <summary>
+/// Service for session management operations
+/// </summary>
+public class SessionService : ISessionService
+{
+    private readonly IVaaniRepository _repository;
+    private readonly IJwtTokenService _jwtTokenService;
+    private readonly ILogger<SessionService> _logger;
+
+    public SessionService(
+        IVaaniRepository repository,
+        IJwtTokenService jwtTokenService,
+        ILogger<SessionService> logger)
+    {
+        _repository = repository;
+        _jwtTokenService = jwtTokenService;
+        _logger = logger;
+    }
+
+    public async Task<string> CreateSessionAsync(string meetingId, string deviceId, string deviceName, string appVersion)
+    {
+        try
+        {
+            var meeting = await _repository.GetMeetingByIdAsync(meetingId);
+            if (meeting == null)
+                throw new InvalidOperationException("Meeting not found");
+
+            // Generate JWT token
+            var sessionToken = _jwtTokenService.GenerateToken(meetingId, deviceId, meeting.ValidUntil);
+
+            // Create session entity
+            var session = new Session
+            {
+                SessionToken = sessionToken,
+                MeetingId = meetingId,
+                DeviceId = deviceId,
+                DeviceName = deviceName,
+                AppVersion = appVersion,
+                StartedAt = DateTime.UtcNow,
+                LastHeartbeat = DateTime.UtcNow,
+                Status = "Active"
+            };
+
+            await _repository.CreateSessionAsync(session);
+
+            // Log session creation
+            await _repository.CreateSessionLogAsync(new SessionLog
+            {
+                SessionId = session.Id,
+                EventType = "SessionCreated",
+                Timestamp = DateTime.UtcNow,
+                Details = $"Device: {deviceName}, App: {appVersion}"
+            });
+
+            _logger.LogInformation("Session created: {SessionToken} for meeting: {MeetingId}", 
+                sessionToken, meetingId);
+
+            return sessionToken;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating session for meeting: {MeetingId}", meetingId);
+            throw;
+        }
+    }
+
+    public async Task<HeartbeatResponse> ProcessHeartbeatAsync(string sessionToken)
+    {
+        try
+        {
+            // Validate token
+            var (isValid, meetingId, deviceId) = _jwtTokenService.ValidateToken(sessionToken);
+            if (!isValid)
+            {
+                return new HeartbeatResponse
+                {
+                    Success = false,
+                    ErrorCode = "INVALID_TOKEN",
+                    Message = "Session token is invalid"
+                };
+            }
+
+            // Get session from database
+            var session = await _repository.GetSessionByTokenAsync(sessionToken);
+            if (session == null)
+            {
+                return new HeartbeatResponse
+                {
+                    Success = false,
+                    ErrorCode = "SESSION_NOT_FOUND",
+                    Message = "Session not found"
+                };
+            }
+
+            // Check if session is expired
+            var tokenExpiration = _jwtTokenService.GetTokenExpiration(sessionToken);
+            if (tokenExpiration == null || tokenExpiration < DateTime.UtcNow)
+            {
+                session.Status = "Expired";
+                await _repository.UpdateSessionAsync(session);
+
+                return new HeartbeatResponse
+                {
+                    Success = false,
+                    ErrorCode = "SESSION_EXPIRED",
+                    Message = "Session has expired"
+                };
+            }
+
+            // Update last heartbeat
+            session.LastHeartbeat = DateTime.UtcNow;
+            await _repository.UpdateSessionAsync(session);
+
+            // Log heartbeat
+            await _repository.CreateSessionLogAsync(new SessionLog
+            {
+                SessionId = session.Id,
+                EventType = "Heartbeat",
+                Timestamp = DateTime.UtcNow
+            });
+
+            // Calculate remaining minutes
+            var remainingMinutes = (int)(tokenExpiration.Value - DateTime.UtcNow).TotalMinutes;
+
+            return new HeartbeatResponse
+            {
+                Success = true,
+                RemainingMinutes = remainingMinutes,
+                Message = "Heartbeat successful"
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error processing heartbeat for session: {SessionToken}", sessionToken);
+            return new HeartbeatResponse
+            {
+                Success = false,
+                ErrorCode = "INTERNAL_ERROR",
+                Message = "An error occurred while processing heartbeat"
+            };
+        }
+    }
+
+    public async Task<EndSessionResponse> EndSessionAsync(string sessionToken, SessionStatistics? statistics = null)
+    {
+        try
+        {
+            var session = await _repository.GetSessionByTokenAsync(sessionToken);
+            if (session == null)
+            {
+                return new EndSessionResponse
+                {
+                    Success = false,
+                    ErrorCode = "SESSION_NOT_FOUND",
+                    Message = "Session not found"
+                };
+            }
+
+            // Update session status
+            session.Status = "Ended";
+            session.EndedAt = DateTime.UtcNow;
+            
+            if (statistics != null)
+            {
+                session.DurationMinutes = statistics.DurationMinutes;
+            }
+            else
+            {
+                var duration = DateTime.UtcNow - session.StartedAt;
+                session.DurationMinutes = (int)duration.TotalMinutes;
+            }
+
+            await _repository.UpdateSessionAsync(session);
+
+            // Log session end
+            var logDetails = statistics != null 
+                ? $"Duration: {statistics.DurationMinutes} minutes" 
+                : $"Duration: {session.DurationMinutes} minutes";
+
+            await _repository.CreateSessionLogAsync(new SessionLog
+            {
+                SessionId = session.Id,
+                EventType = "SessionEnded",
+                Timestamp = DateTime.UtcNow,
+                Details = logDetails
+            });
+
+            _logger.LogInformation("Session ended: {SessionToken}, Duration: {Duration} minutes", 
+                sessionToken, session.DurationMinutes);
+
+            return new EndSessionResponse
+            {
+                Success = true,
+                Message = "Session ended successfully"
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error ending session: {SessionToken}", sessionToken);
+            return new EndSessionResponse
+            {
+                Success = false,
+                ErrorCode = "INTERNAL_ERROR",
+                Message = "An error occurred while ending session"
+            };
+        }
+    }
+
+    public async Task<bool> IsSessionValidAsync(string sessionToken)
+    {
+        var (isValid, _, _) = _jwtTokenService.ValidateToken(sessionToken);
+        if (!isValid) return false;
+
+        var session = await _repository.GetSessionByTokenAsync(sessionToken);
+        return session != null && session.Status == "Active";
+    }
+
+    public async Task<int> GetRemainingMinutesAsync(string sessionToken)
+    {
+        var expiration = _jwtTokenService.GetTokenExpiration(sessionToken);
+        if (expiration == null) return 0;
+
+        var remaining = expiration.Value - DateTime.UtcNow;
+        return remaining.TotalMinutes > 0 ? (int)remaining.TotalMinutes : 0;
+    }
+}
