@@ -129,7 +129,7 @@ public class JwtTokenService : IJwtTokenService
             
             var userId = principal.FindFirst("userId")?.Value;
             var fullName = principal.FindFirst("fullName")?.Value;
-            var role = principal.FindFirst("role")?.Value;
+            var role = principal.FindFirst(ClaimTypes.Role)?.Value;
 
             if (role != "admin")
             {

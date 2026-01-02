@@ -1,0 +1,173 @@
+{
+  "Version": 1,
+  "WorkspaceRootPath": "C:\\Users\\Administrator\\Documents\\GitHub\\vaani\\",
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{B02D854D-5A95-1BF1-CAB6-23221B842414}|Vaani\\Vaani.csproj|c:\\users\\administrator\\documents\\github\\vaani\\vaani\\authentication\\services\\meetingauthenticationservice.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{B02D854D-5A95-1BF1-CAB6-23221B842414}|Vaani\\Vaani.csproj|solutionrelative:vaani\\authentication\\services\\meetingauthenticationservice.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{B02D854D-5A95-1BF1-CAB6-23221B842414}|Vaani\\Vaani.csproj|c:\\users\\administrator\\documents\\github\\vaani\\vaani\\authentication\\services\\sessionmanager.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{B02D854D-5A95-1BF1-CAB6-23221B842414}|Vaani\\Vaani.csproj|solutionrelative:vaani\\authentication\\services\\sessionmanager.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{B02D854D-5A95-1BF1-CAB6-23221B842414}|Vaani\\Vaani.csproj|c:\\users\\administrator\\documents\\github\\vaani\\vaani\\authentication\\services\\encryptionservice.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{B02D854D-5A95-1BF1-CAB6-23221B842414}|Vaani\\Vaani.csproj|solutionrelative:vaani\\authentication\\services\\encryptionservice.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{B02D854D-5A95-1BF1-CAB6-23221B842414}|Vaani\\Vaani.csproj|c:\\users\\administrator\\documents\\github\\vaani\\vaani\\authentication\\services\\configurationservice.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{B02D854D-5A95-1BF1-CAB6-23221B842414}|Vaani\\Vaani.csproj|solutionrelative:vaani\\authentication\\services\\configurationservice.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{B02D854D-5A95-1BF1-CAB6-23221B842414}|Vaani\\Vaani.csproj|c:\\users\\administrator\\documents\\github\\vaani\\vaani\\services\\clientservice.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{B02D854D-5A95-1BF1-CAB6-23221B842414}|Vaani\\Vaani.csproj|solutionrelative:vaani\\services\\clientservice.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{B2B3D902-9D38-4B39-BC33-CAA5952368B3}|Vaani.API\\Vaani.API.csproj|c:\\users\\administrator\\documents\\github\\vaani\\vaani.api\\services\\adminservice.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{B2B3D902-9D38-4B39-BC33-CAA5952368B3}|Vaani.API\\Vaani.API.csproj|solutionrelative:vaani.api\\services\\adminservice.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{28125565-7206-235B-075A-85692DCCC468}|Vaani.Admin\\Vaani.Admin.esproj|c:\\users\\administrator\\documents\\github\\vaani\\vaani.admin\\src\\pages\\addmeeting.jsx||{14D17961-FE51-464D-9111-C4AF11D7D99A}",
+      "RelativeMoniker": "D:0:0:{28125565-7206-235B-075A-85692DCCC468}|Vaani.Admin\\Vaani.Admin.esproj|solutionrelative:vaani.admin\\src\\pages\\addmeeting.jsx||{14D17961-FE51-464D-9111-C4AF11D7D99A}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{B2B3D902-9D38-4B39-BC33-CAA5952368B3}|Vaani.API\\Vaani.API.csproj|c:\\users\\administrator\\documents\\github\\vaani\\vaani.api\\controllers\\adminazuresubscriptionscontroller.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{B2B3D902-9D38-4B39-BC33-CAA5952368B3}|Vaani.API\\Vaani.API.csproj|solutionrelative:vaani.api\\controllers\\adminazuresubscriptionscontroller.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{B2B3D902-9D38-4B39-BC33-CAA5952368B3}|Vaani.API\\Vaani.API.csproj|c:\\users\\administrator\\documents\\github\\vaani\\vaani.api\\program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{B2B3D902-9D38-4B39-BC33-CAA5952368B3}|Vaani.API\\Vaani.API.csproj|solutionrelative:vaani.api\\program.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    }
+  ],
+  "DocumentGroupContainers": [
+    {
+      "Orientation": 0,
+      "VerticalTabListWidth": 256,
+      "DocumentGroups": [
+        {
+          "DockedWidth": 200,
+          "SelectedChildIndex": 1,
+          "Children": [
+            {
+              "$type": "Document",
+              "DocumentIndex": 1,
+              "Title": "SessionManager.cs",
+              "DocumentMoniker": "C:\\Users\\Administrator\\Documents\\GitHub\\vaani\\Vaani\\Authentication\\Services\\SessionManager.cs",
+              "RelativeDocumentMoniker": "Vaani\\Authentication\\Services\\SessionManager.cs",
+              "ToolTip": "C:\\Users\\Administrator\\Documents\\GitHub\\vaani\\Vaani\\Authentication\\Services\\SessionManager.cs",
+              "RelativeToolTip": "Vaani\\Authentication\\Services\\SessionManager.cs",
+              "ViewState": "AgIAAGQAAAAAAAAAAAAswGkAAAAoAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-01-01T16:21:40.445Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "MeetingAuthenticationService.cs",
+              "DocumentMoniker": "C:\\Users\\Administrator\\Documents\\GitHub\\vaani\\Vaani\\Authentication\\Services\\MeetingAuthenticationService.cs",
+              "RelativeDocumentMoniker": "Vaani\\Authentication\\Services\\MeetingAuthenticationService.cs",
+              "ToolTip": "C:\\Users\\Administrator\\Documents\\GitHub\\vaani\\Vaani\\Authentication\\Services\\MeetingAuthenticationService.cs",
+              "RelativeToolTip": "Vaani\\Authentication\\Services\\MeetingAuthenticationService.cs",
+              "ViewState": "AgIAANEAAAAAAAAAAIAwwAMBAAANAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-01-01T16:18:38.843Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 2,
+              "Title": "EncryptionService.cs",
+              "DocumentMoniker": "C:\\Users\\Administrator\\Documents\\GitHub\\vaani\\Vaani\\Authentication\\Services\\EncryptionService.cs",
+              "RelativeDocumentMoniker": "Vaani\\Authentication\\Services\\EncryptionService.cs",
+              "ToolTip": "C:\\Users\\Administrator\\Documents\\GitHub\\vaani\\Vaani\\Authentication\\Services\\EncryptionService.cs",
+              "RelativeToolTip": "Vaani\\Authentication\\Services\\EncryptionService.cs",
+              "ViewState": "AgIAAAwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-01-01T16:18:26.345Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 3,
+              "Title": "ConfigurationService.cs",
+              "DocumentMoniker": "C:\\Users\\Administrator\\Documents\\GitHub\\vaani\\Vaani\\Authentication\\Services\\ConfigurationService.cs",
+              "RelativeDocumentMoniker": "Vaani\\Authentication\\Services\\ConfigurationService.cs",
+              "ToolTip": "C:\\Users\\Administrator\\Documents\\GitHub\\vaani\\Vaani\\Authentication\\Services\\ConfigurationService.cs",
+              "RelativeToolTip": "Vaani\\Authentication\\Services\\ConfigurationService.cs",
+              "ViewState": "AgIAAFQAAAAAAAAAAAA4wAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-01-01T16:18:15.208Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 4,
+              "Title": "ClientService.cs",
+              "DocumentMoniker": "C:\\Users\\Administrator\\Documents\\GitHub\\vaani\\Vaani\\Services\\ClientService.cs",
+              "RelativeDocumentMoniker": "Vaani\\Services\\ClientService.cs",
+              "ToolTip": "C:\\Users\\Administrator\\Documents\\GitHub\\vaani\\Vaani\\Services\\ClientService.cs",
+              "RelativeToolTip": "Vaani\\Services\\ClientService.cs",
+              "ViewState": "AgIAAIYAAAAAAAAAAAAAwIsAAAASAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-01-01T15:43:51.148Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 6,
+              "Title": "AddMeeting.jsx",
+              "DocumentMoniker": "C:\\Users\\Administrator\\Documents\\GitHub\\vaani\\Vaani.Admin\\src\\pages\\AddMeeting.jsx",
+              "RelativeDocumentMoniker": "Vaani.Admin\\src\\pages\\AddMeeting.jsx",
+              "ToolTip": "C:\\Users\\Administrator\\Documents\\GitHub\\vaani\\Vaani.Admin\\src\\pages\\AddMeeting.jsx",
+              "RelativeToolTip": "Vaani.Admin\\src\\pages\\AddMeeting.jsx",
+              "ViewState": "AgIAAHUAAAAAAAAAAAAAAJQAAAAQAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003663|",
+              "WhenOpened": "2026-01-01T15:41:58.291Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 5,
+              "Title": "AdminService.cs",
+              "DocumentMoniker": "C:\\Users\\Administrator\\Documents\\GitHub\\vaani\\Vaani.API\\Services\\AdminService.cs",
+              "RelativeDocumentMoniker": "Vaani.API\\Services\\AdminService.cs",
+              "ToolTip": "C:\\Users\\Administrator\\Documents\\GitHub\\vaani\\Vaani.API\\Services\\AdminService.cs",
+              "RelativeToolTip": "Vaani.API\\Services\\AdminService.cs",
+              "ViewState": "AgIAABkAAAAAAAAAAAAMwD4AAAA1AAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-01-01T15:06:07.453Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 7,
+              "Title": "AdminAzureSubscriptionsController.cs",
+              "DocumentMoniker": "C:\\Users\\Administrator\\Documents\\GitHub\\vaani\\Vaani.API\\Controllers\\AdminAzureSubscriptionsController.cs",
+              "RelativeDocumentMoniker": "Vaani.API\\Controllers\\AdminAzureSubscriptionsController.cs",
+              "ToolTip": "C:\\Users\\Administrator\\Documents\\GitHub\\vaani\\Vaani.API\\Controllers\\AdminAzureSubscriptionsController.cs",
+              "RelativeToolTip": "Vaani.API\\Controllers\\AdminAzureSubscriptionsController.cs",
+              "ViewState": "AgIAAAYAAAAAAAAAAAAAAA0AAAANAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-01-01T15:08:38.752Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 8,
+              "Title": "Program.cs",
+              "DocumentMoniker": "C:\\Users\\Administrator\\Documents\\GitHub\\vaani\\Vaani.API\\Program.cs",
+              "RelativeDocumentMoniker": "Vaani.API\\Program.cs",
+              "ToolTip": "C:\\Users\\Administrator\\Documents\\GitHub\\vaani\\Vaani.API\\Program.cs",
+              "RelativeToolTip": "Vaani.API\\Program.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-01-01T15:04:32.872Z",
+              "EditorCaption": ""
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

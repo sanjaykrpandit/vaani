@@ -36,7 +36,7 @@ function Layout({ children }) {
       </main>
       
       <footer className="footer">
-        <p>&copy; 2024 Vaani Admin Console. All rights reserved.</p>
+        <p>&copy; 2026 Vaani Admin Console. All rights reserved.</p>
       </footer>
     </div>
   )

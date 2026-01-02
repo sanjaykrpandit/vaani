@@ -1,4 +1,5 @@
-import { useState } from 'react'
+// ...existing code...
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Layout from '../components/Layout'
 import { meetingService } from '../services/meetingService'
@@ -7,6 +8,9 @@ function AddMeeting() {
   const navigate = useNavigate()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [subscriptions, setSubscriptions] = useState([])
+  const [subsLoading, setSubsLoading] = useState(true)
+
   const [formData, setFormData] = useState({
     meetingId: '',
     meetingName: '',
@@ -14,6 +18,26 @@ function AddMeeting() {
     validFrom: '',
     validUntil: ''
   })
+
+  useEffect(() => {
+    let mounted = true
+    setSubsLoading(true)
+    meetingService.getAzureSubscriptions()
+      .then(data => {
+        if (!mounted) return
+        setSubscriptions(data || [])
+      })
+      .catch(() => {
+        if (!mounted) return
+        setError('Failed to load subscriptions')
+      })
+      .finally(() => {
+        if (!mounted) return
+        setSubsLoading(false)
+      })
+
+    return () => { mounted = false }
+  }, [])
 
   const handleChange = (e) => {
     const { name, value } = e.target
@@ -42,7 +66,7 @@ function AddMeeting() {
       const meetingData = {
         meetingId: formData.meetingId,
         meetingName: formData.meetingName,
-        azureSubscriptionId: parseInt(formData.azureSubscriptionId),
+        azureSubscriptionId: parseInt(formData.azureSubscriptionId, 10),
         validFrom: validFrom.toISOString(),
         validUntil: validUntil.toISOString()
       }
@@ -103,16 +127,25 @@ function AddMeeting() {
           </div>
 
           <div className="form-group">
-            <label htmlFor="azureSubscriptionId">Azure Subscription ID *</label>
-            <input
-              id="azureSubscriptionId"
-              name="azureSubscriptionId"
-              type="number"
-              value={formData.azureSubscriptionId}
-              onChange={handleChange}
-              placeholder="e.g., 1"
-              required
-            />
+            <label htmlFor="azureSubscriptionId">Azure Subscription *</label>
+            {subsLoading ? (
+              <div>Loading subscriptions...</div>
+            ) : (
+              <select
+                id="azureSubscriptionId"
+                name="azureSubscriptionId"
+                value={formData.azureSubscriptionId}
+                onChange={handleChange}
+                required
+              >
+                <option value="">-- Select subscription --</option>
+                {subscriptions.map(s => (
+                  <option key={s.id} value={s.id}>
+                    {s.description}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
 
           <div className="form-row">

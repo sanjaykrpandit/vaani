@@ -24,5 +24,10 @@ export const meetingService = {
   deleteMeeting: async (meetingId) => {
     const response = await apiClient.delete(`/admin/adminmeetings/${meetingId}`)
     return response.data
+  },
+
+  getAzureSubscriptions: async () => {
+    const response = await apiClient.get('/admin/AzureSubscriptions')
+    return response.data
   }
 }

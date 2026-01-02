@@ -1,0 +1,15 @@
+[
+  {
+    "Name": "New Profile",
+    "Projects": [
+      {
+        "Path": "Vaani.API\\Vaani.API.csproj",
+        "Action": "Start"
+      },
+      {
+        "Path": "Vaani\\Vaani.csproj",
+        "Action": "Start"
+      }
+    ]
+  }
+]
