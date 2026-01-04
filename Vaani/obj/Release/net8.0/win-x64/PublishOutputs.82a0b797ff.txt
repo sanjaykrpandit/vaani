@@ -1,0 +1,11 @@
+C:\Users\Administrator\Documents\GitHub\vaani\Vaani\bin\Release\net8.0\win-x64\app.publish\Vaani.pdb
+C:\Users\Administrator\Documents\GitHub\vaani\Vaani\bin\Release\net8.0\win-x64\app.publish\appsettings.json
+C:\Users\Administrator\Documents\GitHub\vaani\Vaani\bin\Release\net8.0\win-x64\app.publish\av_libglesv2.dll
+C:\Users\Administrator\Documents\GitHub\vaani\Vaani\bin\Release\net8.0\win-x64\app.publish\libHarfBuzzSharp.dll
+C:\Users\Administrator\Documents\GitHub\vaani\Vaani\bin\Release\net8.0\win-x64\app.publish\Microsoft.CognitiveServices.Speech.core.dll
+C:\Users\Administrator\Documents\GitHub\vaani\Vaani\bin\Release\net8.0\win-x64\app.publish\Microsoft.CognitiveServices.Speech.extension.audio.sys.dll
+C:\Users\Administrator\Documents\GitHub\vaani\Vaani\bin\Release\net8.0\win-x64\app.publish\Microsoft.CognitiveServices.Speech.extension.codec.dll
+C:\Users\Administrator\Documents\GitHub\vaani\Vaani\bin\Release\net8.0\win-x64\app.publish\Microsoft.CognitiveServices.Speech.extension.kws.dll
+C:\Users\Administrator\Documents\GitHub\vaani\Vaani\bin\Release\net8.0\win-x64\app.publish\Microsoft.CognitiveServices.Speech.extension.kws.ort.dll
+C:\Users\Administrator\Documents\GitHub\vaani\Vaani\bin\Release\net8.0\win-x64\app.publish\libSkiaSharp.dll
+C:\Users\Administrator\Documents\GitHub\vaani\Vaani\bin\Release\net8.0\win-x64\app.publish\Vaani.exe

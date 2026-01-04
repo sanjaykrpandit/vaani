@@ -5,44 +5,49 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
-    <ApplicationManifest>app.manifest</ApplicationManifest>
-    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
 
-    <!-- CLICKONCE: THE "RUN" BUTTON CONFIGURATION -->
-    <!-- Setting Install to false changes the prompt from 'Install' to 'Run' -->
+    <!-- Avalonia -->
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+
+    <!-- ClickOnce -->
+    <GenerateManifests>true</GenerateManifests>
+    <SignManifests>false</SignManifests>
+
     <Install>false</Install>
     <InstallFrom>Web</InstallFrom>
     <IsWebBootstrapper>true</IsWebBootstrapper>
     <InstallUrl>http://localhost/vconsole/</InstallUrl>
+
     <UpdateEnabled>false</UpdateEnabled>
     <CreateDesktopShortcut>false</CreateDesktopShortcut>
-    
-    
-    <ProductName>vconsole</ProductName>
-    <PublisherName>Your Company</PublisherName>
-    <SuiteName>vconsole Suite</SuiteName>
+
+    <!-- VERSIONING (CORRECT) -->
+    <ApplicationVersion>1.0.0.0</ApplicationVersion>
     <ApplicationRevision>1</ApplicationRevision>
-    <ApplicationVersion>1.0.0.1</ApplicationVersion>
-    <GenerateManifests>true</GenerateManifests>
-    <SignManifests>false</SignManifests>
-    
-    <!-- Build & Runtime Settings -->
-    <!-- Note: ClickOnce 'Run' mode works best with PublishSingleFile=false, 
-         but if you need it, ensure it doesn't conflict with manifest generation -->
+
+    <ProductName>Vanni</ProductName>
+    <PublisherName>Your Company</PublisherName>
+    <SuiteName>Vaani Suite</SuiteName>
+
+    <!-- Runtime -->
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-    <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
-    <PublishReadyToRun>true</PublishReadyToRun>
-    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+
+    <!-- REQUIRED for ClickOnce -->
+    <PublishSingleFile>false</PublishSingleFile>
     <PublishTrimmed>false</PublishTrimmed>
-    <PackageIcon>icon.png</PackageIcon>
+    <PublishReadyToRun>false</PublishReadyToRun>
   </PropertyGroup>
 
   <ItemGroup>
     <AvaloniaResource Include="Assets\**" />
   </ItemGroup>
-
+<ItemGroup>
+  <None Include="appsettings.json">
+    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+  </None>
+</ItemGroup>
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="11.0.10" />
     <PackageReference Include="Avalonia.Desktop" Version="11.0.10" />
@@ -50,20 +55,8 @@
     <PackageReference Include="Avalonia.Fonts.Inter" Version="11.0.10" />
     <PackageReference Include="Avalonia.ReactiveUI" Version="11.0.10" />
     <PackageReference Include="Microsoft.CognitiveServices.Speech" Version="1.47.0" />
-    <PackageReference Include="Microsoft.CognitiveServices.Speech.Extension.MAS" Version="1.47.0" />
     <PackageReference Include="NAudio" Version="2.2.1" />
-    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.1" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Folder Include="installer\" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <None Include="..\..\..\..\Desktop\Desktop\New folder\icon.png">
-      <Pack>True</Pack>
-      <PackagePath>\</PackagePath>
-    </None>
+	<PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.1" />
   </ItemGroup>
 
 </Project>

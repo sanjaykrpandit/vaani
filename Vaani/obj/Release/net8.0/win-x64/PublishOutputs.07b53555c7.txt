@@ -1,2 +1,0 @@
-C:\Users\sp250293\Documents\Workspace\dotnet\vconsole\bin\publish\vconsole.pdb
-C:\Users\sp250293\Documents\Workspace\dotnet\vconsole\bin\publish\vconsole.exe

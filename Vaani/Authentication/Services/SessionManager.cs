@@ -102,10 +102,8 @@ public class SessionManager
     {
         if (_currentSession != null)
         {
-            // Send end session to API
-            await _authService.EndSessionAsync(_currentSession.SessionToken);
+            await _authService.EndSessionAsync();
         }
-
         StopSession();
     }
 
@@ -199,12 +197,12 @@ public class SessionManager
     {
         StopHeartbeat();
 
-        _heartbeatTimer = new Timer(
-            async _ => await SendHeartbeatAsync(),
-            null,
-            interval,
-            interval
-        );
+        //_heartbeatTimer = new Timer(
+        //    async _ => await SendHeartbeatAsync(),
+        //    null,
+        //    interval,
+        //    interval
+        //);
     }
 
     /// <summary>
@@ -251,12 +249,12 @@ public class SessionManager
     {
         StopExpiryMonitoring();
 
-        // Check every 30 seconds
+        // Check every 120 seconds
         _expiryCheckTimer = new Timer(
             _ => CheckExpiry(),
             null,
             TimeSpan.Zero,
-            TimeSpan.FromSeconds(30)
+            TimeSpan.FromSeconds(120)
         );
     }
 
@@ -313,6 +311,17 @@ public class SessionManager
         };
     }
 
+    public (string deviceid, string meetingid, string token) GetSessionToken()
+    {
+        if (_currentSession == null)
+            return ("", "", "");
+
+        return (_currentSession.DeviceId, _currentSession.Configuration.MeetingId, _currentSession.SessionToken);
+
+    }
+
+
+
     /// <summary>
     /// Logout and clear all session data
     /// This will end the session with the API and clear local storage
@@ -325,7 +334,7 @@ public class SessionManager
         // End session with API if active
         if (_currentSession != null && !string.IsNullOrEmpty(_currentSession.SessionToken))
         {
-            await _authService.EndSessionAsync(_currentSession.SessionToken, statistics);
+            await _authService.EndSessionAsync();
         }
 
         // Stop all timers and clear session data

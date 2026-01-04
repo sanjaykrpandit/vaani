@@ -702,59 +702,6 @@
           }
         }
       },
-      "Microsoft.CognitiveServices.Speech.Extension.MAS/1.47.0": {
-        "type": "package",
-        "dependencies": {
-          "Microsoft.CognitiveServices.Speech": "1.47.0"
-        },
-        "contentFiles": {
-          "contentFiles/any/any/models/aec_v1.fpie": {
-            "buildAction": "EmbeddedResource",
-            "codeLanguage": "any",
-            "copyToOutput": true,
-            "outputPath": "models/aec_v1.fpie"
-          }
-        },
-        "build": {
-          "build/netcoreapp3.1/Microsoft.CognitiveServices.Speech.Extension.MAS.targets": {}
-        },
-        "runtimeTargets": {
-          "runtimes/linux-arm/native/libMicrosoft.CognitiveServices.Speech.extension.mas.so": {
-            "assetType": "native",
-            "rid": "linux-arm"
-          },
-          "runtimes/linux-arm64/native/libMicrosoft.CognitiveServices.Speech.extension.mas.so": {
-            "assetType": "native",
-            "rid": "linux-arm64"
-          },
-          "runtimes/linux-x64/native/libMicrosoft.CognitiveServices.Speech.extension.mas.so": {
-            "assetType": "native",
-            "rid": "linux-x64"
-          },
-          "runtimes/win-arm64/native/FPIEProcessor.dll": {
-            "assetType": "native",
-            "rid": "win-arm64"
-          },
-          "runtimes/win-arm64/native/Microsoft.CognitiveServices.Speech.extension.mas.dll": {
-            "assetType": "native",
-            "rid": "win-arm64"
-          },
-          "runtimes/win-x64/native/FPIEProcessor.dll": {
-            "assetType": "native",
-            "rid": "win-x64"
-          },
-          "runtimes/win-x64/native/Microsoft.CognitiveServices.Speech.extension.mas.dll": {
-            "assetType": "native",
-            "rid": "win-x64"
-          }
-        }
-      },
-      "Microsoft.NET.ILLink.Tasks/8.0.22": {
-        "type": "package",
-        "build": {
-          "build/Microsoft.NET.ILLink.Tasks.props": {}
-        }
-      },
       "Microsoft.NETCore.Platforms/3.1.0": {
         "type": "package",
         "compile": {
@@ -1680,33 +1627,6 @@
         },
         "build": {
           "build/Microsoft.CognitiveServices.Speech.props": {}
-        }
-      },
-      "Microsoft.CognitiveServices.Speech.Extension.MAS/1.47.0": {
-        "type": "package",
-        "dependencies": {
-          "Microsoft.CognitiveServices.Speech": "1.47.0"
-        },
-        "native": {
-          "runtimes/win-x64/native/FPIEProcessor.dll": {},
-          "runtimes/win-x64/native/Microsoft.CognitiveServices.Speech.extension.mas.dll": {}
-        },
-        "contentFiles": {
-          "contentFiles/any/any/models/aec_v1.fpie": {
-            "buildAction": "EmbeddedResource",
-            "codeLanguage": "any",
-            "copyToOutput": true,
-            "outputPath": "models/aec_v1.fpie"
-          }
-        },
-        "build": {
-          "build/netcoreapp3.1/Microsoft.CognitiveServices.Speech.Extension.MAS.targets": {}
-        }
-      },
-      "Microsoft.NET.ILLink.Tasks/8.0.22": {
-        "type": "package",
-        "build": {
-          "build/Microsoft.NET.ILLink.Tasks.props": {}
         }
       },
       "Microsoft.NETCore.Platforms/3.1.0": {
@@ -3035,92 +2955,6 @@
         "runtimes/win-x64/nativeassets/uap/Microsoft.CognitiveServices.Speech.extension.kws.ort.dll"
       ]
     },
-    "Microsoft.CognitiveServices.Speech.Extension.MAS/1.47.0": {
-      "sha512": "5sIc67fKvvYlh+FOFd6MfNL/zrKROoNsEMJdPw83VPSCrxKnuuVpcRLle4o93ZROfIJIb5Dajet3UvpxfBO1BA==",
-      "type": "package",
-      "path": "microsoft.cognitiveservices.speech.extension.mas/1.47.0",
-      "files": [
-        ".nupkg.metadata",
-        ".signature.p7s",
-        "LICENSE.txt",
-        "build/Microsoft.CognitiveServices.Speech.Extension.MAS.props",
-        "build/REDIST.txt",
-        "build/native/ARM64/Release/Microsoft.CognitiveServices.Speech.extension.mas.lib",
-        "build/native/Microsoft.CognitiveServices.Speech.Extension.MAS.targets",
-        "build/native/uap/ARM64/Release/Microsoft.CognitiveServices.Speech.extension.mas.lib",
-        "build/native/uap/x64/Release/Microsoft.CognitiveServices.Speech.extension.mas.lib",
-        "build/native/x64/Release/Microsoft.CognitiveServices.Speech.extension.mas.lib",
-        "build/net462/Microsoft.CognitiveServices.Speech.Extension.MAS.targets",
-        "build/netcoreapp3.1/Microsoft.CognitiveServices.Speech.Extension.MAS.targets",
-        "build/uap/Microsoft.CognitiveServices.Speech.Extension.MAS.targets",
-        "contentFiles/any/any/models/aec_v1.fpie",
-        "microsoft.cognitiveservices.speech.extension.mas.1.47.0.nupkg.sha512",
-        "microsoft.cognitiveservices.speech.extension.mas.nuspec",
-        "readme.md",
-        "runtimes/linux-arm/native/libMicrosoft.CognitiveServices.Speech.extension.mas.so",
-        "runtimes/linux-arm64/native/libMicrosoft.CognitiveServices.Speech.extension.mas.so",
-        "runtimes/linux-x64/native/libMicrosoft.CognitiveServices.Speech.extension.mas.so",
-        "runtimes/win-arm64/native/FPIEProcessor.dll",
-        "runtimes/win-arm64/native/Microsoft.CognitiveServices.Speech.extension.mas.dll",
-        "runtimes/win-arm64/nativeassets/uap/FPIEProcessor.dll",
-        "runtimes/win-arm64/nativeassets/uap/Microsoft.CognitiveServices.Speech.extension.mas.dll",
-        "runtimes/win-x64/native/FPIEProcessor.dll",
-        "runtimes/win-x64/native/Microsoft.CognitiveServices.Speech.extension.mas.dll",
-        "runtimes/win-x64/nativeassets/uap/FPIEProcessor.dll",
-        "runtimes/win-x64/nativeassets/uap/Microsoft.CognitiveServices.Speech.extension.mas.dll"
-      ]
-    },
-    "Microsoft.NET.ILLink.Tasks/8.0.22": {
-      "sha512": "MhcMithKEiyyNkD2ZfbDZPmcOdi0GheGfg8saEIIEfD/fol3iHmcV8TsZkD4ZYz5gdUuoX4YtlVySUU7Sxl9SQ==",
-      "type": "package",
-      "path": "microsoft.net.illink.tasks/8.0.22",
-      "hasTools": true,
-      "files": [
-        ".nupkg.metadata",
-        ".signature.p7s",
-        "Icon.png",
-        "LICENSE.TXT",
-        "Sdk/Sdk.props",
-        "THIRD-PARTY-NOTICES.TXT",
-        "analyzers/dotnet/cs/ILLink.CodeFixProvider.dll",
-        "analyzers/dotnet/cs/ILLink.RoslynAnalyzer.dll",
-        "build/Microsoft.NET.ILLink.Analyzers.props",
-        "build/Microsoft.NET.ILLink.Tasks.props",
-        "build/Microsoft.NET.ILLink.targets",
-        "microsoft.net.illink.tasks.8.0.22.nupkg.sha512",
-        "microsoft.net.illink.tasks.nuspec",
-        "tools/net472/ILLink.Tasks.dll",
-        "tools/net472/ILLink.Tasks.dll.config",
-        "tools/net472/Mono.Cecil.Mdb.dll",
-        "tools/net472/Mono.Cecil.Pdb.dll",
-        "tools/net472/Mono.Cecil.Rocks.dll",
-        "tools/net472/Mono.Cecil.dll",
-        "tools/net472/Sdk/Sdk.props",
-        "tools/net472/System.Buffers.dll",
-        "tools/net472/System.Collections.Immutable.dll",
-        "tools/net472/System.Memory.dll",
-        "tools/net472/System.Numerics.Vectors.dll",
-        "tools/net472/System.Reflection.Metadata.dll",
-        "tools/net472/System.Runtime.CompilerServices.Unsafe.dll",
-        "tools/net472/build/Microsoft.NET.ILLink.Analyzers.props",
-        "tools/net472/build/Microsoft.NET.ILLink.Tasks.props",
-        "tools/net472/build/Microsoft.NET.ILLink.targets",
-        "tools/net8.0/ILLink.Tasks.deps.json",
-        "tools/net8.0/ILLink.Tasks.dll",
-        "tools/net8.0/Mono.Cecil.Mdb.dll",
-        "tools/net8.0/Mono.Cecil.Pdb.dll",
-        "tools/net8.0/Mono.Cecil.Rocks.dll",
-        "tools/net8.0/Mono.Cecil.dll",
-        "tools/net8.0/Sdk/Sdk.props",
-        "tools/net8.0/build/Microsoft.NET.ILLink.Analyzers.props",
-        "tools/net8.0/build/Microsoft.NET.ILLink.Tasks.props",
-        "tools/net8.0/build/Microsoft.NET.ILLink.targets",
-        "tools/net8.0/illink.deps.json",
-        "tools/net8.0/illink.dll",
-        "tools/net8.0/illink.runtimeconfig.json",
-        "useSharedDesignerContext.txt"
-      ]
-    },
     "Microsoft.NETCore.Platforms/3.1.0": {
       "sha512": "z7aeg8oHln2CuNulfhiLYxCVMPEwBl3rzicjvIX+4sUuCwvXw5oXQEtbiU2c0z4qYL5L3Kmx0mMA/+t/SbY67w==",
       "type": "package",
@@ -4074,8 +3908,6 @@
       "Avalonia.ReactiveUI >= 11.0.10",
       "Avalonia.Themes.Fluent >= 11.0.10",
       "Microsoft.CognitiveServices.Speech >= 1.47.0",
-      "Microsoft.CognitiveServices.Speech.Extension.MAS >= 1.47.0",
-      "Microsoft.NET.ILLink.Tasks >= 8.0.22",
       "NAudio >= 2.2.1",
       "System.Security.Cryptography.ProtectedData >= 10.0.1"
     ]
@@ -4154,16 +3986,6 @@
             "target": "Package",
             "version": "[1.47.0, )"
           },
-          "Microsoft.CognitiveServices.Speech.Extension.MAS": {
-            "target": "Package",
-            "version": "[1.47.0, )"
-          },
-          "Microsoft.NET.ILLink.Tasks": {
-            "suppressParent": "All",
-            "target": "Package",
-            "version": "[8.0.22, )",
-            "autoReferenced": true
-          },
           "NAudio": {
             "target": "Package",
             "version": "[2.2.1, )"
@@ -4187,10 +4009,6 @@
         "downloadDependencies": [
           {
             "name": "Microsoft.AspNetCore.App.Runtime.win-x64",
-            "version": "[8.0.22, 8.0.22]"
-          },
-          {
-            "name": "Microsoft.NETCore.App.Crossgen2.win-x64",
             "version": "[8.0.22, 8.0.22]"
           },
           {

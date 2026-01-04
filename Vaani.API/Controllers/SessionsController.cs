@@ -31,14 +31,26 @@ public class SessionsController : ControllerBase
     /// </summary>
     /// <param name="request">Session creation request</param>
     /// <returns>Session response with token</returns>
-    [HttpPost("create")]
-    [AllowAnonymous]
-    [ProducesResponseType(typeof(CreateSessionResponse), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<ActionResult<CreateSessionResponse>> CreateSession([FromBody] CreateSessionRequest request)
+    [HttpPost("start")]
+    [Authorize]
+    [ProducesResponseType(typeof(HeartbeatResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<CreateSessionResponse>> StartSession([FromBody] CreateSessionRequest request)
     {
         try
         {
+            // Get token from Authorization header
+            var token = GetTokenFromHeader();
+            if (string.IsNullOrEmpty(token))
+            {
+                return Unauthorized(new HeartbeatResponse
+                {
+                    Success = false,
+                    ErrorCode = "NO_TOKEN",
+                    Message = "Authorization token is required"
+                });
+            }
+
             if (string.IsNullOrWhiteSpace(request.MeetingId))
             {
                 return BadRequest(new CreateSessionResponse
@@ -57,22 +69,7 @@ public class SessionsController : ControllerBase
                 });
             }
 
-            if (string.IsNullOrWhiteSpace(request.DeviceName))
-            {
-                return BadRequest(new CreateSessionResponse
-                {
-                    Success = false,
-                    Message = "Device name is required"
-                });
-            }
-
-            var (success, sessionId, accessToken, message) = await _sessionService.CreateSessionAsync(
-                request.MeetingId,
-                request.DeviceId,
-                request.DeviceName,
-                request.AppVersion
-            );
-
+            var (success, message, sessionId) = await _sessionService.StartSessionAsync(request.MeetingId, request.DeviceId);
             if (!success)
             {
                 return Ok(new CreateSessionResponse
@@ -94,7 +91,6 @@ public class SessionsController : ControllerBase
             {
                 Success = true,
                 SessionId = sessionId,
-                AccessToken = accessToken,
                 Message = message,
                 ExpiresAt = expiresAt
             });
@@ -184,17 +180,17 @@ public class SessionsController : ControllerBase
     {
         try
         {
-            if (request.SessionId <= 0)
+            if (string.IsNullOrWhiteSpace(request.meetingId) || string.IsNullOrWhiteSpace(request.deviceId))
             {
                 return BadRequest(new EndSessionResponse
                 {
                     Success = false,
                     ErrorCode = "INVALID_REQUEST",
-                    Message = "Valid session ID is required"
+                    Message = "Meeting ID is required"
                 });
-            }
+            }          
 
-            var response = await _sessionService.EndSessionAsync(request.SessionId);
+            var response = await _sessionService.EndSessionAsync(request);
 
             return Ok(response);
         }

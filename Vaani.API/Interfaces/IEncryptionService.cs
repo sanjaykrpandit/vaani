@@ -10,12 +10,12 @@ public interface IEncryptionService
     /// <summary>
     /// Encrypt meeting configuration
     /// </summary>
-    string EncryptConfiguration(MeetingConfigurationDto configuration);
+    string EncryptConfiguration(MeetingConfigurationDto configuration, string key);
     
     /// <summary>
     /// Decrypt meeting configuration
     /// </summary>
-    MeetingConfigurationDto DecryptConfiguration(string encryptedData);
+    MeetingConfigurationDto DecryptConfiguration(string encryptedData, string key);
     
     /// <summary>
     /// Hash password using BCrypt

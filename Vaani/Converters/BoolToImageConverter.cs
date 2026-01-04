@@ -20,12 +20,12 @@ public class BoolToImageConverter : IValueConverter
             if (context.Contains("speaker"))
             {
                 // Speaker images
-                resourcePath = isMuted ? "avares://vconsole/Assets/mspeaker.png" : "avares://vconsole/Assets/speaker.png";
+                resourcePath = isMuted ? "avares://vaani/Assets/mspeaker.png" : "avares://vaani/Assets/speaker.png";
             }
             else
             {
                 // Microphone images
-                resourcePath = isMuted ? "avares://vconsole/Assets/mmic.png" : "avares://vconsole/Assets/mic.png";
+                resourcePath = isMuted ? "avares://vaani/Assets/mmic.png" : "avares://vaani/Assets/mic.png";
             }
             
             try

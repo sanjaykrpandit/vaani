@@ -319,6 +319,13 @@ public class TranslationService : IDisposable
 
     public async Task StopTranslationAsync()
     {
+
+        //check is synthesis is ongoing
+
+       
+
+
+
         if (_cts != null && !_cts.Token.IsCancellationRequested)
         {
             _logger.Info(LogCategory.System, "Stopping translation...");

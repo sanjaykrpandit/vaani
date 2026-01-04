@@ -17,18 +17,6 @@ public class MeetingValidationRequest
     /// </summary>
     public string DeviceId { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Human-readable device name
-    /// </summary>
-    public string DeviceName { get; set; } = string.Empty;
-
-    /// <summary>
-    /// Vaani application version
-    /// </summary>
-    public string AppVersion { get; set; } = "1.0.0";
-
-    /// <summary>
-    /// Timestamp of the validation request
-    /// </summary>
-    public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+    public string AppVersion { get; set; } = string.Empty;
+    public string DeviceName { get; internal set; } = string.Empty;
 }

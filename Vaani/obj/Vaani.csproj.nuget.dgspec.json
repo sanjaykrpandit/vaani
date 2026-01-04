@@ -74,16 +74,6 @@
               "target": "Package",
               "version": "[1.47.0, )"
             },
-            "Microsoft.CognitiveServices.Speech.Extension.MAS": {
-              "target": "Package",
-              "version": "[1.47.0, )"
-            },
-            "Microsoft.NET.ILLink.Tasks": {
-              "suppressParent": "All",
-              "target": "Package",
-              "version": "[8.0.22, )",
-              "autoReferenced": true
-            },
             "NAudio": {
               "target": "Package",
               "version": "[2.2.1, )"
@@ -107,10 +97,6 @@
           "downloadDependencies": [
             {
               "name": "Microsoft.AspNetCore.App.Runtime.win-x64",
-              "version": "[8.0.22, 8.0.22]"
-            },
-            {
-              "name": "Microsoft.NETCore.App.Crossgen2.win-x64",
               "version": "[8.0.22, 8.0.22]"
             },
             {

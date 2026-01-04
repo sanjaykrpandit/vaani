@@ -296,7 +296,12 @@
 						   TextAlignment="Center"
 						   TextWrapping="Wrap"
 						   MaxWidth="350"/>
-			</StackPanel>
+
+
+     
+
+
+      </StackPanel>
 
             <!-- Error Message -->
             <Border Background="#D32F2F"
@@ -347,6 +352,13 @@
                            TextAlignment="Center"
                            TextWrapping="Wrap"
                            MaxWidth="350"/>
+
+              <TextBlock Text="{Binding AppVersion}"
+        FontSize="12"
+        Foreground="#888888"
+        HorizontalAlignment="Center"
+        Margin="0,20,0,0"/>
+              
             </StackPanel>
         </StackPanel>
     </Grid>

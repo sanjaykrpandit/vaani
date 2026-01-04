@@ -6,6 +6,8 @@ using Microsoft.OpenApi.Models;
 using Vaani.API.Data;
 using Vaani.API.Interfaces;
 using Vaani.API.Services;
+using Microsoft.AspNetCore.StaticFiles;
+
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -123,6 +125,16 @@ var app = builder.Build();
 var logger = app.Services.GetRequiredService<ILogger<Program>>();
 logger.LogInformation("Starting Vaani API...");
 logger.LogInformation("Environment: {Environment}", app.Environment.EnvironmentName);
+
+
+// Serve static files
+app.UseStaticFiles();
+var provider = new FileExtensionContentTypeProvider();
+provider.Mappings[".application"] = "application/x-ms-application";
+app.UseStaticFiles(new StaticFileOptions
+{
+    ContentTypeProvider = provider
+});
 
 // Test database connection (optional - won't crash if DB is down)
 try

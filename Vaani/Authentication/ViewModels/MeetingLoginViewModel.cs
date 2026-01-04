@@ -1,17 +1,20 @@
-﻿using System;
-using System.Linq;
-using System.Reactive;
-using System.Threading.Tasks;
-using System.Windows.Input;
-using Avalonia;
+﻿using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using ReactiveUI;
+using System;
+using System.Linq;
+using System.Reactive;
+using System.Reflection;
+using System.Threading.Tasks;
+using System.Windows.Input;
 using Vaani.Authentication.Models;
 using Vaani.Authentication.Services;
 using Vaani.Authentication.Views;
 using Vaani.DriverInstallation.Services;
+using Vaani.Services;
 using Vaani.Views;
+
 
 namespace Vaani.Authentication.ViewModels;
 
@@ -27,6 +30,7 @@ public class MeetingLoginViewModel : ReactiveObject
     private bool _hasError;
     private string _errorMessage = string.Empty;
     private string _statusMessage = string.Empty;
+    public string? _appVersion;
 
     public MeetingLoginViewModel()
     {
@@ -39,9 +43,19 @@ public class MeetingLoginViewModel : ReactiveObject
         ValidateCommand = ReactiveCommand.CreateFromTask(ValidateMeetingAsync);
         PasteCommand = ReactiveCommand.CreateFromTask(PasteMeetingIdAsync);
         RetryCommand = ReactiveCommand.Create(ResetState);
+
+        AppVersion = $"Version {AppVersionHelper.GetAppVersion()}";
     }
+   
+   
 
     #region Properties
+
+    public string AppVersion
+    {
+        get => _appVersion;
+        set => this.RaiseAndSetIfChanged(ref _appVersion, value);
+    }
 
     public string MeetingId
     {
@@ -142,7 +156,7 @@ public class MeetingLoginViewModel : ReactiveObject
             }
 
             StatusMessage = "Decrypting configuration...";
-            await Task.Delay(500); // Small delay for UX
+            await Task.Delay(100); // Small delay for UX
 
             // TODO: In production, encryption key should come from API response
             // For now, using a placeholder approach
@@ -155,8 +169,10 @@ public class MeetingLoginViewModel : ReactiveObject
             try
             {
                 // Placeholder: In production, get the key from the API response or derive it
-                // For now, we'll create a mock configuration for testing
-                config = CreateMockConfiguration(response);
+                EncryptionService es = new EncryptionService();
+                config = es.DecryptConfig(response.EncryptedConfig, deviceId);
+                config.SessionToken = response.SessionToken;             
+
             }
             catch (Exception ex)
             {
@@ -252,6 +268,7 @@ public class MeetingLoginViewModel : ReactiveObject
     /// Create mock configuration for testing (remove in production)
     /// In production, decrypt the response.EncryptedConfig properly
     /// </summary>
+    /// 
     private MeetingConfiguration CreateMockConfiguration(MeetingValidationResponse response)
     {
         // Mock configuration with your actual Azure credentials

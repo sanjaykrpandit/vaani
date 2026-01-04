@@ -25,47 +25,23 @@ public class ConfigurationService
     {
         try
         {
-            var configPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "appsettings.json");
-            
+            var configPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "appsettings.json");            
             if (!File.Exists(configPath))
             {
-                // Return default configuration
-                return GetDefaultConfiguration();
+                throw new FileNotFoundException("Configuration file not found.", configPath);
             }
-
             var json = File.ReadAllText(configPath);
             var config = JsonSerializer.Deserialize<AppConfiguration>(json);
-            
-            return config ?? GetDefaultConfiguration();
+            if (config == null)
+            {
+                throw new Exception("Configuration deserialization resulted in null.");
+            }
+            return config;
         }
         catch
         {
-            // If config loading fails, return defaults
-            return GetDefaultConfiguration();
+           throw new Exception("Failed to load configuration.");
         }
-    }
-
-    private AppConfiguration GetDefaultConfiguration()
-    {
-        return new AppConfiguration
-        {
-            Authentication = new AuthenticationConfig
-            {
-                ApiBaseUrl = "https://api.vaani.com",
-                ApiTimeout = 30
-            },
-            Session = new SessionConfig
-            {
-                HeartbeatIntervalSeconds = 60,
-                ExpiryWarningMinutes = 5,
-                EnableLocalCache = false
-            },
-            Application = new ApplicationConfig
-            {
-                Version = "1.0.0",
-                Environment = "Production"
-            }
-        };
     }
 }
 
@@ -81,8 +57,8 @@ public class AppConfiguration
 
 public class AuthenticationConfig
 {
-    public string ApiBaseUrl { get; set; } = "https://api.vaani.com";
-    public int ApiTimeout { get; set; } = 30;
+    public string? ApiBaseUrl { get; set; }
+    public int ApiTimeout { get; set; }
 }
 
 public class SessionConfig
@@ -94,6 +70,6 @@ public class SessionConfig
 
 public class ApplicationConfig
 {
-    public string Version { get; set; } = "1.0.0";
-    public string Environment { get; set; } = "Production";
+    public string? Version { get; set; }
+    public string? Environment { get; set; }
 }

@@ -21,7 +21,7 @@ public class EncryptionService : IEncryptionService
         _encryptionKey = Encoding.UTF8.GetBytes(keyString.PadRight(32)[..32]); // Ensure 32 bytes for AES-256
     }
 
-    public string EncryptConfiguration(MeetingConfigurationDto configuration)
+    public string EncryptConfiguration(MeetingConfigurationDto configuration, string key)
     {
         try
         {
@@ -29,7 +29,15 @@ public class EncryptionService : IEncryptionService
             var plainTextBytes = Encoding.UTF8.GetBytes(json);
 
             using var aes = Aes.Create();
-            aes.Key = _encryptionKey;
+            if (key.Length > 10)
+            {
+                aes.Key = Encoding.UTF8.GetBytes(key.PadRight(32)[..32]);
+            }  
+            else
+            {
+                aes.Key = _encryptionKey;
+            }
+
             aes.GenerateIV();
 
             using var encryptor = aes.CreateEncryptor(aes.Key, aes.IV);
@@ -55,7 +63,7 @@ public class EncryptionService : IEncryptionService
         }
     }
 
-    public MeetingConfigurationDto DecryptConfiguration(string encryptedData)
+    public MeetingConfigurationDto DecryptConfiguration(string encryptedData, string key)
     {
         try
         {
@@ -66,7 +74,14 @@ public class EncryptionService : IEncryptionService
             var encryptedBytes = Convert.FromBase64String(base64);
 
             using var aes = Aes.Create();
-            aes.Key = _encryptionKey;
+            if (key.Length > 10)
+            {
+                aes.Key = Encoding.UTF8.GetBytes(key.PadRight(32)[..32]);
+            }
+            else
+            {
+                aes.Key = _encryptionKey;
+            }
 
             // Extract IV (first 16 bytes)
             var iv = new byte[16];

@@ -1,4 +1,5 @@
 using System;
+using Vaani.Services;
 
 namespace Vaani.Authentication.Models;
 
@@ -46,6 +47,9 @@ public class MeetingConfiguration
     /// Metadata about the configuration
     /// </summary>
     public ConfigurationMetadata Metadata { get; set; } = new();
+
+    public List<Voice> AvailableVoices { get; set; } = new();
+    public List<LanguageInfo> AvailableLanguages { get; set; } = new();
 }
 
 /// <summary>

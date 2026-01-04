@@ -24,7 +24,7 @@ public class SessionService : ISessionService
         _jwtTokenService = jwtTokenService;
         _logger = logger;
     }
-
+       
     public async Task<(bool success, int? sessionId, string? accessToken, string? message)> CreateSessionAsync(string meetingId, string deviceId, string deviceName, string appVersion)
     {
         try
@@ -66,6 +66,17 @@ public class SessionService : ISessionService
 
             if (existingSession != null)
             {
+                // Log session creation
+                var _sessionLog = new SessionLog
+                {
+                    SessionId = existingSession.Id,
+                    EventType = "SessionCreated",
+                    Timestamp = DateTime.UtcNow,
+                    Details = $"Device: {deviceName}, App: {appVersion}"
+                };
+                _dbContext.SessionLogs.Add(_sessionLog);
+                await _dbContext.SaveChangesAsync();
+
                 _logger.LogInformation("Returning existing session for device: {DeviceId} in meeting: {MeetingId}", deviceId, meetingId);
                 return (true, existingSession.Id, accessToken, "Existing session found");
             }
@@ -105,6 +116,74 @@ public class SessionService : ISessionService
         {
             _logger.LogError(ex, "Error creating session for meeting: {MeetingId}", meetingId);
             return (false, null, null, "An error occurred while creating session");
+        }
+    }
+
+    public async Task<(bool success, string? message, int? sessionId)> StartSessionAsync(string meetingId, string deviceId)
+    {
+        try
+        {
+            // Get meeting with Azure subscription
+            var meeting = await _dbContext.Meetings
+                .Include(m => m.AzureSubscription)
+                .FirstOrDefaultAsync(m => m.MeetingId == meetingId.ToUpperInvariant());
+
+            if (meeting == null)
+            {
+                return (false, "Meeting not found",0);
+            }
+
+            if (!meeting.IsActive)
+            {
+                return (false, "Meeting is not active", 0);
+            }
+
+            // Check time window
+            var now = DateTime.UtcNow;
+            if (now < meeting.ValidFrom)
+            {
+                return (false, "Meeting has not started yet", 0);
+            }
+
+            if (now > meeting.ValidUntil)
+            {
+                return (false, "Meeting has expired", 0);
+            }
+
+            // Check if session already exists for this device
+            var session = await _dbContext.Sessions
+                .Where(s => s.MeetingId == meetingId && s.DeviceId == deviceId)
+                .FirstOrDefaultAsync();
+
+
+            if (session == null) {
+                return (false, "No active session found to start", 0);
+            }
+
+            session.Status = "Ended";
+            session.EndedAt = DateTime.UtcNow;
+            await _dbContext.SaveChangesAsync();
+
+            // Log session creation
+            var sessionLog = new SessionLog
+            {
+                SessionId = session.Id,
+                EventType = "SessionStarted",
+                Timestamp = DateTime.UtcNow,
+                Details = $"Device: {session.DeviceId}-{session.DeviceName}"
+            };
+            _dbContext.SessionLogs.Add(sessionLog);
+            await _dbContext.SaveChangesAsync();
+
+            _logger.LogInformation("Session created for meeting: {MeetingId}, Device: {DeviceId}, SessionId: {SessionId}",
+                meetingId, deviceId, session.Id);
+
+            return (true, "Session started successfully", session.Id);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating session for meeting: {MeetingId}", meetingId);
+            return (false, "An error occurred while creating session", 0);
         }
     }
 
@@ -179,11 +258,16 @@ public class SessionService : ISessionService
         }
     }
 
-    public async Task<EndSessionResponse> EndSessionAsync(int sessionId)
+    public async Task<EndSessionResponse> EndSessionAsync(EndSessionRequest request)
     {
         try
         {
-            var session = await _dbContext.Sessions.FindAsync(sessionId);
+
+            var session = await _dbContext.Sessions
+               .Where(s => s.MeetingId == request.meetingId && s.DeviceId == request.deviceId)
+               .OrderByDescending(s => s.StartedAt)
+               .FirstOrDefaultAsync();
+
 
             if (session == null)
             {
@@ -194,21 +278,11 @@ public class SessionService : ISessionService
                     Message = "Session not found"
                 };
             }
-
-            if (session.Status != "Active")
-            {
-                return new EndSessionResponse
-                {
-                    Success = false,
-                    ErrorCode = "SESSION_NOT_ACTIVE",
-                    Message = $"Session is already {session.Status}"
-                };
-            }
+          
 
             // Update session status
             session.Status = "Ended";
             session.EndedAt = DateTime.UtcNow;
-
             await _dbContext.SaveChangesAsync();
 
             // Calculate duration
@@ -226,8 +300,8 @@ public class SessionService : ISessionService
             _dbContext.SessionLogs.Add(sessionLog);
             await _dbContext.SaveChangesAsync();
 
-            _logger.LogInformation("Session ended - SessionId: {SessionId}, Meeting: {MeetingId}, Device: {DeviceId}, Duration: {Duration} minutes", 
-                sessionId, session.MeetingId, session.DeviceId, durationMinutes);
+            _logger.LogInformation("Session ended - SessionId: {SessionId}, Meeting: {MeetingId}, Device: {DeviceId}, Duration: {Duration} minutes",
+                session.Id, session.MeetingId, session.DeviceId, durationMinutes);
 
             return new EndSessionResponse
             {
@@ -238,7 +312,7 @@ public class SessionService : ISessionService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error ending session: {SessionId}", sessionId);
+            _logger.LogError(ex, "Error ending session: {DeviceId}", request.deviceId);
             return new EndSessionResponse
             {
                 Success = false,
@@ -267,4 +341,6 @@ public class SessionService : ISessionService
         var remaining = meeting.ValidUntil - DateTime.UtcNow;
         return remaining.TotalMinutes > 0 ? (int)remaining.TotalMinutes : 0;
     }
+
+   
 }

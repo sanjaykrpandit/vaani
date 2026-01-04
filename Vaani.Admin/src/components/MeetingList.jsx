@@ -1,4 +1,4 @@
-function MeetingList({ meetings, onEdit, onDelete }) {
+function MeetingList({ meetings, onEdit, onDelete, onLaunch }) {
   const formatDate = (dateString) => {
     const date = new Date(dateString)
     return date.toLocaleString('en-US', {
@@ -36,7 +36,8 @@ function MeetingList({ meetings, onEdit, onDelete }) {
             <th>Subscription ID</th>
             <th>Start Date</th>
             <th>End Date</th>
-            <th>Status</th>
+             <th></th>
+            <th>Status</th>           
             <th>Actions</th>
           </tr>
         </thead>
@@ -59,11 +60,25 @@ function MeetingList({ meetings, onEdit, onDelete }) {
                 <td>{meeting.azureSubscriptionId}</td>
                 <td>{formatDate(meeting.validFrom)}</td>
                 <td>{formatDate(meeting.validUntil)}</td>
+                 <td>
+                  {status === 'upcoming' && meeting.isActive ? (
+                    <button
+                      className="btn btn-sm btn-primary"
+                      onClick={() => onLaunch(meeting.meetingId)}
+                      title="Launch App"
+                    >
+                      Launch Vanni
+                    </button>
+                  ) : (
+                    <span className="badge badge-archived">Closed</span>
+                  )}
+                </td>
                 <td>
                   <span className={`badge badge-${status}`}>
                     {status}
                   </span>
                 </td>
+               
                 <td className="actions">
                   {isEditable && (
                     <button

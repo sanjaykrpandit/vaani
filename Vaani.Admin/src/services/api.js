@@ -1,6 +1,8 @@
 import axios from 'axios'
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api'
+const API_BASE_URL = import.meta.env.VITE_API_URL ?? '/api'
+
+console.log('API BASE URL:', API_BASE_URL)
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -9,7 +11,6 @@ const apiClient = axios.create({
   }
 })
 
-// Request interceptor to add auth token
 apiClient.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('adminToken')
@@ -18,17 +19,13 @@ apiClient.interceptors.request.use(
     }
     return config
   },
-  (error) => {
-    return Promise.reject(error)
-  }
+  (error) => Promise.reject(error)
 )
 
-// Response interceptor to handle auth errors
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      // Token expired or invalid
       localStorage.removeItem('adminToken')
       localStorage.removeItem('adminUser')
       window.location.href = '/login'

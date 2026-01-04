@@ -11,6 +11,7 @@ public class MeetingValidationResponse
     public DateTime ValidUntil { get; set; }
     public int RemainingMinutes { get; set; }
     public MeetingFeaturesDto Features { get; set; } = new();
+    public string SessionToken { get; set; } = string.Empty; 
     public string? ErrorCode { get; set; }
     public string? Message { get; set; }
 }

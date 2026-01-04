@@ -17,7 +17,7 @@ public partial class App : Application
         AvaloniaXamlLoader.Load(this);
     }
 
-    public override async void OnFrameworkInitializationCompleted()
+    public override void OnFrameworkInitializationCompleted()
     {
         // Register Avalonia scheduler for ReactiveUI
         RxApp.MainThreadScheduler = AvaloniaScheduler.Instance;

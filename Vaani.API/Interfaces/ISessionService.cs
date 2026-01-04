@@ -1,4 +1,5 @@
 using Vaani.API.Models.DTOs;
+using Vaani.API.Models.Entities;
 
 namespace Vaani.API.Interfaces;
 
@@ -10,8 +11,10 @@ public interface ISessionService
     /// <summary>
     /// Create a new session
     /// </summary>
+    Task<(bool success, string? message, int? sessionId)> StartSessionAsync(string meetingId, string deviceId);
+
+       
     Task<(bool success, int? sessionId, string? accessToken, string? message)> CreateSessionAsync(string meetingId, string deviceId, string deviceName, string appVersion);
-    
     /// <summary>
     /// Process heartbeat for a session
     /// </summary>
@@ -20,7 +23,7 @@ public interface ISessionService
     /// <summary>
     /// End a session
     /// </summary>
-    Task<EndSessionResponse> EndSessionAsync(int sessionId);
+    Task<EndSessionResponse> EndSessionAsync(EndSessionRequest request);
     
     /// <summary>
     /// Check if a session is valid

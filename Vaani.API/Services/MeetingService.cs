@@ -32,7 +32,7 @@ public class MeetingService : IMeetingService
     {
         try
         {
-            _logger.LogInformation("Validating meeting: {MeetingId} for device: {DeviceId}", 
+            _logger.LogInformation("Validating meeting: {MeetingId} for device: {DeviceId}",
                 request.MeetingId, request.DeviceId);
 
             // Get meeting from database with Azure subscription
@@ -96,8 +96,25 @@ public class MeetingService : IMeetingService
                 };
             }
 
+            var (success, sessionId, accessToken, message) = await _sessionService.CreateSessionAsync(
+                request.MeetingId,
+                request.DeviceId,
+                request.DeviceName,
+                request.AppVersion
+            );
+
+            if (!success)
+            {
+                return new MeetingValidationResponse
+                {
+                    IsValid = false,
+                    ErrorCode = "SESSION_CREATION_FAILED",
+                    Message = message
+                };
+            }
+
             // Encrypt configuration
-            var encryptedConfig = _encryptionService.EncryptConfiguration(config);
+            var encryptedConfig = _encryptionService.EncryptConfiguration(config, request.DeviceId);
 
             // Calculate remaining time
             var remainingTime = meeting.ValidUntil - now;
@@ -107,6 +124,7 @@ public class MeetingService : IMeetingService
 
             return new MeetingValidationResponse
             {
+                SessionToken = accessToken ?? "",
                 IsValid = true,
                 MeetingName = meeting.MeetingName,
                 EncryptedConfig = encryptedConfig,
@@ -137,7 +155,7 @@ public class MeetingService : IMeetingService
         var meeting = await _dbContext.Meetings
             .Include(m => m.AzureSubscription)
             .FirstOrDefaultAsync(m => m.MeetingId == meetingId.ToUpperInvariant());
-            
+
         if (meeting == null) return null;
 
         return new MeetingConfigurationDto
@@ -151,8 +169,8 @@ public class MeetingService : IMeetingService
             },
             TranslationConfig = new TranslationConfigDto
             {
-                VendorLanguage = new LanguageConfigDto { Code = "en-US", Voice = "en-US-JennyNeural" },
-                OrganizerLanguage = new LanguageConfigDto { Code = "hi-IN", Voice = "hi-IN-SwaraNeural" }
+                VendorLanguage = new LanguageConfigDto { Code = "hi-IN", Voice = "hi-IN-SwaraNeural" },
+                OrganizerLanguage = new LanguageConfigDto { Code = "en-US", Voice = "en-US-JennyNeural" }
             },
             TimeWindow = new TimeWindowDto
             {
@@ -170,7 +188,60 @@ public class MeetingService : IMeetingService
                 ApiVersion = "v1",
                 EncryptedAt = DateTime.UtcNow,
                 ConfigVersion = 1
+            },
+            AvailableLanguages = new List<LanguageInfo>
+            {
+                new LanguageInfo { Code = "en-US", DisplayName = "English (US)" },
+                new LanguageInfo { Code = "en-GB", DisplayName = "English (UK)" },
+                new LanguageInfo { Code = "hi-IN", DisplayName = "Hindi (India)" },
+                new LanguageInfo { Code = "es-ES", DisplayName = "Spanish (Spain)" },
+                new LanguageInfo { Code = "fr-FR", DisplayName = "French (France)" },
+                new LanguageInfo { Code = "de-DE", DisplayName = "German (Germany)" },
+                new LanguageInfo { Code = "ja-JP", DisplayName = "Japanese (Japan)" },
+                new LanguageInfo { Code = "zh-CN", DisplayName = "Chinese (Simplified)" }
+            },
+            AvailableVoices = new List<Voice>
+            {
+           // English (US)
+            new Voice { Name = "en-US-GuyNeural", DisplayName = "Guy (Natural)", LanguageCode = "en-US", Gender = "Male" },
+            new Voice { Name = "en-US-DavisNeural", DisplayName = "Davis (Natural)", LanguageCode = "en-US", Gender = "Male" },
+            new Voice { Name = "en-US-JasonNeural", DisplayName = "Jason (Natural)", LanguageCode = "en-US", Gender = "Male" },
+            new Voice { Name = "en-US-AriaNeural", DisplayName = "Aria (Natural)", LanguageCode = "en-US", Gender = "Female" },
+            new Voice { Name = "en-US-JennyNeural", DisplayName = "Jenny (Natural)", LanguageCode = "en-US", Gender = "Female" },
+            new Voice { Name = "en-US-NancyNeural", DisplayName = "Nancy (Natural)", LanguageCode = "en-US", Gender = "Female" },
+
+            // English (UK)
+            new Voice { Name = "en-GB-RyanNeural", DisplayName = "Ryan (Natural)", LanguageCode = "en-GB", Gender = "Male" },
+            new Voice { Name = "en-GB-ThomasNeural", DisplayName = "Thomas (Natural)", LanguageCode = "en-GB", Gender = "Male" },
+            new Voice { Name = "en-GB-LibbyNeural", DisplayName = "Libby (Natural)", LanguageCode = "en-GB", Gender = "Female" },
+            new Voice { Name = "en-GB-SoniaNeural", DisplayName = "Sonia (Natural)", LanguageCode = "en-GB", Gender = "Female" },
+
+            // Hindi (India)
+            new Voice { Name = "hi-IN-MadhurNeural", DisplayName = "Madhur (Natural)", LanguageCode = "hi-IN", Gender = "Male" },
+            new Voice { Name = "hi-IN-SwaraNeural", DisplayName = "Swara (Natural)", LanguageCode = "hi-IN", Gender = "Female" },
+
+            // Spanish (Spain)
+            new Voice { Name = "es-ES-AlvaroNeural", DisplayName = "Alvaro (Natural)", LanguageCode = "es-ES", Gender = "Male" },
+            new Voice { Name = "es-ES-ElviraNeural", DisplayName = "Elvira (Natural)", LanguageCode = "es-ES", Gender = "Female" },
+
+            // French (France)
+            new Voice { Name = "fr-FR-HenriNeural", DisplayName = "Henri (Natural)", LanguageCode = "fr-FR", Gender = "Male" },
+            new Voice { Name = "fr-FR-DeniseNeural", DisplayName = "Denise (Natural)", LanguageCode = "fr-FR", Gender = "Female" },
+
+            // German (Germany)
+            new Voice { Name = "de-DE-ConradNeural", DisplayName = "Conrad (Natural)", LanguageCode = "de-DE", Gender = "Male" },
+            new Voice { Name = "de-DE-KatjaNeural", DisplayName = "Katja (Natural)", LanguageCode = "de-DE", Gender = "Female" },
+
+            // Japanese (Japan)
+            new Voice { Name = "ja-JP-KeitaNeural", DisplayName = "Keita (Natural)", LanguageCode = "ja-JP", Gender = "Male" },
+            new Voice { Name = "ja-JP-NanamiNeural", DisplayName = "Nanami (Natural)", LanguageCode = "ja-JP", Gender = "Female" },
+
+            // Chinese (Simplified)
+            new Voice { Name = "zh-CN-YunxiNeural", DisplayName = "Yunxi (Natural)", LanguageCode = "zh-CN", Gender = "Male" },
+            new Voice { Name = "zh-CN-XiaoxiaoNeural", DisplayName = "Xiaoxiao (Natural)", LanguageCode = "zh-CN", Gender = "Female" }
+
             }
+
         };
     }
 

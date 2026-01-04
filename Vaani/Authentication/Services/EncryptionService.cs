@@ -24,10 +24,12 @@ public class EncryptionService
     /// <param name="encryptedConfig">Encrypted configuration string from API</param>
     /// <param name="encryptionKey">AES encryption key (will be provided by API or derived)</param>
     /// <returns>Decrypted MeetingConfiguration object</returns>
-    public MeetingConfiguration DecryptConfiguration(string encryptedConfig, byte[] encryptionKey)
+    public MeetingConfiguration DecryptConfiguration(string encryptedConfig, string key)
     {
         if (string.IsNullOrWhiteSpace(encryptedConfig))
             throw new ArgumentException("Encrypted configuration cannot be empty", nameof(encryptedConfig));
+
+        byte[] encryptionKey = Encoding.UTF8.GetBytes(key.PadRight(32)[..32]);
 
         if (encryptionKey == null || encryptionKey.Length != 32)
             throw new ArgumentException("Encryption key must be 32 bytes (256 bits)", nameof(encryptionKey));
@@ -90,6 +92,49 @@ public class EncryptionService
 
         return config;
     }
+
+    public MeetingConfiguration DecryptConfig(string encryptedData, string key)
+    {
+        try
+        {
+            if (!encryptedData.StartsWith("VAANI_ENC_v1_"))
+                throw new ArgumentException("Invalid encryption format");
+
+            var base64 = encryptedData.Replace("VAANI_ENC_v1_", "");
+            var encryptedBytes = Convert.FromBase64String(base64);
+
+            using var aes = Aes.Create();
+            if (key.Length > 10)
+            {
+                aes.Key = Encoding.UTF8.GetBytes(key.PadRight(32)[..32]);
+            }          
+
+            // Extract IV (first 16 bytes)
+            var iv = new byte[16];
+            Array.Copy(encryptedBytes, 0, iv, 0, 16);
+            aes.IV = iv;
+
+            // Extract encrypted data (rest of bytes)
+            var cipherText = new byte[encryptedBytes.Length - 16];
+            Array.Copy(encryptedBytes, 16, cipherText, 0, cipherText.Length);
+
+            using var decryptor = aes.CreateDecryptor(aes.Key, aes.IV);
+            using var ms = new MemoryStream(cipherText);
+            using var cs = new CryptoStream(ms, decryptor, CryptoStreamMode.Read);
+            using var reader = new StreamReader(cs);
+
+            var json = reader.ReadToEnd();
+            var config = JsonSerializer.Deserialize<MeetingConfiguration>(json);
+
+            return config ?? throw new InvalidOperationException("Failed to deserialize configuration");
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException("Failed to decrypt configuration", ex);
+        }
+    }
+
+
 
     /// <summary>
     /// Verify HMAC-SHA256 signature for data integrity

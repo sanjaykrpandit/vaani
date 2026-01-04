@@ -1,10 +1,12 @@
 using System;
 using System.Net.Http;
 using System.Net.Http.Json;
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Vaani.Authentication.Models;
+using Vaani.Services;
 
 namespace Vaani.Authentication.Services;
 
@@ -51,26 +53,14 @@ public class MeetingAuthenticationService
     {
         if (string.IsNullOrWhiteSpace(meetingId))
             throw new ArgumentException("Meeting ID cannot be empty", nameof(meetingId));
+               
 
-        // ============================================================
-        // MOCK MODE - Remove/comment when API is ready
-        // ============================================================
-        if (USE_MOCK_MODE)
-        {
-            return await ValidateMeetingMockAsync(meetingId, deviceId, deviceName);
-        }
-
-        // ============================================================
-        // REAL API CALL - Uncomment when backend is ready
-        // ============================================================
-        /*
         var request = new MeetingValidationRequest
         {
             MeetingId = meetingId.Trim().ToUpperInvariant(),
             DeviceId = deviceId,
             DeviceName = deviceName,
-            AppVersion = GetAppVersion(),
-            Timestamp = DateTime.UtcNow
+            AppVersion = GetAppVersion()
         };
 
         try
@@ -142,75 +132,75 @@ public class MeetingAuthenticationService
                 Message = $"Unexpected error: {ex.Message}"
             };
         }
-        */
+        
 
-        return await ValidateMeetingMockAsync(meetingId, deviceId, deviceName);
+       //return await ValidateMeetingMockAsync(meetingId, deviceId, deviceName);
     }
 
     /// <summary>
     /// Mock validation for development/testing (remove when API is ready)
     /// </summary>
-    private async Task<MeetingValidationResponse> ValidateMeetingMockAsync(
-        string meetingId,
-        string deviceId,
-        string deviceName)
-    {
-        // Simulate network delay
-        await Task.Delay(1000);
+    //private async Task<MeetingValidationResponse> ValidateMeetingMockAsync(
+    //    string meetingId,
+    //    string deviceId,
+    //    string deviceName)
+    //{
+    //    // Simulate network delay
+    //    await Task.Delay(1000);
 
-        // Valid test meeting IDs
-        var validMeetingIds = new[]
-        {
-            "VAANI-TEST-001",
-            "VAANI-TEST-002",
-            "VAANI-DEMO-123",
-            "VM-2025-1220-A7B3"
-        };
+    //    // Valid test meeting IDs
+    //    var validMeetingIds = new[]
+    //    {
+    //        "VAANI-TEST-001",
+    //        "VAANI-TEST-002",
+    //        "VAANI-DEMO-123",
+    //        "VM-2025-1220-A7B3"
+    //    };
 
-        var normalizedId = meetingId.Trim().ToUpperInvariant();
+    //    var normalizedId = meetingId.Trim().ToUpperInvariant();
 
-        if (!validMeetingIds.Contains(normalizedId))
-        {
-            return new MeetingValidationResponse
-            {
-                IsValid = false,
-                ErrorCode = "MEETING_NOT_FOUND",
-                Message = "Meeting ID not found. Try: VAANI-TEST-001"
-            };
-        }
+    //    if (!validMeetingIds.Contains(normalizedId))
+    //    {
+    //        return new MeetingValidationResponse
+    //        {
+    //            IsValid = false,
+    //            ErrorCode = "MEETING_NOT_FOUND",
+    //            Message = "Meeting ID not found. Try: VAANI-TEST-001"
+    //        };
+    //    }
 
-        // Return successful validation with mock data
-        return new MeetingValidationResponse
-        {
-            IsValid = true,
-            MeetingName = GetMockMeetingName(normalizedId),
-            EncryptedConfig = "MOCK_ENCRYPTED_CONFIG", // Not used in mock mode
-            ValidUntil = DateTime.UtcNow.AddHours(2), // 2 hour session
-            RemainingMinutes = 120,
-            SessionToken = $"mock_session_token_{Guid.NewGuid():N}",
-            Features = new MeetingFeatures
-            {
-                AllowReconnect = true,
-                HeartbeatIntervalSeconds = 60,
-                EnableLocalCache = false
-            }
-        };
-    }
+    //    // Return successful validation with mock data
+    //    return new MeetingValidationResponse
+    //    {
+    //        IsValid = true,
+    //        MeetingName = GetMockMeetingName(normalizedId),
+    //        EncryptedConfig = "MOCK_ENCRYPTED_CONFIG", // Not used in mock mode
+    //        ValidUntil = DateTime.UtcNow.AddHours(2), // 2 hour session
+    //        RemainingMinutes = 120,
+    //        SessionToken = $"mock_session_token_{Guid.NewGuid():N}",
+    //        Features = new MeetingFeatures
+    //        {
+    //            AllowReconnect = true,
+    //            HeartbeatIntervalSeconds = 60,
+    //            EnableLocalCache = false
+    //        }
+    //    };
+    //}
 
     /// <summary>
     /// Get mock meeting name based on ID
     /// </summary>
-    private string GetMockMeetingName(string meetingId)
-    {
-        return meetingId switch
-        {
-            "VAANI-TEST-001" => "Test Meeting - English to Hindi",
-            "VAANI-TEST-002" => "Test Meeting - Sales Call",
-            "VAANI-DEMO-123" => "Demo Meeting - Product Presentation",
-            "VM-2025-1220-A7B3" => "Vendor Discussion Meeting",
-            _ => "Test Meeting"
-        };
-    }
+    //private string GetMockMeetingName(string meetingId)
+    //{
+    //    return meetingId switch
+    //    {
+    //        "VAANI-TEST-001" => "Test Meeting - English to Hindi",
+    //        "VAANI-TEST-002" => "Test Meeting - Sales Call",
+    //        "VAANI-DEMO-123" => "Demo Meeting - Product Presentation",
+    //        "VM-2025-1220-A7B3" => "Vendor Discussion Meeting",
+    //        _ => "Test Meeting"
+    //    };
+    //}
 
     /// <summary>
     /// Decrypt the configuration received from the API
@@ -220,10 +210,10 @@ public class MeetingAuthenticationService
     /// <param name="encryptedConfig">Encrypted configuration string</param>
     /// <param name="encryptionKey">Encryption key (typically embedded in response or derived)</param>
     /// <returns>Decrypted meeting configuration</returns>
-    public MeetingConfiguration DecryptConfiguration(string encryptedConfig, byte[] encryptionKey)
-    {
-        return _encryptionService.DecryptConfiguration(encryptedConfig, encryptionKey);
-    }
+    //public MeetingConfiguration DecryptConfiguration(string encryptedConfig, byte[] encryptionKey)
+    //{
+    //    return _encryptionService.DecryptConfiguration(encryptedConfig, encryptionKey);
+    //}
 
     /// <summary>
     /// Send heartbeat to keep session alive
@@ -232,18 +222,13 @@ public class MeetingAuthenticationService
     /// <returns>True if heartbeat successful</returns>
     public async Task<bool> SendHeartbeatAsync(string sessionToken)
     {
+
+        return false;
+
         if (string.IsNullOrWhiteSpace(sessionToken))
             return false;
 
-        // MOCK MODE: Always return success
-        if (USE_MOCK_MODE)
-        {
-            await Task.Delay(100);
-            return true;
-        }
 
-        // REAL API CALL - Uncomment when backend is ready
-        /*
         try
         {
             var request = new { timestamp = DateTime.UtcNow };
@@ -260,10 +245,72 @@ public class MeetingAuthenticationService
         catch
         {
             return false;
-        }
-        */
+        }    
 
         return true;
+    }
+
+
+    /// <summary>
+    /// Start session gracefully
+    /// </summary>   
+    public async Task<(bool,string)> StartSessionAsync()
+    {
+        //return new MeetingSessionInfo();
+        try
+        {
+            SessionManager sm = new SessionManager();
+            sm.LoadSession();
+
+            if (!sm.HasActiveSession())
+                return (false,"Meeting has ended.");
+
+
+            //var sessionToken = sm.CurrentSession?.SessionToken;
+            //if (string.IsNullOrWhiteSpace(sessionToken))
+            //    return (false, "Invalid Request Found.");
+
+            (string _deviceid, string _meetingid, string _token) = sm.GetSessionToken();
+
+            if (string.IsNullOrWhiteSpace(_deviceid))
+                return (false, "Invalid Device ID.");
+            if (string.IsNullOrWhiteSpace(_meetingid))
+                return (false, "Invalid Meeting ID.");
+            if (string.IsNullOrWhiteSpace(_token))
+                return (false, "Invalid Token.");
+
+            var request = new MeetingValidationRequest
+            {
+                MeetingId = _meetingid,
+                DeviceId = _deviceid,
+            };
+
+            var httpRequest = new HttpRequestMessage(HttpMethod.Post, "/api/sessions/start")
+            {
+                Content = JsonContent.Create(request)
+            };
+            httpRequest.Headers.Add("Authorization", $"Bearer {_token}");
+            var response = await _httpClient.SendAsync(httpRequest);
+
+
+            if (!response.IsSuccessStatusCode)
+            {
+               // var errorContent = await response.Content.ReadAsStringAsync();
+                return (false, "Invalid response from server.");
+            }
+
+            var validationResponse = await response.Content.ReadFromJsonAsync<SessionValidationResponse>();
+            if (validationResponse == null)
+            {
+                return (false, "Invalid response from server.");
+            }
+            return (validationResponse.Success, validationResponse.Message ?? string.Empty);
+        
+        }
+        catch
+        {
+            return (false, "Failed to start.");
+        }
     }
 
     /// <summary>
@@ -272,34 +319,32 @@ public class MeetingAuthenticationService
     /// <param name="sessionToken">Session token</param>
     /// <param name="statistics">Optional usage statistics</param>
     /// <returns>True if successfully ended</returns>
-    public async Task<bool> EndSessionAsync(string sessionToken, object? statistics = null)
+    public async Task<bool> EndSessionAsync()
     {
-        if (string.IsNullOrWhiteSpace(sessionToken))
+        SessionManager sm = new SessionManager();
+        sm.LoadSession();      
+
+
+        (string _deviceid, string _meetingid, string _token) = sm.GetSessionToken();
+
+        if(string.IsNullOrWhiteSpace(_token))
             return false;
+      
 
-        // MOCK MODE: Always return success
-        if (USE_MOCK_MODE)
-        {
-            await Task.Delay(100);
-            return true;
-        }
-
-        // REAL API CALL - Uncomment when backend is ready
-        /*
         try
         {
             var request = new
             {
-                timestamp = DateTime.UtcNow,
-                statistics = statistics ?? new { }
+                meetingId = _meetingid,
+                deviceId = _deviceid
             };
 
             var httpRequest = new HttpRequestMessage(HttpMethod.Post, "/api/sessions/end")
             {
                 Content = JsonContent.Create(request)
             };
-            httpRequest.Headers.Add("Authorization", $"Bearer {sessionToken}");
 
+            httpRequest.Headers.Add("Authorization", $"Bearer {_token}");
             var response = await _httpClient.SendAsync(httpRequest);
             return response.IsSuccessStatusCode;
         }
@@ -307,9 +352,7 @@ public class MeetingAuthenticationService
         {
             return false;
         }
-        */
-
-        return true;
+        
     }
 
     /// <summary>
@@ -317,9 +360,7 @@ public class MeetingAuthenticationService
     /// </summary>
     private string GetAppVersion()
     {
-        var assembly = System.Reflection.Assembly.GetExecutingAssembly();
-        var version = assembly.GetName().Version;
-        return version?.ToString() ?? "1.0.0";
+       return AppVersionHelper.GetAppVersion();
     }
 
     /// <summary>
@@ -344,6 +385,6 @@ public class MeetingAuthenticationService
     /// </summary>
     public static string GetDeviceName()
     {
-        return Environment.MachineName;
+        return Environment.MachineName + "-" + Environment.UserName;
     }
 }

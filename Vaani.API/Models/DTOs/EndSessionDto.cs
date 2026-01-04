@@ -5,7 +5,8 @@ namespace Vaani.API.Models.DTOs;
 /// </summary>
 public class EndSessionRequest
 {
-    public int SessionId { get; set; }
+    public string? meetingId { get; set; }
+    public string? deviceId { get; set; }
 }
 
 /// <summary>
