@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("Vaani")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+1e07ea58466a557553c5a756b89330441a629a70")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+e46212d7e208ec553510cc27c4d1c2e20bbd605b")]
 [assembly: System.Reflection.AssemblyProductAttribute("Vaani")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Vaani")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
