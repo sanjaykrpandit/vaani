@@ -9,6 +9,10 @@
 /coverage
 
 # production
+/obj
+/bin
+
+# production
 /build
 
 # misc
