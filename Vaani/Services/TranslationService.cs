@@ -480,14 +480,11 @@ public class TranslationService : IDisposable
                         _logger.Debug(LogCategory.Recognition, $"[OUT] Error parsing confidence: {ex.Message}");
                     }
 
-                    if (await _outgoingTranscriptManager.TryAddTranscriptAsync(original) &&
-    e.Result.Translations.TryGetValue(targetLang, out var translated))
 
-                        //if (_outgoingTranscriptManager.TryAddTranscript(original) &&
-                        //e.Result.Translations.TryGetValue(targetLang, out var translated))
+                    // Check for duplicate transcript entries before proceeding with synthesis and events                  
+                    if (await _outgoingTranscriptManager.TryAddTranscriptAsync(original) && e.Result.Translations.TryGetValue(targetLang, out var translated))          
                     {
                         var translatedForSynthesis = TextProcessingHelper.CleanTextForSynthesis(translated);
-
                         if (string.IsNullOrWhiteSpace(translatedForSynthesis))
                         {
                             _logger.Warning(LogCategory.Synthesis, $"[OUT] Text empty after cleaning: '{translated}'");
@@ -813,28 +810,28 @@ public class TranslationService : IDisposable
 
                     Interlocked.Increment(ref _totalRecognitions);
 
-                    var lidResult = AutoDetectSourceLanguageResult.FromResult(e.Result);
-                    string actualLanguage = lidResult.Language;
-                    bool isEnglish = actualLanguage.StartsWith("en", StringComparison.OrdinalIgnoreCase);
+                    //var lidResult = AutoDetectSourceLanguageResult.FromResult(e.Result);
+                    //string actualLanguage = lidResult.Language;
+                    //bool isEnglish = actualLanguage.StartsWith("en", StringComparison.OrdinalIgnoreCase);
 
-                    if (!isEnglish)
-                    {
-                        _logger.Info(LogCategory.Playback, $"Non-English detected ({actualLanguage}). Applying special playback logic...");
-                    }
-                    else
-                    {
-                        _logger.Debug(LogCategory.Recognition, "[IN] English detected. Using standard playback.");
-                    }
+                    //if (!isEnglish)
+                    //{
+                    //    _logger.Info(LogCategory.Playback, $"Non-English detected ({actualLanguage}). Applying special playback logic...");
+                    //}
+                    //else
+                    //{
+                    //    _logger.Debug(LogCategory.Recognition, "[IN] English detected. Using standard playback.");
+                    //}
 
-                    try
-                    {
-                        var jsonResult = e.Result.Properties.GetProperty(PropertyId.SpeechServiceResponse_JsonResult);
-                        _logger.Debug(LogCategory.Recognition, $"[IN] Confidence JSON: {jsonResult}");
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.Debug(LogCategory.Recognition, $"[IN] Error parsing confidence: {ex.Message}");
-                    }
+                    //try
+                    //{
+                    //    var jsonResult = e.Result.Properties.GetProperty(PropertyId.SpeechServiceResponse_JsonResult);
+                    //    _logger.Debug(LogCategory.Recognition, $"[IN] Confidence JSON: {jsonResult}");
+                    //}
+                    //catch (Exception ex)
+                    //{
+                    //    _logger.Debug(LogCategory.Recognition, $"[IN] Error parsing confidence: {ex.Message}");
+                    //}
 
                     if (!await _incomingTranscriptManager.TryAddTranscriptAsync(original))
                     {
@@ -872,6 +869,7 @@ public class TranslationService : IDisposable
                                 TranslatedText = translated,
                                 IsFromMeeting = true
                             });
+
                         });
 
                         var synthStartTime = DateTime.UtcNow;

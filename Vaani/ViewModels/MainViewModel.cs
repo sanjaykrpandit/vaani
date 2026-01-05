@@ -2,18 +2,14 @@
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Threading;
 using ReactiveUI;
-using System;
 using System.Collections.ObjectModel;
-using System.Linq;
 using System.Reactive.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using System.Windows.Input;
-using Vaani.Authentication.Models;
 using Vaani.Authentication.Services;
 using Vaani.Common;
 using Vaani.Models;
 using Vaani.Services;
+
 namespace Vaani.ViewModels;
 
 public class MainViewModel : ViewModelBase
@@ -69,6 +65,7 @@ public class MainViewModel : ViewModelBase
     private bool _inputDevicesLoaded = false;
     // Add this field near other private fields (Fields region)
     private CancellationTokenSource? _deviceRefreshCts = null;
+
     #endregion
 
     #region Constructor
@@ -430,7 +427,7 @@ public class MainViewModel : ViewModelBase
     {
         _deviceRefreshTimer = new DispatcherTimer
         {
-            Interval = TimeSpan.FromSeconds(7)
+            Interval = TimeSpan.FromSeconds(3)
         };
 
         // Tick only triggers a refresh when the settings panel is visible.
@@ -1012,19 +1009,79 @@ public class MainViewModel : ViewModelBase
         });
     }
 
+    //private void OnSynthesizingStatusChanged(object? sender, SynthesizingEventArgs e)
+    //{
+    //    if (sender == null) return;      
+
+    //    Dispatcher.UIThread.Post(() =>
+    //    {
+    //        IsSynthesizing = e.IsSynthesizing;
+
+    //        var targetBubble = Messages.LastOrDefault(m =>
+    //            m.IsFromMeeting == e.IsFromMeeting &&
+    //            !string.IsNullOrEmpty(m.TranslatedText) &&
+    //            !m.IsSystemMessage &&
+    //            m.TranslatedText.Contains(e.TranslatedText, StringComparison.OrdinalIgnoreCase));
+
+    //        if (targetBubble != null)
+    //        {
+    //            targetBubble.IsSynthesizing = e.IsSynthesizing;
+    //        }
+    //    });
+    //}
+
     private void OnSynthesizingStatusChanged(object? sender, SynthesizingEventArgs e)
     {
-        if (sender == null) return;      
+        if (sender == null) return;
 
         Dispatcher.UIThread.Post(() =>
         {
             IsSynthesizing = e.IsSynthesizing;
 
-            var targetBubble = Messages.LastOrDefault(m =>
-                m.IsFromMeeting == e.IsFromMeeting &&
-                !string.IsNullOrEmpty(m.TranslatedText) &&
-                !m.IsSystemMessage &&
-                m.TranslatedText.Contains(e.TranslatedText, StringComparison.OrdinalIgnoreCase));
+            MessageBubble? targetBubble = null;
+
+            // 1) Try exact translated-text match first (most reliable).
+            if (!string.IsNullOrWhiteSpace(e.TranslatedText))
+            {
+                targetBubble = Messages.LastOrDefault(m =>
+                    m.IsFromMeeting == e.IsFromMeeting &&
+                    !m.IsSystemMessage &&
+                    !string.IsNullOrEmpty(m.TranslatedText) &&
+                    string.Equals(m.TranslatedText, e.TranslatedText, StringComparison.OrdinalIgnoreCase));
+
+                // 2) If no exact match, handle progressive/partial rendering:
+                //    the bubble may contain a prefix of the full translated text (or vice-versa).
+                if (targetBubble == null)
+                {
+                    targetBubble = Messages.LastOrDefault(m =>
+                        m.IsFromMeeting == e.IsFromMeeting &&
+                        !m.IsSystemMessage &&
+                        !string.IsNullOrEmpty(m.TranslatedText) &&
+                        (m.TranslatedText.Contains(e.TranslatedText, StringComparison.OrdinalIgnoreCase) ||
+                         e.TranslatedText.Contains(m.TranslatedText, StringComparison.OrdinalIgnoreCase)));
+                }
+            }
+
+            // 3) Fallback: try matching by original text (sometimes only original is reliable).
+            if (targetBubble == null && !string.IsNullOrWhiteSpace(e.OriginalText))
+            {
+                targetBubble = Messages.LastOrDefault(m =>
+                    m.IsFromMeeting == e.IsFromMeeting &&
+                    !m.IsSystemMessage &&
+                    !string.IsNullOrEmpty(m.OriginalText) &&
+                    (string.Equals(m.OriginalText, e.OriginalText, StringComparison.OrdinalIgnoreCase) ||
+                     m.OriginalText.Contains(e.OriginalText, StringComparison.OrdinalIgnoreCase) ||
+                     e.OriginalText.Contains(m.OriginalText, StringComparison.OrdinalIgnoreCase)));
+            }
+
+            // 4) Final fallback: pick last non-system translated bubble for that direction.
+            if (targetBubble == null)
+            {
+                targetBubble = Messages.LastOrDefault(m =>
+                    m.IsFromMeeting == e.IsFromMeeting &&
+                    !m.IsSystemMessage &&
+                    !string.IsNullOrEmpty(m.TranslatedText));
+            }
 
             if (targetBubble != null)
             {
@@ -1069,26 +1126,65 @@ public class MainViewModel : ViewModelBase
         });
     }
 
+    //private void HandleRecognizingMessage(MessageEventArgs e)
+    //{
+    //    ref MessageBubble? currentBubble = ref (e.IsFromMeeting ? ref _currentIncomingBubble : ref _currentOutgoingBubble);
+
+    //    if (currentBubble != null && currentBubble.IsRecognizing)
+    //    {
+    //        currentBubble.OriginalText = e.Text;
+    //    }
+    //    else
+    //    {
+    //        currentBubble = new MessageBubble
+    //        {
+    //            IsFromMeeting = e.IsFromMeeting,
+    //            IsRecognizing = true,
+    //            OriginalText = e.Text,
+    //            TranslatedText = string.Empty
+    //        };
+    //        Messages.Add(currentBubble);
+    //        TrimMessages();
+    //    }
+    //}
+
     private void HandleRecognizingMessage(MessageEventArgs e)
     {
+        // Use the per-direction ref so other handlers still get updated reference
         ref MessageBubble? currentBubble = ref (e.IsFromMeeting ? ref _currentIncomingBubble : ref _currentOutgoingBubble);
 
+        // First try to find an existing recognizing bubble in the Messages collection
+        var existingRecognizing = Messages.LastOrDefault(m =>
+            m.IsFromMeeting == e.IsFromMeeting &&
+            m.IsRecognizing &&
+            !m.IsSystemMessage);
+
+        if (existingRecognizing != null)
+        {
+            // Reuse the bubble already being shown as recognizing
+            existingRecognizing.OriginalText = e.Text;
+            currentBubble = existingRecognizing;
+            return;
+        }
+
+        // If the cached currentBubble is a live recognizing bubble, update it
         if (currentBubble != null && currentBubble.IsRecognizing)
         {
             currentBubble.OriginalText = e.Text;
+            return;
         }
-        else
+
+        // Otherwise create a single new recognizing bubble for this direction
+        currentBubble = new MessageBubble
         {
-            currentBubble = new MessageBubble
-            {
-                IsFromMeeting = e.IsFromMeeting,
-                IsRecognizing = true,
-                OriginalText = e.Text,
-                TranslatedText = string.Empty
-            };
-            Messages.Add(currentBubble);
-            TrimMessages();
-        }
+            IsFromMeeting = e.IsFromMeeting,
+            IsRecognizing = true,
+            OriginalText = e.Text,
+            TranslatedText = string.Empty
+        };
+
+        Messages.Add(currentBubble);
+        TrimMessages();
     }
 
     private void HandleRecognizedMessage(MessageEventArgs e)

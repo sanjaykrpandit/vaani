@@ -25,7 +25,7 @@ public class MeetingLoginViewModel : ReactiveObject
     private readonly DriverInstallationService _driverService;
     private readonly AudioSourceVerificationService _audioVerificationService;
 
-    private string _meetingId = "VAANI-TEST-001";
+    private string _meetingId = "";
     private bool _isValidating;
     private bool _hasError;
     private string _errorMessage = string.Empty;

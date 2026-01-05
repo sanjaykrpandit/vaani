@@ -207,10 +207,17 @@
 							<!-- Wrap list and spacer to add bottom padding -->
 							<StackPanel>
 								<!-- Virtualized list for smoother scrolling -->
-								<ListBox ItemsSource="{Binding Messages}"
+								<!--<ListBox ItemsSource="{Binding Messages}"
                                          Background="Transparent"
                                          BorderThickness="0"
-                                         HorizontalAlignment="Stretch">
+                                         HorizontalAlignment="Stretch">-->
+
+                  <ListBox ItemsSource="{Binding Messages}"
+          Padding="10,10,5,80"
+          Background="Transparent"
+          BorderThickness="0"
+          VerticalAlignment="Stretch">
+                    
 									<ListBox.ItemsPanel>
 										<ItemsPanelTemplate>
 											<VirtualizingStackPanel/>
@@ -218,19 +225,37 @@
 									</ListBox.ItemsPanel>
 
 									<!-- Remove selection visuals -->
-									<ListBox.Styles>
-										<Style Selector="ListBoxItem">
-											<Setter Property="IsHitTestVisible" Value="False"/>
-											<Setter Property="Padding" Value="0"/>
-											<Setter Property="Margin" Value="0,0,0,12"/>
-											<Setter Property="Background" Value="Transparent"/>
-										</Style>
-										<Style Selector="ListBoxItem:selected">
-											<Setter Property="Background" Value="Transparent"/>
-										</Style>
-									</ListBox.Styles>
+                  <ListBox.Styles>
+                    
+                    <!-- Initial state -->
+                    <Style Selector="ListBoxItem">
+                      <Setter Property="IsHitTestVisible" Value="False"/>
+                      <Setter Property="Padding" Value="0"/>
+                      <Setter Property="Margin" Value="0,0,0,16"/>
+                      <Setter Property="Background" Value="Transparent"/>
+                      <Setter Property="Opacity" Value="0"/>
+                    </Style>
+                    <Style Selector="ListBoxItem:selected">
+                      <Setter Property="Background" Value="Transparent"/>
+                    </Style>  
+                    <!-- Animate when item is attached -->
+                    <!--<Style Selector="ListBoxItem:attached">
+                      <Style.Animations>
+                        <Animation Duration="0:0:0.22" FillMode="Forward">
+                          <KeyFrame Cue="0%">
+                            <Setter Property="Opacity" Value="0"/>
+                            <Setter Property="Margin" Value="0,0,0,0"/>
+                          </KeyFrame>
+                          <KeyFrame Cue="100%">
+                            <Setter Property="Opacity" Value="1"/>
+                            <Setter Property="Margin" Value="0,0,0,0"/>
+                          </KeyFrame>
+                        </Animation>
+                      </Style.Animations>
+                    </Style>-->
+                  </ListBox.Styles>
 
-									<ListBox.ItemTemplate>
+                  <ListBox.ItemTemplate>
 										<DataTemplate>
 											<!-- Use Grid to create 80% width constraint -->
 											<Grid ColumnDefinitions="4*,*">
@@ -245,19 +270,118 @@
 														<Grid>
 															<StackPanel Spacing="6">
 															<!-- Message Source Label -->
-															<TextBlock Foreground="#B0B0B0" FontSize="8" FontWeight="SemiBold">
-																<TextBlock.Text>
-																	<MultiBinding>
-																		<MultiBinding.Converter>
-																			<conv:MessageSourceConverter/>
-																		</MultiBinding.Converter>
-																		<Binding Path="IsSystemMessage"/>
-																		<Binding Path="IsFromMeeting"/>
-																	</MultiBinding>
-																</TextBlock.Text>
-															</TextBlock>
+                                <Grid Grid.Row="0"
+          ColumnDefinitions="*,Auto"
+          Margin="0,0,0,4">
 
-															<!-- Original Text -->
+                                  <!-- Message Source Label (left) -->
+                                  <TextBlock Grid.Column="0"
+                                             Foreground="#B0B0B0"
+                                             FontSize="8"
+                                             FontWeight="SemiBold">
+                                    <TextBlock.Text>
+                                      <MultiBinding>
+                                        <MultiBinding.Converter>
+                                          <conv:MessageSourceConverter/>
+                                        </MultiBinding.Converter>
+                                        <Binding Path="IsSystemMessage"/>
+                                        <Binding Path="IsFromMeeting"/>
+                                      </MultiBinding>
+                                    </TextBlock.Text>
+                                  </TextBlock>
+                               
+                                  <!-- Synthesizing Indicator -->
+                                  <StackPanel Grid.Column="1"
+                                              Orientation="Horizontal"
+                                              Spacing="3"
+                                              IsVisible="{Binding IsSynthesizing}"
+                                              VerticalAlignment="Top">
+
+                                    <!-- Speaker body -->
+                                    <Path Width="9"
+          Height="9"
+          Fill="#90CAF9"
+          Stretch="Uniform"
+          Data="M2,5 L5,5 L9,2 L9,12 L5,9 L2,9 Z"/>
+
+                                    <!-- Sound waves -->
+                                    <StackPanel Orientation="Horizontal" Spacing="2">
+
+                                      <!-- Wave 1 -->
+                                      <Border Width="2" Height="4" Background="#90CAF9" CornerRadius="1">
+                                        <Border.Styles>
+                                          <Style Selector="Border">
+                                            <Style.Animations>
+                                              <Animation Duration="0:0:0.9" IterationCount="Infinite">
+                                                <KeyFrame Cue="0%">
+                                                  <Setter Property="Opacity" Value="0.2"/>
+                                                </KeyFrame>
+                                                <KeyFrame Cue="50%">
+                                                  <Setter Property="Opacity" Value="1"/>
+                                                </KeyFrame>
+                                                <KeyFrame Cue="100%">
+                                                  <Setter Property="Opacity" Value="0.2"/>
+                                                </KeyFrame>
+                                              </Animation>
+                                            </Style.Animations>
+                                          </Style>
+                                        </Border.Styles>
+                                      </Border>
+
+                                      <!-- Wave 2 -->
+                                      <Border Width="2" Height="6" Background="#90CAF9" CornerRadius="1">
+                                        <Border.Styles>
+                                          <Style Selector="Border">
+                                            <Style.Animations>
+                                              <Animation Duration="0:0:0.9"
+                                                         Delay="0:0:0.15"
+                                                         IterationCount="Infinite">
+                                                <KeyFrame Cue="0%">
+                                                  <Setter Property="Opacity" Value="0.2"/>
+                                                </KeyFrame>
+                                                <KeyFrame Cue="50%">
+                                                  <Setter Property="Opacity" Value="1"/>
+                                                </KeyFrame>
+                                                <KeyFrame Cue="100%">
+                                                  <Setter Property="Opacity" Value="0.2"/>
+                                                </KeyFrame>
+                                              </Animation>
+                                            </Style.Animations>
+                                          </Style>
+                                        </Border.Styles>
+                                      </Border>
+
+                                      <!-- Wave 3 -->
+                                      <Border Width="2" Height="8" Background="#90CAF9" CornerRadius="1">
+                                        <Border.Styles>
+                                          <Style Selector="Border">
+                                            <Style.Animations>
+                                              <Animation Duration="0:0:0.9"
+                                                         Delay="0:0:0.3"
+                                                         IterationCount="Infinite">
+                                                <KeyFrame Cue="0%">
+                                                  <Setter Property="Opacity" Value="0.2"/>
+                                                </KeyFrame>
+                                                <KeyFrame Cue="50%">
+                                                  <Setter Property="Opacity" Value="1"/>
+                                                </KeyFrame>
+                                                <KeyFrame Cue="100%">
+                                                  <Setter Property="Opacity" Value="0.2"/>
+                                                </KeyFrame>
+                                              </Animation>
+                                            </Style.Animations>
+                                          </Style>
+                                        </Border.Styles>
+                                      </Border>
+
+                                    </StackPanel>
+                                  </StackPanel>
+
+
+                                </Grid>
+
+
+                                <!-- Original Text -->
 															<TextBlock Text="{Binding OriginalText}"
                                                                        Foreground="White"
                                                                        FontSize="14"
@@ -327,37 +451,7 @@
 													</Transitions>
 												</TextBlock.Transitions>
 											</TextBlock>
-														</StackPanel>
-
-														<!-- Synthesizing indicator - positioned in top-right corner -->
-														<StackPanel Orientation="Horizontal"
-                                                                    Spacing="4"
-                                                                    IsVisible="{Binding IsSynthesizing}"
-                                                                    HorizontalAlignment="Right"
-                                                                    VerticalAlignment="Top"
-                                                                    Margin="0,0,0,0">
-															<TextBlock Text="🔊"
-                                                                       FontSize="14"
-                                                                       VerticalAlignment="Center">
-																<TextBlock.Styles>
-																	<Style Selector="TextBlock">
-																		<Style.Animations>
-																			<Animation Duration="0:0:0.8" IterationCount="Infinite">
-																				<KeyFrame Cue="0%">
-																					<Setter Property="Opacity" Value="1.0"/>
-																				</KeyFrame>
-																				<KeyFrame Cue="50%">
-																					<Setter Property="Opacity" Value="0.4"/>
-																				</KeyFrame>
-																				<KeyFrame Cue="100%">
-																					<Setter Property="Opacity" Value="1.0"/>
-																				</KeyFrame>
-																			</Animation>
-																		</Style.Animations>
-																	</Style>
-																</TextBlock.Styles>
-															</TextBlock>
-														</StackPanel>
+														</StackPanel>														
 													</Grid>
 												</Border>
 											</Border>
@@ -367,7 +461,7 @@
 								</ListBox>
 
 								<!-- Bottom spacer to ensure last message is always visible -->
-								<Panel Height="80"/>
+								<!--<Panel Height="80"/>-->
 							</StackPanel>
 						</ScrollViewer>
 					</Grid>

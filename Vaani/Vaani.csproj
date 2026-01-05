@@ -17,7 +17,7 @@
     <Install>false</Install>
     <InstallFrom>Web</InstallFrom>
     <IsWebBootstrapper>true</IsWebBootstrapper>
-    <InstallUrl>http://localhost/vconsole/</InstallUrl>
+    <InstallUrl>https://vaani-rtt-api.tryzent.com/launcher/</InstallUrl>
 
     <UpdateEnabled>false</UpdateEnabled>
     <CreateDesktopShortcut>false</CreateDesktopShortcut>

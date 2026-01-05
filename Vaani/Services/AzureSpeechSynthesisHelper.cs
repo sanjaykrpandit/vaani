@@ -49,10 +49,10 @@ public static class AzureSpeechSynthesisHelper
         var textPreview = text.Length > 30 ? text[..30] : text;
 
         // ✅ OPTIMIZED: Only log if logger is not null
-        if (logger != null)
-        {
-            logger($"[SYNTHESIS] 🎤 Attempting synthesis: '{textPreview}...' (length: {text.Length} chars)");
-        }
+        //if (logger != null)
+        //{
+        //    logger($"[SYNTHESIS] 🎤 Attempting synthesis: '{textPreview}...' (length: {text.Length} chars)");
+        //}
 
         for (int attempt = 0; attempt < AudioConfiguration.SynthesisRetryAttempts; attempt++)
         {
@@ -64,18 +64,18 @@ public static class AzureSpeechSynthesisHelper
 
                 if (result.Reason == ResultReason.SynthesizingAudioCompleted)
                 {
-                    logger?.Invoke($"[SYNTHESIS] ✅ Success on attempt {attempt + 1} ({synthDuration:F0}ms, {result.AudioData.Length} bytes)");
+                    //logger?.Invoke($"[SYNTHESIS] ✅ Success on attempt {attempt + 1} ({synthDuration:F0}ms, {result.AudioData.Length} bytes)");
                     return result;
                 }
 
-                if (attempt < AudioConfiguration.SynthesisRetryAttempts - 1)
-                {
-                    logger?.Invoke($"[SYNTHESIS] ⚠️ Attempt {attempt + 1} failed with reason: {result.Reason}, retrying...");
-                }
-                else
-                {
-                    logger?.Invoke($"[SYNTHESIS] ❌ Final attempt {attempt + 1} failed with reason: {result.Reason}");
-                }
+                //if (attempt < AudioConfiguration.SynthesisRetryAttempts - 1)
+                //{
+                //    logger?.Invoke($"[SYNTHESIS] ⚠️ Attempt {attempt + 1} failed with reason: {result.Reason}, retrying...");
+                //}
+                //else
+                //{
+                //    logger?.Invoke($"[SYNTHESIS] ❌ Final attempt {attempt + 1} failed with reason: {result.Reason}");
+                //}
             }
             catch (Exception ex) when (attempt < AudioConfiguration.SynthesisRetryAttempts - 1)
             {
@@ -89,7 +89,6 @@ public static class AzureSpeechSynthesisHelper
                 logger?.Invoke($"[SYNTHESIS] ❌ Final attempt {attempt + 1} exception: {ex.Message}");
             }
         }
-
         // ✅ FIXED: textPreview is now in scope
         logger?.Invoke($"[SYNTHESIS] ❌ Speech synthesis failed after {AudioConfiguration.SynthesisRetryAttempts} attempts for: '{textPreview}...'");
         return null;
