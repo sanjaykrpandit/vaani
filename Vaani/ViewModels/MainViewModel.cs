@@ -56,6 +56,8 @@ public class MainViewModel : ViewModelBase
     private bool _isTransitioning = false;
     private bool _isSynthesizing = false;
     private bool _isMeetingAudioActive = false;
+    private bool _isUserGuideEnabled = true;
+
 
     // Animation cancellation tokens
     private CancellationTokenSource? _recognizingAnimationCts;
@@ -198,6 +200,12 @@ public class MainViewModel : ViewModelBase
     #endregion
 
     #region Properties - State
+
+    public bool IsUserGuideEnabled
+    {
+        get => _isUserGuideEnabled;
+        set => this.RaiseAndSetIfChanged(ref _isUserGuideEnabled, value);
+    }
 
     private bool _isInputDevicesLoading;
     public bool IsInputDevicesLoading
@@ -365,6 +373,7 @@ public class MainViewModel : ViewModelBase
     public ICommand ShowMessageViewCommand { get; private set; } = null!;
     public ICommand ClearMessage { get; private set; } = null!;
     public ICommand LogoutCommand { get; private set; } = null!;
+    public ICommand CloseUserGuideCommand { get; private set; } = null!;
 
     #endregion
 
@@ -416,6 +425,7 @@ public class MainViewModel : ViewModelBase
         ShowMessageViewCommand = ReactiveCommand.Create(() => IsMessageViewActive = true);
         ClearMessage = ReactiveCommand.Create(ClearLogsAndMessages);
         LogoutCommand = ReactiveCommand.CreateFromTask(LogoutAsync);
+        CloseUserGuideCommand= ReactiveCommand.Create(() => IsUserGuideEnabled = false);
     }
 
     private void InitializeCollections()

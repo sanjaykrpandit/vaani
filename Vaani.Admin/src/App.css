@@ -144,6 +144,12 @@
   border-color: var(--primary-color);
 }
 
+.btn-launch {
+  background: #ffcfb3 !important;
+  color: rgb(0, 0, 0) !important;
+  border-color: var(--primary-color);
+}
+
 .filter-btn.active {
   background: var(--primary-color);
   color: white;

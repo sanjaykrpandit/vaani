@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import logo from '../Assets/logo.png'
 
 function Login() {
   const [userId, setUserId] = useState('')
@@ -34,7 +35,9 @@ function Login() {
     <div className="login-container">
       <div className="login-box">
         <div className="login-header">
-          <h1>Vaani Admin Console</h1>
+          <h1>  <img src={logo} height="50" alt="Vaani" className="logo-image" /> 
+        </h1>
+        <h3>Admin Console</h3>
           <p>Sign in to manage meetings</p>
         </div>
         

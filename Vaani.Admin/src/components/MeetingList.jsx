@@ -1,4 +1,4 @@
-function MeetingList({ meetings, onEdit, onDelete, onLaunch }) {
+function MeetingList({ logo,meetings, onEdit, onDelete, onLaunch }) {
   const formatDate = (dateString) => {
     const date = new Date(dateString)
     return date.toLocaleString('en-US', {
@@ -63,12 +63,14 @@ function MeetingList({ meetings, onEdit, onDelete, onLaunch }) {
                  <td>
                   {status === 'upcoming' && meeting.isActive ? (
                     <button
-                      className="btn btn-sm btn-primary"
+                      className="btn btn-sm btn-primary btn-launch d-inline-flex align-items-center gap-2"
                       onClick={() => onLaunch(meeting.meetingId)}
                       title="Launch App"
                     >
-                      Launch Vanni
+                      Launch
+                      <img src={logo} alt="App logo" height="14" />
                     </button>
+
                   ) : (
                     <span className="badge badge-archived">Closed</span>
                   )}
@@ -86,7 +88,7 @@ function MeetingList({ meetings, onEdit, onDelete, onLaunch }) {
                       onClick={() => onEdit(meeting.meetingId)}
                       title="Edit meeting"
                     >
-                      Edit
+                      ✏️
                     </button>
                   )}
                   {isEditable && (
@@ -95,7 +97,7 @@ function MeetingList({ meetings, onEdit, onDelete, onLaunch }) {
                       onClick={() => onDelete(meeting.meetingId)}
                       title="Delete meeting"
                     >
-                      Delete
+                      🗑
                     </button>
                   )}
                   {!isEditable && (

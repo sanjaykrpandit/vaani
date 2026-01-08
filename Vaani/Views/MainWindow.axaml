@@ -1284,9 +1284,98 @@
       </Grid>
 
     </Border>
-    
-	</Grid>
-  
- 
-  
+
+    <!-- User Guide Overlay -->
+
+    <Border
+    IsVisible="{Binding IsUserGuideEnabled}"
+    Background="#FFF8EE"
+    CornerRadius="6"
+    VerticalAlignment="Top"
+    HorizontalAlignment="Center"
+    Margin="10,50,10,10"
+    Padding="14"
+    ZIndex="9999"
+    Width="380"
+    BoxShadow="0 8 24 0 #33000000">
+
+      <StackPanel Spacing="6">
+
+        <!-- Header -->
+        <StackPanel Orientation="Horizontal" Spacing="6">
+          <TextBlock Text="💡"
+                     FontSize="16"/>
+
+          <TextBlock Text="Tips for effective multilingual communication"
+                     FontSize="14"
+                     FontWeight="Bold"
+                     Foreground="#2C2C2C"/>
+        </StackPanel>
+
+        <!-- Divider -->
+        <Border Height="1"
+                Background="#E0D6C8"/>
+
+        <!-- Tips -->
+        <StackPanel Spacing="8">
+
+          <TextBlock Text="• Speak one language at a time. Avoid mixing languages while speaking."
+                     FontSize="12"
+                     Foreground="#333" TextWrapping="Wrap"
+                MaxWidth="350" Padding="4"/>
+
+          <TextBlock Text="• Be clear and concise. Use short sentences, pause frequently, and simplify technical language to improve interpretation accuracy."
+                     FontSize="12"
+                     Foreground="#333" TextWrapping="Wrap"
+                MaxWidth="350" Padding="4"/>
+
+          <TextBlock Text="• Raise your hand. Select Raise ✋ in your Teams meeting controls to indicate when you want to speak, preventing overlapping speech."
+                     FontSize="12"
+                     Foreground="#333" TextWrapping="Wrap"
+                MaxWidth="350" Padding="4"/>
+
+          <TextBlock Text="• Listen fully before responding. Wait until the other person has finished."
+                     FontSize="12"
+                     Foreground="#333" TextWrapping="Wrap"
+                MaxWidth="350" Padding="4"/>
+
+          <TextBlock Text="• If needed, ask politely to repeat or rephrase for better understanding."
+                     FontSize="12"
+                     Foreground="#333" TextWrapping="Wrap"
+                MaxWidth="350" Padding="4"/>
+
+
+          <TextBlock Text="Setup Meeting Audio"
+                  FontSize="12"
+                  Foreground="#333" TextWrapping="Wrap"
+             MaxWidth="350" FontWeight="SemiBold" Padding="4"/>
+          
+          <TextBlock Text="• Microphone: CABLE-A Output (VB-Audio Cable A)"
+                    FontSize="12"
+                    Foreground="#333" TextWrapping="Wrap"
+               MaxWidth="350" Padding="4"/>
+
+          <TextBlock Text="• Speaker: CABLE-B Input (VB-Audio Cable B)"
+                     FontSize="12"
+                     Foreground="#333" TextWrapping="Wrap"
+                MaxWidth="350" Padding="4"/>
+          
+        </StackPanel>
+
+        <!-- Close Button -->
+        <Button Content="Got it"
+                HorizontalAlignment="Center"
+                Padding="18,6"
+                FontSize="12"
+                FontWeight="SemiBold"
+                Background="#FFB74D"
+                Foreground="#222"
+                CornerRadius="16"
+                Command="{Binding CloseUserGuideCommand}"/>
+
+      </StackPanel>
+    </Border>
+
+
+  </Grid>  
 </Window>

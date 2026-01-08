@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import Layout from '../components/Layout'
 import MeetingList from '../components/MeetingList'
 import { meetingService } from '../services/meetingService'
+import logo from '../Assets/logo.png'
 
 function Dashboard() {
   const [meetings, setMeetings] = useState([])
@@ -153,6 +154,7 @@ const handleLaunch = (meetingId) => {
           <div className="loading">Loading meetings...</div>
         ) : (
           <MeetingList 
+            logo ={logo}            
             meetings={filteredMeetings}
             onLaunch={handleLaunch}
             onEdit={handleEdit}

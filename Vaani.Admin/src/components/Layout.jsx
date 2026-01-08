@@ -1,5 +1,6 @@
 import { useAuth } from '../context/AuthContext'
 import { useNavigate } from 'react-router-dom'
+import logo from '../Assets/logo.png'
 
 function Layout({ children }) {
   const { user, logout } = useAuth()
@@ -15,7 +16,9 @@ function Layout({ children }) {
       <header className="header">
         <div className="header-content">
           <div className="header-left">
-            <h2 className="logo">Vaani Admin</h2>
+            <h2 className="logo">
+              <img src={logo} height="20" alt="Vaani" className="logo-image" /> Admin Console
+            </h2>
           </div>
           <div className="header-right">
             <span className="user-info">
