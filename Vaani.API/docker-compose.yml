@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: vaani-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: vaani_password
+      POSTGRES_DB: vaani_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./Database/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - vaani-network
+
+  # Vaani API
+  vaani-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: vaani-api
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__PostgreSQL=Host=postgres;Port=5432;Database=vaani_db;Username=postgres;Password=vaani_password
+      - Jwt__Secret=YourSuperSecretKeyForJWTTokenGenerationAtLeast32Characters
+      - Jwt__Issuer=VaaniAPI
+      - Jwt__Audience=VaaniDesktopApp
+      - Jwt__ExpirationHours=4
+      - Encryption__AesKey=YourAES256EncryptionKey32Chars!
+    ports:
+      - "5001:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    networks:
+      - vaani-network
+
+  # pgAdmin (Optional - for database management)
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: vaani-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@vaani.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "8080:80"
+    depends_on:
+      - postgres
+    networks:
+      - vaani-network
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  vaani-network:
+    driver: bridge

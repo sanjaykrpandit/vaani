@@ -1,0 +1,62 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <!-- Avalonia -->
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+
+    <!-- ClickOnce -->
+    <GenerateManifests>true</GenerateManifests>
+    <SignManifests>false</SignManifests>
+
+    <Install>false</Install>
+    <InstallFrom>Web</InstallFrom>
+    <IsWebBootstrapper>true</IsWebBootstrapper>
+    <InstallUrl>https://vaani-rtt-api.tryzent.com/launcher/</InstallUrl>
+
+    <UpdateEnabled>false</UpdateEnabled>
+    <CreateDesktopShortcut>false</CreateDesktopShortcut>
+
+    <!-- VERSIONING (CORRECT) -->
+    <ApplicationVersion>1.0.0.0</ApplicationVersion>
+    <ApplicationRevision>1</ApplicationRevision>
+
+    <ProductName>Vanni</ProductName>
+    <PublisherName>Your Company</PublisherName>
+    <SuiteName>Vaani Suite</SuiteName>
+
+    <!-- Runtime -->
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+
+    <!-- REQUIRED for ClickOnce -->
+    <PublishSingleFile>false</PublishSingleFile>
+    <PublishTrimmed>false</PublishTrimmed>
+    <PublishReadyToRun>false</PublishReadyToRun>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AvaloniaResource Include="Assets\**" />
+  </ItemGroup>
+<ItemGroup>
+  <None Include="appsettings.json">
+    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+  </None>
+</ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.0.10" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.0.10" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.0.10" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.0.10" />
+    <PackageReference Include="Avalonia.ReactiveUI" Version="11.0.10" />
+    <PackageReference Include="Microsoft.CognitiveServices.Speech" Version="1.47.0" />
+    <PackageReference Include="NAudio" Version="2.2.1" />
+	<PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.1" />
+  </ItemGroup>
+
+</Project>

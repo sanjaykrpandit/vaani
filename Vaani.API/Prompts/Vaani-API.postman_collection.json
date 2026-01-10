@@ -1,0 +1,158 @@
+{
+  "info": {
+    "name": "Vaani API",
+    "description": "API endpoints for Vaani real-time translation application",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/health",
+          "host": ["{{baseUrl}}"],
+          "path": ["health"]
+        },
+        "description": "Check if API is running"
+      }
+    },
+    {
+      "name": "Validate Meeting",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "if (pm.response.code === 200) {",
+              "    var jsonData = pm.response.json();",
+              "    if (jsonData.isValid && jsonData.sessionToken) {",
+              "        pm.environment.set('sessionToken', jsonData.sessionToken);",
+              "        console.log('Session token saved:', jsonData.sessionToken);",
+              "    }",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"meetingId\": \"VAANI-TEST-001\",\n  \"deviceId\": \"postman-test-device-123\",\n  \"deviceName\": \"Postman Test Client\",\n  \"appVersion\": \"1.0.0\",\n  \"timestamp\": \"{{$isoTimestamp}}\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/meetings/validate",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "meetings", "validate"]
+        },
+        "description": "Validate a meeting ID and create a session"
+      }
+    },
+    {
+      "name": "Check Meeting Valid",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/meetings/VAANI-TEST-001/valid",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "meetings", "VAANI-TEST-001", "valid"]
+        },
+        "description": "Check if a meeting is valid and active"
+      }
+    },
+    {
+      "name": "Session Heartbeat",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{sessionToken}}",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"timestamp\": \"{{$isoTimestamp}}\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/sessions/heartbeat",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "sessions", "heartbeat"]
+        },
+        "description": "Send heartbeat to keep session alive"
+      }
+    },
+    {
+      "name": "Get Remaining Minutes",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{sessionToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/sessions/remaining",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "sessions", "remaining"]
+        },
+        "description": "Get remaining minutes for current session"
+      }
+    },
+    {
+      "name": "End Session",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{sessionToken}}",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"timestamp\": \"{{$isoTimestamp}}\",\n  \"statistics\": {\n    \"meetingId\": \"VAANI-TEST-001\",\n    \"meetingName\": \"Test Meeting\",\n    \"durationMinutes\": 30,\n    \"startedAt\": \"{{$isoTimestamp}}\",\n    \"deviceId\": \"postman-test-device-123\"\n  }\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/sessions/end",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "sessions", "end"]
+        },
+        "description": "End session gracefully with statistics"
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://localhost:7001",
+      "type": "string"
+    },
+    {
+      "key": "sessionToken",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}
