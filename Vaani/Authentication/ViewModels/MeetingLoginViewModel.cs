@@ -13,6 +13,7 @@ using Vaani.Authentication.Services;
 using Vaani.Authentication.Views;
 using Vaani.DriverInstallation.Services;
 using Vaani.Services;
+using Vaani.TestAudio.Views;
 using Vaani.Views;
 
 
@@ -196,10 +197,26 @@ public class MeetingLoginViewModel : ReactiveObject
                 response.ValidUntil
             );
 
-            StatusMessage = "Success! Launching Vaani...";
+            StatusMessage = "Success! Verifying audio setup...";
             await Task.Delay(500);
 
-            // Open main window and close login
+            // ✅ STEP 3: Launch Audio Test BEFORE opening main window
+            var audioTestPassed = await LaunchAudioTestAsync();
+
+            if (!audioTestPassed)
+            {
+                // User cancelled or test failed
+                ShowError("Audio test was not completed. Please retry or check your audio setup.");
+                
+                // Clear session since we won't proceed
+                _sessionManager.ClearSession();
+                return;
+            }
+
+            // ✅ STEP 4: Open main window only after audio test passes
+            StatusMessage = "Audio verified! Launching Vaani...";
+            await Task.Delay(500);
+
             await OpenMainWindowAsync(config);
         }
         catch (Exception ex)
@@ -265,52 +282,64 @@ public class MeetingLoginViewModel : ReactiveObject
     }
 
     /// <summary>
-    /// Create mock configuration for testing (remove in production)
-    /// In production, decrypt the response.EncryptedConfig properly
+    /// Launches the audio test window after successful login.
+    /// Returns true if test passed, false if user cancelled or test failed.
     /// </summary>
-    /// 
-    private MeetingConfiguration CreateMockConfiguration(MeetingValidationResponse response)
+    private async Task<bool> LaunchAudioTestAsync()
     {
-        // Mock configuration with your actual Azure credentials
-        // TODO: Replace with actual decryption when API is ready
-        return new MeetingConfiguration
+        bool testPassed = false;
+        var tcs = new TaskCompletionSource<bool>();
+
+        await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
         {
-            MeetingId = MeetingId,
-            MeetingName = response.MeetingName,
-            AzureConfig = new AzureConfiguration
+            try
             {
-                // Using your existing Azure credentials from ClientService
-                SubscriptionKey = "BnsKkEvkgEN4Muh48WOKOWQtT96WpJCNVcjPqBFClKpIyEAu1JBtJQQJ99BKACHYHv6XJ3w3AAAAACOGiTqU",
-                Region = "eastus2"
-            },
-            TranslationConfig = new TranslationConfiguration
-            {
-                VendorLanguage = new LanguageConfiguration
+                if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
                 {
-                    Code = "hi-IN",
-                    Voice = "hi-IN-MadhurNeural"
-                },
-                OrganizerLanguage = new LanguageConfiguration
-                {
-                    Code = "en-US",
-                    Voice = "en-US-GuyNeural"
+                    var testWindow = new TestAudioWindow(isFromLogin: true);
+                    var loginWindow = desktop.Windows?.FirstOrDefault(w => w is MeetingLoginWindow);
+                    
+                    if (loginWindow != null)
+                    {
+                        // Hide login window
+                        loginWindow.Hide();
+                    }
+                    
+                    // Show test window as main window
+                    testWindow.Show();
+                    
+                    // Handle test window closing
+                    testWindow.Closed += (s, e) =>
+                    {
+                        testPassed = testWindow.TestPassed;
+                        
+                        // Show login window again if test didn't pass
+                        if (!testPassed && loginWindow != null && !loginWindow.IsVisible)
+                        {
+                            loginWindow.Show();
+                        }
+                        
+                        tcs.TrySetResult(testPassed);
+                    };
                 }
-            },
-            TimeWindow = new TimeWindow
-            {
-                ValidFrom = DateTime.UtcNow,
-                ValidUntil = response.ValidUntil
-            },
-            Features = response.Features,
-            SessionToken = response.SessionToken,
-            Metadata = new ConfigurationMetadata
-            {
-                ApiVersion = "v1",
-                EncryptedAt = DateTime.UtcNow,
-                ConfigVersion = 1
+                else
+                {
+                    tcs.TrySetResult(false);
+                }
             }
-        };
+            catch (Exception ex)
+            {
+                // Log error but don't crash
+                StatusMessage = $"Warning: Could not launch audio test - {ex.Message}";
+                
+                // In case of error, allow user to proceed (fail-safe)
+                tcs.TrySetResult(true);
+            }
+        });
+
+        return await tcs.Task;
     }
+   
 
     /// <summary>
     /// Open main window with configuration
@@ -330,12 +359,12 @@ public class MeetingLoginViewModel : ReactiveObject
                 desktop.MainWindow = mainWindow;
                 mainWindow.Show();
 
-                // Close login window
-                if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime lifetime)
-                {
-                    var loginWindow = lifetime.Windows?.FirstOrDefault(w => w is MeetingLoginWindow);
-                    loginWindow?.Close();
-                }
+                // Close all other windows (login and test)
+                var loginWindow = desktop.Windows?.FirstOrDefault(w => w is MeetingLoginWindow);
+                loginWindow?.Close();
+                
+                var testWindow = desktop.Windows?.FirstOrDefault(w => w is TestAudioWindow);
+                testWindow?.Close();
             }
         });
     }
@@ -357,22 +386,32 @@ public class MeetingLoginViewModel : ReactiveObject
     /// </summary>
     private async Task ShowDriverInstallationWindowAsync()
     {
-        await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(async () =>
+        await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
         {
-            var driverWindow = new Vaani.DriverInstallation.Views.DriverInstallationWindow();
-
-            // Show as dialog
             if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
             {
+                var driverWindow = new Vaani.DriverInstallation.Views.DriverInstallationWindow();
+                
+                // Get the login window
                 var loginWindow = desktop.Windows?.FirstOrDefault(w => w is MeetingLoginWindow);
+                
+                // Hide login window
                 if (loginWindow != null)
                 {
-                    await driverWindow.ShowDialog(loginWindow);
+                    loginWindow.Hide();
                 }
-                else
+                
+                // Show driver window as main window
+                driverWindow.Show();
+                
+                // When driver window closes, show login window again
+                driverWindow.Closed += (s, e) =>
                 {
-                    driverWindow.Show();
-                }
+                    if (loginWindow != null && !loginWindow.IsVisible)
+                    {
+                        loginWindow.Show();
+                    }
+                };
             }
         });
     }

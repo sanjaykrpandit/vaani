@@ -15,4 +15,8 @@ public interface IAdminService
     Task<MeetingResponse?> GetMeetingByIdAsync(string meetingId);
     Task<IEnumerable<MeetingResponse>> GetAllMeetingsAsync();
     Task<AdminUser?> GetAdminUserByIdAsync(string userId);
+    
+    // Analytics methods
+    Task<SessionMetricsDto?> GetSessionMetricsAsync(string meetingId);
+    Task<IEnumerable<SessionLogDto>> GetSessionLogsAsync(int sessionId);
 }

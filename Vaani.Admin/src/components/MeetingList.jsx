@@ -1,4 +1,4 @@
-function MeetingList({ logo,meetings, onEdit, onDelete, onLaunch }) {
+function MeetingList({ logo, meetings, onEdit, onDelete, onLaunch, onViewMetrics }) {
   const formatDate = (dateString) => {
     const date = new Date(dateString)
     return date.toLocaleString('en-US', {
@@ -36,7 +36,7 @@ function MeetingList({ logo,meetings, onEdit, onDelete, onLaunch }) {
             <th>Subscription ID</th>
             <th>Start Date</th>
             <th>End Date</th>
-             <th></th>
+            <th></th>
             <th>Status</th>           
             <th>Actions</th>
           </tr>
@@ -60,7 +60,7 @@ function MeetingList({ logo,meetings, onEdit, onDelete, onLaunch }) {
                 <td>{meeting.azureSubscriptionId}</td>
                 <td>{formatDate(meeting.validFrom)}</td>
                 <td>{formatDate(meeting.validUntil)}</td>
-                 <td>
+                <td>
                   {status === 'upcoming' && meeting.isActive ? (
                     <button
                       className="btn btn-sm btn-primary btn-launch d-inline-flex align-items-center gap-2"
@@ -82,6 +82,13 @@ function MeetingList({ logo,meetings, onEdit, onDelete, onLaunch }) {
                 </td>
                
                 <td className="actions">
+                  <button
+                    className="btn btn-sm btn-info"
+                    onClick={() => onViewMetrics(meeting.meetingId)}
+                    title="View Analytics"
+                  >
+                    📊
+                  </button>
                   {isEditable && (
                     <button
                       className="btn btn-sm btn-secondary"
@@ -100,7 +107,7 @@ function MeetingList({ logo,meetings, onEdit, onDelete, onLaunch }) {
                       🗑
                     </button>
                   )}
-                  {!isEditable && (
+                  {!isEditable && !onViewMetrics && (
                     <span className="text-muted">No actions</span>
                   )}
                 </td>

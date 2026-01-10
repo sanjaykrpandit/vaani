@@ -288,6 +288,106 @@ public class DriverInstallationService
     }
 
     /// <summary>
+    /// Uninstalls the VB-CABLE driver.
+    /// </summary>
+    public async Task<(bool success, string message, bool requiresRestart)> UninstallDriverAsync()
+    {
+        try
+        {
+            // Find the installer/uninstaller
+            bool is64Bit = Environment.Is64BitOperatingSystem;
+            string installerName = is64Bit ? "VBCABLE_Setup_x64.exe" : "VBCABLE_Setup.exe";
+            
+            // Check if we have the driver in temp location
+            string installerPath = Path.Combine(_driverExtractPath, installerName);
+
+            // If not in temp, try to download and extract
+            if (!File.Exists(installerPath))
+            {
+                // Download driver
+                var downloadResult = await DownloadDriverAsync(null);
+                if (!downloadResult.success)
+                {
+                    return (false, "Failed to download driver for uninstallation", false);
+                }
+
+                // Extract driver
+                var extractResult = await ExtractDriverAsync(null);
+                if (!extractResult.success)
+                {
+                    return (false, "Failed to extract driver for uninstallation", false);
+                }
+
+                installerPath = Path.Combine(_driverExtractPath, installerName);
+            }
+
+            // Fallback: search for any setup exe
+            if (!File.Exists(installerPath))
+            {
+                var setupFiles = Directory.GetFiles(_driverExtractPath, "*setup*.exe", SearchOption.AllDirectories);
+                if (setupFiles.Length > 0)
+                {
+                    installerPath = setupFiles.FirstOrDefault(f =>
+                        f.Contains("x64", StringComparison.OrdinalIgnoreCase) == is64Bit) ?? setupFiles[0];
+                }
+            }
+
+            if (!File.Exists(installerPath))
+            {
+                return (false, "Uninstaller executable not found", false);
+            }
+
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = installerPath,
+                Arguments = "-u -h", // Silent uninstall
+                UseShellExecute = true,
+                Verb = "runas", // Request admin privileges
+                WorkingDirectory = Path.GetDirectoryName(installerPath) ?? _driverExtractPath
+            };
+
+            using var process = Process.Start(startInfo);
+            if (process == null)
+            {
+                return (false, "Failed to start uninstaller process", false);
+            }
+
+            // Wait for uninstallation with timeout
+            var completed = await Task.Run(() => process.WaitForExit(60000));
+
+            if (!completed)
+            {
+                await Task.Run(() => process.WaitForExit());
+            }
+
+            // Verify uninstallation
+            await Task.Delay(2000); // Give system time to unregister
+            bool isStillInstalled = IsVBCableInstalled();
+
+            if (!isStillInstalled)
+            {
+                return (true, "Driver uninstalled successfully", true);
+            }
+            else if (process.ExitCode == 0)
+            {
+                return (true, "Uninstallation completed", true);
+            }
+            else
+            {
+                return (false, $"Uninstallation failed with exit code: {process.ExitCode}", false);
+            }
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            return (false, "Uninstallation cancelled or access denied", false);
+        }
+        catch (Exception ex)
+        {
+            return (false, $"Uninstallation error: {ex.Message}", false);
+        }
+    }
+
+    /// <summary>
     /// Cleans up temporary files.
     /// </summary>
     public void Cleanup()

@@ -172,42 +172,42 @@ public class DeviceService
             }
 
             // Priority 2: CABLE-B Input
-            foreach (var device in devices)
-            {
-                var name = device.FriendlyName;
-                if (name.Contains("CABLE-B Input", StringComparison.OrdinalIgnoreCase) ||
-                    name.Contains("CABLE B Input", StringComparison.OrdinalIgnoreCase))
-                {
-                    Log($"[OUTGOING] Using CABLE-B Input: {name}");
-                    return device;
-                }
-            }
+            //foreach (var device in devices)
+            //{
+            //    var name = device.FriendlyName;
+            //    if (name.Contains("CABLE-B Input", StringComparison.OrdinalIgnoreCase) ||
+            //        name.Contains("CABLE B Input", StringComparison.OrdinalIgnoreCase))
+            //    {
+            //        Log($"[OUTGOING] Using CABLE-B Input: {name}");
+            //        return device;
+            //    }
+            //}
 
             // Priority 3: Standard CABLE Input
-            foreach (var device in devices)
-            {
-                var name = device.FriendlyName;
-                if (name.Contains("CABLE Input", StringComparison.OrdinalIgnoreCase) &&
-                    !name.Contains("CABLE-A", StringComparison.OrdinalIgnoreCase) &&
-                    !name.Contains("CABLE-B", StringComparison.OrdinalIgnoreCase) &&
-                    !name.Contains("CABLE A", StringComparison.OrdinalIgnoreCase) &&
-                    !name.Contains("CABLE B", StringComparison.OrdinalIgnoreCase))
-                {
-                    Log($"[OUTGOING] Using standard CABLE Input: {name}");
-                    return device;
-                }
-            }
+            //foreach (var device in devices)
+            //{
+            //    var name = device.FriendlyName;
+            //    if (name.Contains("CABLE Input", StringComparison.OrdinalIgnoreCase) &&
+            //        !name.Contains("CABLE-A", StringComparison.OrdinalIgnoreCase) &&
+            //        !name.Contains("CABLE-B", StringComparison.OrdinalIgnoreCase) &&
+            //        !name.Contains("CABLE A", StringComparison.OrdinalIgnoreCase) &&
+            //        !name.Contains("CABLE B", StringComparison.OrdinalIgnoreCase))
+            //    {
+            //        Log($"[OUTGOING] Using standard CABLE Input: {name}");
+            //        return device;
+            //    }
+            //}
 
             // Fallback: CABLE Speakers
-            foreach (var device in devices)
-            {
-                if (device.FriendlyName.Contains("CABLE", StringComparison.OrdinalIgnoreCase) &&
-                    device.FriendlyName.Contains("Speakers", StringComparison.OrdinalIgnoreCase))
-                {
-                    Log($"[OUTGOING] Using CABLE Speakers (fallback): {device.FriendlyName}");
-                    return device;
-                }
-            }
+            //foreach (var device in devices)
+            //{
+            //    if (device.FriendlyName.Contains("CABLE", StringComparison.OrdinalIgnoreCase) &&
+            //        device.FriendlyName.Contains("Speakers", StringComparison.OrdinalIgnoreCase))
+            //    {
+            //        Log($"[OUTGOING] Using CABLE Speakers (fallback): {device.FriendlyName}");
+            //        return device;
+            //    }
+            //}
 
             Log("[OUTGOING] ⚠️ No CABLE output device found!");
         }
@@ -218,6 +218,33 @@ public class DeviceService
 
         return null;
     }
+
+
+    public MMDevice? FindOutgoingCaptureCableDevice()
+    {
+        try
+        {
+            var enumerator = new MMDeviceEnumerator();
+            var devices = enumerator.EnumerateAudioEndPoints(DataFlow.Capture, DeviceState.Active);
+
+            // Priority 1: CABLE-A Output (send your translated voice here)
+            foreach (var device in devices)
+            {
+                var name = device.FriendlyName;
+                if (name.Contains("CABLE-A Output", StringComparison.OrdinalIgnoreCase) ||
+                    name.Contains("CABLE A Output", StringComparison.OrdinalIgnoreCase))
+                {                   
+                    return device;
+                }
+            }   
+        }
+        catch (Exception ex)
+        {
+            Log($"[OUTGOING] Error finding cable device: {ex.Message}");
+        }
+        return null;
+    }
+
 
     /// <summary>
     /// Finds cable device for INCOMING audio (meeting audio capture)
@@ -244,32 +271,32 @@ public class DeviceService
                 }
             }
 
-            // Priority 2: CABLE-A Output
-            foreach (var device in devices)
-            {
-                var name = device.FriendlyName;
-                if (name.Contains("CABLE-A Output", StringComparison.OrdinalIgnoreCase) ||
-                    name.Contains("CABLE A Output", StringComparison.OrdinalIgnoreCase))
-                {
-                    Log($"[INCOMING] Using CABLE-A Output: {name}");
-                    return device;
-                }
-            }
+            //// Priority 2: CABLE-A Output
+            //foreach (var device in devices)
+            //{
+            //    var name = device.FriendlyName;
+            //    if (name.Contains("CABLE-A Output", StringComparison.OrdinalIgnoreCase) ||
+            //        name.Contains("CABLE A Output", StringComparison.OrdinalIgnoreCase))
+            //    {
+            //        Log($"[INCOMING] Using CABLE-A Output: {name}");
+            //        return device;
+            //    }
+            //}
 
-            // Priority 3: Standard CABLE Output
-            foreach (var device in devices)
-            {
-                var name = device.FriendlyName;
-                if (name.Contains("CABLE Output", StringComparison.OrdinalIgnoreCase) &&
-                    !name.Contains("CABLE-A", StringComparison.OrdinalIgnoreCase) &&
-                    !name.Contains("CABLE-B", StringComparison.OrdinalIgnoreCase) &&
-                    !name.Contains("CABLE A", StringComparison.OrdinalIgnoreCase) &&
-                    !name.Contains("CABLE B", StringComparison.OrdinalIgnoreCase))
-                {
-                    Log($"[INCOMING] Using standard CABLE Output: {name}");
-                    return device;
-                }
-            }
+            //// Priority 3: Standard CABLE Output
+            //foreach (var device in devices)
+            //{
+            //    var name = device.FriendlyName;
+            //    if (name.Contains("CABLE Output", StringComparison.OrdinalIgnoreCase) &&
+            //        !name.Contains("CABLE-A", StringComparison.OrdinalIgnoreCase) &&
+            //        !name.Contains("CABLE-B", StringComparison.OrdinalIgnoreCase) &&
+            //        !name.Contains("CABLE A", StringComparison.OrdinalIgnoreCase) &&
+            //        !name.Contains("CABLE B", StringComparison.OrdinalIgnoreCase))
+            //    {
+            //        Log($"[INCOMING] Using standard CABLE Output: {name}");
+            //        return device;
+            //    }
+            //}
 
             Log("[INCOMING] ⚠️ No CABLE input device found!");
         }
@@ -281,220 +308,31 @@ public class DeviceService
         return null;
     }
 
-    /// <summary>
-    /// Returns the recommended meeting audio device settings.
-    /// These are the OPPOSITE endpoints of what the translation app uses internally.
-    /// </summary>
-    /// <returns>Tuple of (MicrophoneName, SpeakerName) that should be set in the meeting app</returns>
-    public (string microphone, string speaker) GetRecommendedMeetingDevicesOld()
+    public MMDevice? FindIncomingReaderCableDevice()
     {
-        string microphoneName = "Not Available";
-        string speakerName = "Not Available";
-
         try
         {
             var enumerator = new MMDeviceEnumerator();
-
-            // MICROPHONE for Meeting App
-            // The meeting needs to capture from CABLE-A Output (opposite of CABLE-A Input used for outgoing)
-            var outgoingDevice = FindOutgoingCableDevice();
-            if (outgoingDevice != null)
+            var devices = enumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active);
+            foreach (var device in devices)
             {
-                // Map the Input device to its Output counterpart
-                var name = outgoingDevice.FriendlyName;
+                var name = device.FriendlyName;
+                if (name.Contains("CABLE-B Input", StringComparison.OrdinalIgnoreCase) ||
+                    name.Contains("CABLE B Input", StringComparison.OrdinalIgnoreCase))
+                {
+                    Log($"[INCOMING] Using CABLE-B Input: {name}");
+                    return device;
+                }
+            }          
 
-                if (name.Contains("CABLE-A Input", StringComparison.OrdinalIgnoreCase) ||
-                    name.Contains("CABLE A Input", StringComparison.OrdinalIgnoreCase))
-                {
-                    microphoneName = "CABLE-A Output (VB-Audio Cable A)";
-                }
-                else if (name.Contains("CABLE-B Input", StringComparison.OrdinalIgnoreCase) ||
-                         name.Contains("CABLE B Input", StringComparison.OrdinalIgnoreCase))
-                {
-                    microphoneName = "CABLE-B Output (VB-Audio Cable B)";
-                }
-                else if (name.Contains("CABLE Input", StringComparison.OrdinalIgnoreCase))
-                {
-                    microphoneName = "CABLE Output (VB-Audio Cable)";
-                }
-            }
-
-            // SPEAKER for Meeting App
-            // The meeting needs to output to CABLE-B Input (opposite of CABLE-B Output used for incoming)
-            var incomingDevice = FindIncomingCableDevice();
-            if (incomingDevice != null)
-            {
-                // Map the Output device to its Input counterpart
-                var name = incomingDevice.FriendlyName;
-
-                if (name.Contains("CABLE-B Output", StringComparison.OrdinalIgnoreCase) ||
-                    name.Contains("CABLE B Output", StringComparison.OrdinalIgnoreCase))
-                {
-                    speakerName = "CABLE-B Input (VB-Audio Cable B)";
-                }
-                else if (name.Contains("CABLE-A Output", StringComparison.OrdinalIgnoreCase) ||
-                         name.Contains("CABLE A Output", StringComparison.OrdinalIgnoreCase))
-                {
-                    speakerName = "CABLE-A Input (VB-Audio Cable A)";
-                }
-                else if (name.Contains("CABLE Output", StringComparison.OrdinalIgnoreCase))
-                {
-                    speakerName = "CABLE Input (VB-Audio Cable)";
-                }
-            }
-
-            Log($"[MEETING SETUP] Recommended Microphone: {microphoneName}");
-            Log($"[MEETING SETUP] Recommended Speaker: {speakerName}");
+            Log("[INCOMING] ⚠️ No CABLE input device found!");
         }
         catch (Exception ex)
         {
-            Log($"[MEETING SETUP] Error determining recommended devices: {ex.Message}");
+            Log($"[INCOMING] Error finding cable device: {ex.Message}");
         }
 
-        return (microphoneName, speakerName);
-    }
-
-    public (string microphone, string speaker) GetRecommendedMeetingDevicesABC()
-    {
-        string microphoneName = "Not Available";
-        string speakerName = "Not Available";
-
-        try
-        {
-            var (inputs, outputs) = GetAllDevices();  // Single cached call
-
-            // OUTGOING: Find CABLE Input (Render devices) - exact original priority
-            AudioDeviceInfo? outgoingDevice = null;
-            foreach (var device in outputs)
-            {
-                var name = device.FriendlyName;
-                if (name.Contains("CABLE-A Input", StringComparison.OrdinalIgnoreCase) ||
-                    name.Contains("CABLE A Input", StringComparison.OrdinalIgnoreCase))
-                {
-                    Log($"[OUTGOING] Using CABLE-A Input: {name}");
-                    outgoingDevice = device; break;
-                }
-            }
-            if (outgoingDevice == null)
-            {
-                foreach (var device in outputs)
-                {
-                    var name = device.FriendlyName;
-                    if (name.Contains("CABLE-B Input", StringComparison.OrdinalIgnoreCase) ||
-                        name.Contains("CABLE B Input", StringComparison.OrdinalIgnoreCase))
-                    {
-                        Log($"[OUTGOING] Using CABLE-B Input: {name}");
-                        outgoingDevice = device; break;
-                    }
-                }
-            }
-            if (outgoingDevice == null)
-            {
-                foreach (var device in outputs)
-                {
-                    var name = device.FriendlyName;
-                    if (name.Contains("CABLE Input", StringComparison.OrdinalIgnoreCase) &&
-                        !name.Contains("CABLE-A", StringComparison.OrdinalIgnoreCase) &&
-                        !name.Contains("CABLE-B", StringComparison.OrdinalIgnoreCase))
-                    {
-                        Log($"[OUTGOING] Using standard CABLE Input: {name}");
-                        outgoingDevice = device; break;
-                    }
-                }
-            }
-            if (outgoingDevice == null)
-            {
-                foreach (var device in outputs)
-                {
-                    if (device.FriendlyName.Contains("CABLE", StringComparison.OrdinalIgnoreCase) &&
-                        device.FriendlyName.Contains("Speakers", StringComparison.OrdinalIgnoreCase))
-                    {
-                        Log($"[OUTGOING] Using CABLE Speakers (fallback): {device.FriendlyName}");
-                        outgoingDevice = device; break;
-                    }
-                }
-            }
-
-            // Map outgoing to mic name (same original logic)
-            if (outgoingDevice != null)
-            {
-                var name = outgoingDevice.FriendlyName;
-                if (name.Contains("CABLE-A Input", StringComparison.OrdinalIgnoreCase) ||
-                    name.Contains("CABLE A Input", StringComparison.OrdinalIgnoreCase))
-                    microphoneName = "CABLE-A Output (VB-Audio Cable A)";
-                else if (name.Contains("CABLE-B Input", StringComparison.OrdinalIgnoreCase) ||
-                         name.Contains("CABLE B Input", StringComparison.OrdinalIgnoreCase))
-                    microphoneName = "CABLE-B Output (VB-Audio Cable B)";
-                else if (name.Contains("CABLE Input", StringComparison.OrdinalIgnoreCase))
-                    microphoneName = "CABLE Output (VB-Audio Cable)";
-            }
-
-            // INCOMING: Find CABLE Output (Capture devices) - exact original priority  
-            AudioDeviceInfo? incomingDevice = null;
-            foreach (var device in inputs)
-            {
-                var name = device.FriendlyName;
-                if (name.Contains("CABLE-B Output", StringComparison.OrdinalIgnoreCase) ||
-                    name.Contains("CABLE B Output", StringComparison.OrdinalIgnoreCase))
-                {
-                    Log($"[INCOMING] Using CABLE-B Output: {name}");
-                    incomingDevice = device; break;
-                }
-            }
-            if (incomingDevice == null)
-            {
-                foreach (var device in inputs)
-                {
-                    var name = device.FriendlyName;
-                    if (name.Contains("CABLE-A Output", StringComparison.OrdinalIgnoreCase) ||
-                        name.Contains("CABLE A Output", StringComparison.OrdinalIgnoreCase))
-                    {
-                        Log($"[INCOMING] Using CABLE-A Output: {name}");
-                        incomingDevice = device; break;
-                    }
-                }
-            }
-            if (incomingDevice == null)
-            {
-                foreach (var device in inputs)
-                {
-                    var name = device.FriendlyName;
-                    if (name.Contains("CABLE Output", StringComparison.OrdinalIgnoreCase) &&
-                        !name.Contains("CABLE-A", StringComparison.OrdinalIgnoreCase) &&
-                        !name.Contains("CABLE-B", StringComparison.OrdinalIgnoreCase))
-                    {
-                        Log($"[INCOMING] Using standard CABLE Output: {name}");
-                        incomingDevice = device; break;
-                    }
-                }
-            }
-
-            // Map incoming to speaker name (same original logic)
-            if (incomingDevice != null)
-            {
-                var name = incomingDevice.FriendlyName;
-                if (name.Contains("CABLE-B Output", StringComparison.OrdinalIgnoreCase) ||
-                    name.Contains("CABLE B Output", StringComparison.OrdinalIgnoreCase))
-                    speakerName = "CABLE-B Input (VB-Audio Cable B)";
-                else if (name.Contains("CABLE-A Output", StringComparison.OrdinalIgnoreCase) ||
-                         name.Contains("CABLE A Output", StringComparison.OrdinalIgnoreCase))
-                    speakerName = "CABLE-A Input (VB-Audio Cable A)";
-                else if (name.Contains("CABLE Output", StringComparison.OrdinalIgnoreCase))
-                    speakerName = "CABLE Input (VB-Audio Cable)";
-            }
-
-            if (outgoingDevice == null) Log("[OUTGOING] ⚠️ No CABLE output device found!");
-            if (incomingDevice == null) Log("[INCOMING] ⚠️ No CABLE input device found!");
-
-            Log($"[MEETING SETUP] Recommended Microphone: {microphoneName}");
-            Log($"[MEETING SETUP] Recommended Speaker: {speakerName}");
-        }
-        catch (Exception ex)
-        {
-            Log($"[MEETING SETUP] Error determining recommended devices: {ex.Message}");
-        }
-
-        return (microphoneName, speakerName);
+        return null;
     }
 
     public (string microphone, string speaker) GetRecommendedMeetingDevices()
@@ -579,15 +417,6 @@ public class DeviceService
 
         return (microphoneName, speakerName);
     }
-
-
-    // Add this method to the DeviceService class:
-
-    /// <summary>
-    /// Checks if both CABLE-A and CABLE-B devices are installed and available.
-    /// This enables true parallel bidirectional audio flow without echo concerns.
-    /// </summary>
-    /// <returns>True if both CABLE-A and CABLE-B are detected, false otherwise</returns>
     public bool HasCableABDevices()
     {
         try
@@ -645,47 +474,6 @@ public class DeviceService
             Log($"[DEVICE DETECTION] Error detecting CABLE A+B: {ex.Message}");
             return false; // Default to safe sequential mode
         }
-    }
-
-    /// <summary>
-    /// Gets user-friendly setup instructions for configuring the meeting app
-    /// </summary>
-    /// <returns>Multi-line string with setup instructions</returns>
-    public string GetMeetingSetupInstructions()
-    {
-        var (microphone, speaker) = GetRecommendedMeetingDevices();
-
-        var instructions = $@"
-╔══════════════════════════════════════════════════════════════╗
-║          MEETING APP AUDIO CONFIGURATION GUIDE               ║
-╚══════════════════════════════════════════════════════════════╝
-
-📋 Configure your meeting app (Teams/Meet/Zoom) with these settings:
-
-🎤 MICROPHONE (in meeting app):
-   ➜ Set to: {microphone}
-   ℹ️  This captures your translated voice and sends it to the meeting
-
-🔊 SPEAKER (in meeting app):
-   ➜ Set to: {speaker}
-   ℹ️  This sends meeting audio to the translation app for processing
-
-⚠️  IMPORTANT:
-   • Do NOT use your physical microphone/speakers in the meeting app
-   • Use the CABLE devices listed above
-   • Your physical devices are used by the translation app
-
-✅ SETUP STEPS:
-   1. Open your meeting app settings (Teams/Meet/Zoom)
-   2. Go to Audio/Device settings
-   3. Set Microphone to: {microphone}
-   4. Set Speaker to: {speaker}
-   5. Test audio to confirm it works
-   6. Start the translation app BEFORE joining the meeting
-
-═══════════════════════════════════════════════════════════════";
-
-        return instructions;
     }
 
     public MMDevice? FindPhysicalMicrophone()

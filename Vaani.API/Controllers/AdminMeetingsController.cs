@@ -218,6 +218,67 @@ public class AdminMeetingsController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Get session metrics for a meeting
+    /// </summary>
+    /// <param name="meetingId">Meeting ID</param>
+    /// <returns>Session metrics and analytics</returns>
+    [HttpGet("{meetingId}/metrics")]
+    [ProducesResponseType(typeof(SessionMetricsDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<SessionMetricsDto>> GetSessionMetrics(string meetingId)
+    {
+        try
+        {
+            if (!ValidateAdminToken())
+            {
+                return Unauthorized(new { message = "Invalid or expired token" });
+            }
+
+            var metrics = await _adminService.GetSessionMetricsAsync(meetingId);
+
+            if (metrics == null)
+            {
+                return NotFound(new { message = "Meeting not found" });
+            }
+
+            return Ok(metrics);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving session metrics for meeting: {MeetingId}", meetingId);
+            return StatusCode(StatusCodes.Status500InternalServerError, new { message = "An error occurred" });
+        }
+    }
+
+    /// <summary>
+    /// Get session logs for a specific session
+    /// </summary>
+    /// <param name="sessionId">Session ID</param>
+    /// <returns>List of session logs</returns>
+    [HttpGet("sessions/{sessionId}/logs")]
+    [ProducesResponseType(typeof(IEnumerable<SessionLogDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<IEnumerable<SessionLogDto>>> GetSessionLogs(int sessionId)
+    {
+        try
+        {
+            if (!ValidateAdminToken())
+            {
+                return Unauthorized(new { message = "Invalid or expired token" });
+            }
+
+            var logs = await _adminService.GetSessionLogsAsync(sessionId);
+            return Ok(logs);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving session logs for session: {SessionId}", sessionId);
+            return StatusCode(StatusCodes.Status500InternalServerError, new { message = "An error occurred" });
+        }
+    }
+
     private bool ValidateAdminToken()
     {
         var authHeader = Request.Headers.Authorization.FirstOrDefault();

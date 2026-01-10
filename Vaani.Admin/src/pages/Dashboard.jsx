@@ -48,7 +48,9 @@ function Dashboard() {
     navigate(`/meetings/edit/${meetingId}`)
   }
 
- 
+  const handleViewMetrics = (meetingId) => {
+    navigate(`/meetings/${meetingId}/metrics`)
+  }
   
 const handleLaunch = (meetingId) => {
 
@@ -154,11 +156,12 @@ const handleLaunch = (meetingId) => {
           <div className="loading">Loading meetings...</div>
         ) : (
           <MeetingList 
-            logo ={logo}            
+            logo={logo}            
             meetings={filteredMeetings}
             onLaunch={handleLaunch}
             onEdit={handleEdit}
             onDelete={handleDelete}
+            onViewMetrics={handleViewMetrics}
           />
         )}
       </div>

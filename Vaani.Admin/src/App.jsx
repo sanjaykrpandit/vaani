@@ -4,6 +4,7 @@ import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import AddMeeting from './pages/AddMeeting'
 import EditMeeting from './pages/EditMeeting'
+import MeetingMetricsPage from './pages/MeetingMetricsPage'
 import ProtectedRoute from './components/ProtectedRoute'
 import './App.css'
 
@@ -37,6 +38,14 @@ function App() {
         element={
           <ProtectedRoute>
             <EditMeeting />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/meetings/:meetingId/metrics"
+        element={
+          <ProtectedRoute>
+            <MeetingMetricsPage />
           </ProtectedRoute>
         }
       />

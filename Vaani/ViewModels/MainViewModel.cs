@@ -652,31 +652,64 @@ public class MainViewModel : ViewModelBase
 
     private async Task StopTranslation()
     {
-        if (IsSynthesizing)
-        {
-            Toast.Show("Please wait for synthesis to complete before stopping.");
-            return;
-        }
-
         IsTransitioning = true;
+
         try
         {
+            // 1. Wait for synthesis to complete if it's active
+            if (IsSynthesizing)
+            {
+                AddLog("⏳ Waiting for audio synthesis to complete before stopping...");
+                Toast.Show("Finishing audio playback...");
 
-            // Cancel any ongoing animations
+                var timeout = TimeSpan.FromSeconds(30); // Maximum wait time
+                var startTime = DateTime.UtcNow;
+                var checkInterval = TimeSpan.FromMilliseconds(100);
+
+                while (IsSynthesizing && (DateTime.UtcNow - startTime) < timeout)
+                {
+                    await Task.Delay(checkInterval);
+                }
+
+                if (IsSynthesizing)
+                {
+                    AddLog("⚠️ Synthesis timeout - forcing stop anyway");
+                    Toast.Show("Forcing stop...");
+                }
+                else
+                {
+                    AddLog("✅ Synthesis completed - proceeding with stop");
+                }
+            }
+
+            // 2. Cancel any ongoing animations
             _recognizingAnimationCts?.Cancel();
             _translationAnimationCts?.Cancel();
-            // Stop translation service
 
-            // Await the stop to ensure clean shutdown before updating UI
-
-           
-
-
+            // 3. Stop translation service
+            AddLog("🛑 Stopping translation service...");
             await _translationService.StopTranslationAsync();
+            AddLog("✅ Translation service stopped");
+        }
+        catch (Exception ex)
+        {
+            AddLog($"❌ Error during stop: {ex.Message}");
         }
         finally
         {
-            bool status = await _sessionService.EndSessionAsync();
+            // 4. End session
+            try
+            {
+                AddLog("🔌 Ending session...");
+                bool status = await _sessionService.EndSessionAsync();
+                AddLog(status ? "✅ Session ended successfully" : "⚠️ Session end failed");
+            }
+            catch (Exception ex)
+            {
+                AddLog($"⚠️ Error ending session: {ex.Message}");
+            }
+
+            // 5. Update UI state
             await Dispatcher.UIThread.InvokeAsync(() =>
             {
                 IsRunning = false;
@@ -1391,6 +1424,60 @@ public class MainViewModel : ViewModelBase
         _recognizingAnimationCts?.Dispose();
         _translationAnimationCts?.Dispose();
         _translationService?.Dispose();
+    }
+
+    #endregion
+
+    #region Cleanup Methods
+
+    /// <summary>
+    /// Clean up all resources when the application is closing
+    /// </summary>
+    public async Task CleanupAsync()
+    {
+        if (IsRunning)
+        {
+            AddLog("🔄 Application closing - stopping translation...");
+
+            // Wait for synthesis to complete (with timeout) - already handled in MainWindow
+            // Just proceed with stopping translation
+            try
+            {
+                await StopTranslation();
+                AddLog("✅ Translation stopped successfully");
+            }
+            catch (Exception ex)
+            {
+                AddLog($"⚠️ Error stopping translation: {ex.Message}");
+            }
+        }
+
+        // Stop all timers
+        try
+        {
+            _deviceRefreshTimer?.Stop();
+            _sessionExpiryTimer?.Stop();
+            AddLog("✅ Timers stopped");
+        }
+        catch (Exception ex)
+        {
+            AddLog($"⚠️ Error stopping timers: {ex.Message}");
+        }
+
+        // Cancel all animations
+        try
+        {
+            _recognizingAnimationCts?.Cancel();
+            _translationAnimationCts?.Cancel();
+            _deviceRefreshCts?.Cancel();
+            AddLog("✅ Animations cancelled");
+        }
+        catch (Exception ex)
+        {
+            AddLog($"⚠️ Error cancelling animations: {ex.Message}");
+        }
+
+        AddLog("✅ Application cleanup complete");
     }
 
     #endregion

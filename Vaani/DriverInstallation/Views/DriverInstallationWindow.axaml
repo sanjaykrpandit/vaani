@@ -48,7 +48,7 @@
         </Style>
 
         <Style Selector="TextBlock.title">
-            <Setter Property="FontSize" Value="22"/>
+            <Setter Property="FontSize" Value="18"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Foreground" Value="White"/>
             <Setter Property="Margin" Value="0,0,0,10"/>
@@ -87,9 +87,9 @@
                         Vaani requires VB-CABLE virtual audio driver to route audio between your microphone, speakers, and meeting applications.
                     </TextBlock>-->
 
-                    <Border Background="#2D2D30" Padding="20" CornerRadius="4" Margin="0,10,0,0">
+                    <Border Background="#2D2D30" Padding="10" CornerRadius="4" Margin="0,10,0,0">
                         <StackPanel Spacing="12">
-                            <TextBlock FontWeight="SemiBold" Foreground="White" FontSize="14">
+                            <TextBlock FontWeight="SemiBold" Foreground="White" FontSize="12">
                                 What will be installed:
                             </TextBlock>
                             <StackPanel Spacing="8">
@@ -106,21 +106,21 @@
                         </StackPanel>
                     </Border>
 
-                    <Border Background="#2D2D30" Padding="20" CornerRadius="4">
+                    <Border Background="#2D2D30" Padding="10" CornerRadius="4">
                         <StackPanel Spacing="12">
-                            <TextBlock FontWeight="SemiBold" Foreground="White" FontSize="14">
+                            <TextBlock FontWeight="SemiBold" Foreground="White" FontSize="12">
                                 Installation Process:
                             </TextBlock>
                             <StackPanel Spacing="8">
                                 <TextBlock Classes="description">
                                     1. Download driver package (~2-3 MB)
-                                </TextBlock>
+                                </TextBlock>                              
                                 <TextBlock Classes="description">
-                                    2. Extract driver files
+                                    2. Install driver (requires administrator approval)
                                 </TextBlock>
-                                <TextBlock Classes="description">
-                                    3. Install driver (requires administrator approval)
-                                </TextBlock>
+								<TextBlock Classes="description">
+									3. Restart your machine
+								</TextBlock>
                                 <TextBlock Classes="description">
                                     4. Complete setup
                                 </TextBlock>
@@ -129,8 +129,8 @@
                     </Border>
 
                     <TextBlock Classes="description" Foreground="#888888" FontSize="12" Margin="0,10,0,0">
-                        You can also download VB-CABLE manually from: https://vb-audio.com/Cable/
-                    </TextBlock>
+						VB-CABLE downloaded from: https://vb-audio.com/Cable/
+					</TextBlock>
                 </StackPanel>
 
                 <!-- Progress Screen -->
@@ -256,7 +256,8 @@
         </Border>
 
         <!-- Footer Actions -->
-        <Border Grid.Row="2" Background="#252526" Padding="30,20">
+		
+        <Border Grid.Row="2" Background="#252526" Padding="30,20" IsVisible="{Binding ShowFooter}">
             <Grid>
                 <!-- Consent Screen Buttons -->
                 <StackPanel Orientation="Horizontal" 
@@ -285,6 +286,11 @@
                            HorizontalAlignment="Right" 
                            Spacing="10"
                            IsVisible="{Binding ShowCompletionScreen}">
+                    <Button Classes="secondary" 
+                           Content="Uninstall Driver" 
+                           Command="{Binding UninstallCommand}"
+                           IsVisible="{Binding IsDriverInstalled}"
+                           IsEnabled="{Binding !IsProcessing}"/>
                     <Button Classes="secondary" 
                            Content="Restart Later" 
                            Command="{Binding RestartLaterCommand}"
