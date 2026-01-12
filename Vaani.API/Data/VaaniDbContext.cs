@@ -17,7 +17,7 @@ public class VaaniDbContext : DbContext
     public DbSet<SessionLog> SessionLogs { get; set; }
     public DbSet<AdminUser> AdminUsers { get; set; }
     public DbSet<AzureSubscription> AzureSubscriptions { get; set; }
-
+    public DbSet<Language> Languages { get; set; }
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -77,6 +77,8 @@ public class VaaniDbContext : DbContext
             entity.Property(e => e.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("CURRENT_TIMESTAMP");
             entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
             entity.Property(e => e.IsActive).HasColumnName("is_active").HasDefaultValue(true);
+            entity.Property(e => e.CreatedBy).HasColumnName("created_by").IsRequired().HasMaxLength(255);
+            entity.Property(e => e.UpdatedBy).HasColumnName("updated_by").IsRequired().HasMaxLength(255);
 
             entity.HasMany(e => e.Sessions)
                 .WithOne(e => e.Meeting)
@@ -101,6 +103,10 @@ public class VaaniDbContext : DbContext
             entity.Property(e => e.LastHeartbeat).HasColumnName("last_heartbeat").HasDefaultValueSql("CURRENT_TIMESTAMP");
             entity.Property(e => e.EndedAt).HasColumnName("ended_at");
             entity.Property(e => e.Status).HasColumnName("status").HasMaxLength(20).HasDefaultValue("Active");
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+            entity.Property(e => e.SessionLog).HasColumnName("session_log");
+            entity.Property(e => e.SessionTrascript).HasColumnName("session_transcript");
+            entity.Property(e => e.UserName).HasColumnName("user_name");
 
             entity.HasMany(e => e.SessionLogs)
                 .WithOne(e => e.Session)
@@ -120,6 +126,24 @@ public class VaaniDbContext : DbContext
             entity.Property(e => e.EventType).HasColumnName("event_type").IsRequired().HasMaxLength(50);
             entity.Property(e => e.Timestamp).HasColumnName("timestamp").HasDefaultValueSql("CURRENT_TIMESTAMP");
             entity.Property(e => e.Details).HasColumnName("details").HasColumnType("text");
+        });
+
+        // Language configuration
+        modelBuilder.Entity<Language>(entity =>
+        {
+            entity.ToTable("languages");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.LanguageCode).IsUnique();            
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.LanguageCode).HasColumnName("language_code").IsRequired().HasMaxLength(10);
+            entity.Property(e => e.LanguageName).HasColumnName("language_name").IsRequired().HasMaxLength(100);
+            entity.Property(e => e.LanguageMaleNeural).HasColumnName("language_male_neural").IsRequired().HasMaxLength(100);
+            entity.Property(e => e.LanguageFemaleNeural).HasColumnName("language_female_neural").IsRequired().HasMaxLength(100);
+            entity.Property(e => e.IsActive).HasColumnName("is_active").HasDefaultValue(true);
+            entity.Property(e => e.CreatedBy).HasColumnName("created_by").IsRequired().HasMaxLength(100);
+            entity.Property(e => e.UpdatedBy).HasColumnName("updated_by").IsRequired().HasMaxLength(100);
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
         });
     }
 }

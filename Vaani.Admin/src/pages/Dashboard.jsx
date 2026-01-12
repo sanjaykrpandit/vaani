@@ -53,17 +53,6 @@ function Dashboard() {
   }
   
 const handleLaunch = (meetingId) => {
-
-// const popup = window.open(
-//     "/app/index.html",
-//     "vaani-launcher",
-//     "width=420,height=260,menubar=no,toolbar=no,status=no,resizable=no"
-//   );
-
-//   if (!popup || popup.closed || typeof popup.closed === "undefined") {
-//     alert("Popup blocked. Please allow popups to launch Vaani.");
-//   }
-
   const origin = window.location.origin
   const targetUrl = `https://vaani-rtt-api.tryzent.com/launcher/Vaani.application?meetingId=${meetingId}&origin=${encodeURIComponent(origin)}`
   const isEdge = /Edg\//.test(navigator.userAgent)

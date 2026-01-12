@@ -15,6 +15,11 @@ import {
   ResponsiveContainer
 } from 'recharts'
 import './MeetingMetrics.css'
+import group from '../Assets/group.png'
+import sessions from '../Assets/inprocess.png'
+import duration from '../Assets/clock.png'
+import heart from '../Assets/heart.png'
+
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d']
 
@@ -57,16 +62,28 @@ function MeetingMetrics({ metrics }) {
     <div className="meeting-metrics">
       {/* Summary Cards */}
       <div className="metrics-summary">
+
+
+
         <div className="metric-card">
-          <div className="metric-icon">??</div>
+          <div className="metric-icon"> <img src={group} width={48} className="icon" /></div>
+          <div className="metric-content">
+            <h3>Total Users</h3>
+            <p className="metric-value">{metrics.deviceBreakdown.length}</p>
+          </div>
+        </div>
+
+
+        <div className="metric-card">
+          <div className="metric-icon"> <img src={group} width={48} className="icon" /></div>
           <div className="metric-content">
             <h3>Total Sessions</h3>
             <p className="metric-value">{metrics.totalSessions}</p>
           </div>
         </div>
         
-        <div className="metric-card active">
-          <div className="metric-icon">?</div>
+        <div className="metric-card">
+          <div className="metric-icon"><img src={sessions} width={48} className="icon" /></div>
           <div className="metric-content">
             <h3>Active Sessions</h3>
             <p className="metric-value">{metrics.activeSessions}</p>
@@ -74,7 +91,7 @@ function MeetingMetrics({ metrics }) {
         </div>
         
         <div className="metric-card">
-          <div className="metric-icon">??</div>
+          <div className="metric-icon"><img src={duration} width={48} className="icon" /></div>
           <div className="metric-content">
             <h3>Avg Duration</h3>
             <p className="metric-value">
@@ -83,13 +100,13 @@ function MeetingMetrics({ metrics }) {
           </div>
         </div>
         
-        <div className="metric-card">
-          <div className="metric-icon">??</div>
+        {/* <div className="metric-card">
+          <div className="metric-icon"><img src={heart} width={48} className="icon" /></div>
           <div className="metric-content">
             <h3>Total Heartbeats</h3>
             <p className="metric-value">{metrics.totalHeartbeats}</p>
           </div>
-        </div>
+        </div> */}
       </div>
 
       {/* Charts Section */}
@@ -246,7 +263,7 @@ function MeetingMetrics({ metrics }) {
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h3>Session Details</h3>
-              <button className="close-btn" onClick={() => setSelectedSession(null)}>×</button>
+              <button className="close-btn" onClick={() => setSelectedSession(null)}>x</button>
             </div>
             <div className="modal-body">
               <div className="detail-row">

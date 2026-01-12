@@ -14,7 +14,9 @@ public class Meeting
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
     public bool IsActive { get; set; } = true;
-    
+    public string CreatedBy { get; set; } = string.Empty;
+    public string UpdatedBy { get; set; } = string.Empty;
+
     // Navigation properties
     public AzureSubscription AzureSubscription { get; set; } = null!;
     public ICollection<Session> Sessions { get; set; } = new List<Session>();

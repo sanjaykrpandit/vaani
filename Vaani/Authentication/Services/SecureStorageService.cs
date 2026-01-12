@@ -1,9 +1,9 @@
 using System;
 using System.IO;
+using System.Runtime.Versioning;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-
 
 
 namespace Vaani.Authentication.Services;
@@ -36,6 +36,8 @@ public class SecureStorageService
     /// <typeparam name="T">Type of data to store</typeparam>
     /// <param name="key">Storage key/identifier</param>
     /// <param name="data">Data to encrypt and store</param>
+    /// 
+    [SupportedOSPlatform("windows")]
     public void SaveSecure<T>(string key, T data)
     {
         if (string.IsNullOrWhiteSpace(key))
@@ -64,6 +66,8 @@ public class SecureStorageService
     /// <typeparam name="T">Type of data to retrieve</typeparam>
     /// <param name="key">Storage key/identifier</param>
     /// <returns>Decrypted data or default if not found</returns>
+    /// 
+    [SupportedOSPlatform("windows")]
     public T? LoadSecure<T>(string key) where T : class
     {
         if (string.IsNullOrWhiteSpace(key))

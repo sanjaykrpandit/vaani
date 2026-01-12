@@ -65,16 +65,16 @@
                 
                 <TextBox Text="{Binding MeetingId, Mode=TwoWay}"
                          Watermark="e.g., VM-2025-1220-A7B3"
-                         FontSize="14"
-                         Height="42"
-                         Padding="15,12"
+                         FontSize="16"
+                         Height="34"
+                         Padding="6"
                          Background="#252526"
                          Foreground="White"
                          BorderBrush="#3E3E42"
                          BorderThickness="2"
-                         CornerRadius="21"
-						   Width="300"
-						 Margin="40,10"
+                         CornerRadius="17"
+												 Width="250"
+											   Margin="30,10"
                          HorizontalContentAlignment="Center"
                          TextAlignment="Center"
                          FontFamily="Consolas,monospace">
@@ -82,6 +82,26 @@
                         <KeyBinding Gesture="Enter" Command="{Binding ValidateCommand}"/>
                     </TextBox.KeyBindings>
                 </TextBox>
+
+              <TextBox Text="{Binding UserName, Mode=TwoWay}"
+                        Watermark="Enter your name"
+                        FontSize="16"
+                        Height="34"
+                        Padding="6"
+                        Background="#252526"
+                        Foreground="White"
+                        BorderBrush="#3E3E42"
+                        BorderThickness="2"
+                        CornerRadius="17"
+                        Width="250"
+                        Margin="30,10"
+                        HorizontalContentAlignment="Center"
+                        TextAlignment="Center"
+                        FontFamily="Consolas,monospace">
+                <TextBox.KeyBindings>
+                  <KeyBinding Gesture="Enter" Command="{Binding ValidateCommand}"/>
+                </TextBox.KeyBindings>
+              </TextBox>
 
                 <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center">
                     <!--<Button Content="Paste"
@@ -101,13 +121,13 @@
                     
                     <Button Content="Login"
                             Command="{Binding ValidateCommand}"
-                            Width="300"
+                            Width="250"
                             Height="32"
                             Background="#4CAF50"
                             Foreground="White"
                             BorderThickness="0"
                             CornerRadius="16" 
-							HorizontalAlignment="Center"
+							              HorizontalAlignment="Center"
                             VerticalAlignment="Center"
                             HorizontalContentAlignment="Center"
                             VerticalContentAlignment="Center"

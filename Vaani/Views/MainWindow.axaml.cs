@@ -94,40 +94,13 @@ public partial class MainWindow : Window
             if (viewModel.IsRunning || viewModel.IsSynthesizing)
             {
                 // Cancel the close event to perform cleanup first
-                e.Cancel = true;
+                 e.Cancel = true;
                 _isClosing = true;
 
                 try
                 {
-                    // Show a message to the user
-                    viewModel.Toast.Show("Closing application - stopping translation...");
-
-                    // Wait for synthesis to complete with timeout
-                    if (viewModel.IsSynthesizing)
-                    {
-                        var timeout = TimeSpan.FromSeconds(5);
-                        var startTime = DateTime.UtcNow;
-
-                        while (viewModel.IsSynthesizing && (DateTime.UtcNow - startTime) < timeout)
-                        {
-                            await Task.Delay(100);
-                        }
-
-                        if (viewModel.IsSynthesizing)
-                        {
-                            System.Diagnostics.Debug.WriteLine("⚠️ Synthesis timeout - forcing shutdown");
-                        }
-                    }
-
-                    // Stop translation and end session
                     await viewModel.CleanupAsync();
-
-                    System.Diagnostics.Debug.WriteLine("✅ Cleanup completed successfully");
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"❌ Error during cleanup: {ex.Message}");
-                }
+                }              
                 finally
                 {
                     // Dispose ViewModel resources
@@ -148,6 +121,7 @@ public partial class MainWindow : Window
                 // Not running, just cleanup
                 try
                 {
+                    await viewModel.CleanupAsync();
                     viewModel.Dispose();
                     _smoothScrollTimer?.Stop();
                 }

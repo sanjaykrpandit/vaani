@@ -5,10 +5,12 @@ using ReactiveUI;
 using System.Collections.ObjectModel;
 using System.Reactive.Linq;
 using System.Windows.Input;
+using Tmds.DBus.Protocol;
 using Vaani.Authentication.Services;
 using Vaani.Common;
 using Vaani.Models;
 using Vaani.Services;
+using System.Linq;
 
 namespace Vaani.ViewModels;
 
@@ -103,6 +105,8 @@ public class MainViewModel : ViewModelBase
     public ObservableCollection<LanguageInfo> Languages { get; } = new();
     public ObservableCollection<GenderOption> Genders { get; } = new();
     public ObservableCollection<MessageBubble> Messages { get; } = new();
+
+    public ObservableCollection<MessageBubble> MessageHistory { get; } = new();
 
     #endregion
 
@@ -318,7 +322,7 @@ public class MainViewModel : ViewModelBase
         set => this.RaiseAndSetIfChanged(ref _isTransitioning, value);
     }
 
-   
+
     public bool IsSynthesizing
     {
         get => _isSynthesizing;
@@ -425,7 +429,7 @@ public class MainViewModel : ViewModelBase
         ShowMessageViewCommand = ReactiveCommand.Create(() => IsMessageViewActive = true);
         ClearMessage = ReactiveCommand.Create(ClearLogsAndMessages);
         LogoutCommand = ReactiveCommand.CreateFromTask(LogoutAsync);
-        CloseUserGuideCommand= ReactiveCommand.Create(() => IsUserGuideEnabled = false);
+        CloseUserGuideCommand = ReactiveCommand.Create(() => IsUserGuideEnabled = false);
     }
 
     private void InitializeCollections()
@@ -467,7 +471,7 @@ public class MainViewModel : ViewModelBase
 
             _sessionExpiryTimer = new DispatcherTimer
             {
-                Interval = TimeSpan.FromSeconds(30)
+                Interval = TimeSpan.FromSeconds(60)
             };
             _sessionExpiryTimer.Tick += (_, __) => UpdateSessionInfo();
             _sessionExpiryTimer.Start();
@@ -614,7 +618,7 @@ public class MainViewModel : ViewModelBase
     #region Translation Methods
 
     private async Task StartTranslation()
-    {     
+    {
         IsSettingsPanelVisible = false;
         IsTransitioning = true;
         try
@@ -701,7 +705,12 @@ public class MainViewModel : ViewModelBase
             try
             {
                 AddLog("🔌 Ending session...");
-                bool status = await _sessionService.EndSessionAsync();
+
+                // Build session log and transcript from current UI state
+                var sessionLog = BuildSessionLog();
+                var sessionTranscript = BuildSessionTranscript();
+
+                bool status = await _sessionService.EndSessionAsync(sessionLog, sessionTranscript);
                 AddLog(status ? "✅ Session ended successfully" : "⚠️ Session end failed");
             }
             catch (Exception ex)
@@ -718,10 +727,42 @@ public class MainViewModel : ViewModelBase
         }
     }
 
+    // Helper to serialize logs into a reasonable payload
+    private string BuildSessionLog()
+    {
+        // Keep last N log lines to avoid overly large payloads
+        const int maxLogLines = 1000;
+        var lines = (LogText ?? string.Empty).Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+        if (lines.Length > maxLogLines)
+            lines = lines.Skip(lines.Length - maxLogLines).ToArray();
+
+        return string.Join("\n", lines);
+    }
+
+    // Helper to build a simple transcript from messages
+    private string BuildSessionTranscript()
+    {
+        // Export all message bubbles in chronological order
+        var transcriptLines = Messages.Select(m =>
+        {
+            var time = m.Timestamp.ToString("o");
+            var who = m.IsSystemMessage ? "SYSTEM" : (m.IsFromMeeting ? "MEETING" : "YOU");
+            var original = string.IsNullOrEmpty(m.OriginalText) ? string.Empty : $"ORIG: {m.OriginalText}";
+            var translated = string.IsNullOrEmpty(m.TranslatedText) ? string.Empty : $"TRANS: {m.TranslatedText}";
+            return $"[{time}] {who} {original} {translated}".Trim();
+        }).ToList();
+
+        // Keep last N lines to limit size
+        const int maxLines = 5000;
+        if (transcriptLines.Count > maxLines)
+            transcriptLines = transcriptLines.Skip(transcriptLines.Count - maxLines).ToList();
+
+        return string.Join("\n", transcriptLines);
+    }
+
     #endregion
 
     #region Device Management Methods
-
 
     // Replace the existing RefreshDevices method with this incremental, cancellable implementation.
     private async Task RefreshDevices()
@@ -928,7 +969,7 @@ public class MainViewModel : ViewModelBase
 
     #region Language Management Methods
 
-    public async Task LoadLanguagesAsync(TranslationSettings setting)
+    public Task LoadLanguagesAsync(TranslationSettings setting)
     {
         SourceLanguage = setting.SourceLanguage;
         TargetLanguage = setting.TargetLanguage;
@@ -936,7 +977,7 @@ public class MainViewModel : ViewModelBase
         _targetLanguage = TargetLanguage;
         _targetVoice = TargetVoice;
 
-        var langs = await _clientService.GetLanguagesAsync();
+        var langs = _clientService.GetLanguagesAsync();
         Languages.Clear();
         foreach (var lang in langs)
             Languages.Add(lang);
@@ -952,6 +993,7 @@ public class MainViewModel : ViewModelBase
 
         _sourceLanguage = GetLanguageCode(_sourceLanguage);
         _targetLanguage = GetLanguageCode(_targetLanguage);
+        return Task.CompletedTask;
     }
 
     private void UpdateSourceVoice()
@@ -976,7 +1018,7 @@ public class MainViewModel : ViewModelBase
     private TranslationSettings LoadTranslationSettings()
     {
         _settings = _clientService.GetTranslationSettings();
-        _ = LoadLanguagesAsync(_settings);
+        LoadLanguagesAsync(_settings);
         SetupDefaultLanguageSelection();
         return _settings;
     }
@@ -1451,6 +1493,21 @@ public class MainViewModel : ViewModelBase
                 AddLog($"⚠️ Error stopping translation: {ex.Message}");
             }
         }
+        else
+        {
+            // Send final session end with logs/transcript
+            try
+            {
+                var sessionLog = BuildSessionLog();
+                var sessionTranscript = BuildSessionTranscript();
+                await _sessionService.EndSessionAsync(sessionLog, sessionTranscript);
+                AddLog("✅ Session end reported to server");
+            }
+            catch (Exception ex)
+            {
+                AddLog($"⚠️ Error reporting session end: {ex.Message}");
+            }
+        }
 
         // Stop all timers
         try
@@ -1479,6 +1536,5 @@ public class MainViewModel : ViewModelBase
 
         AddLog("✅ Application cleanup complete");
     }
-
     #endregion
 }

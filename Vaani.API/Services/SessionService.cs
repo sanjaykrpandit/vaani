@@ -25,7 +25,7 @@ public class SessionService : ISessionService
         _logger = logger;
     }
        
-    public async Task<(bool success, int? sessionId, string? accessToken, string? message)> CreateSessionAsync(string meetingId, string deviceId, string deviceName, string appVersion)
+    public async Task<(bool success, int? sessionId, string? accessToken, string? message)> CreateSessionAsync(string meetingId, string deviceId, string deviceName, string appVersion, string username)
     {
         try
         {
@@ -72,7 +72,7 @@ public class SessionService : ISessionService
                     SessionId = existingSession.Id,
                     EventType = "SessionCreated",
                     Timestamp = DateTime.UtcNow,
-                    Details = $"Device: {deviceName}, App: {appVersion}"
+                    Details = $"Device: {deviceName}, User: {username}"
                 };
                 _dbContext.SessionLogs.Add(_sessionLog);
                 await _dbContext.SaveChangesAsync();
@@ -90,7 +90,11 @@ public class SessionService : ISessionService
                 AppVersion = appVersion,
                 StartedAt = DateTime.UtcNow,
                 LastHeartbeat = DateTime.UtcNow,
-                Status = "Active"
+                Status = "Active",
+                CreatedAt = DateTime.UtcNow,
+                SessionTrascript = string.Empty,
+                SessionLog = string.Empty,
+                UserName = username
             };
 
             _dbContext.Sessions.Add(session);
@@ -102,7 +106,7 @@ public class SessionService : ISessionService
                 SessionId = session.Id,
                 EventType = "SessionCreated",
                 Timestamp = DateTime.UtcNow,
-                Details = $"Device: {deviceName}, App: {appVersion}"
+                Details = $"Device: {deviceName}"
             };
             _dbContext.SessionLogs.Add(sessionLog);
             await _dbContext.SaveChangesAsync();
@@ -160,7 +164,7 @@ public class SessionService : ISessionService
                 return (false, "No active session found to start", 0);
             }
 
-            session.Status = "Ended";
+            session.Status = "active";
             session.EndedAt = DateTime.UtcNow;
             await _dbContext.SaveChangesAsync();
 
@@ -170,7 +174,7 @@ public class SessionService : ISessionService
                 SessionId = session.Id,
                 EventType = "SessionStarted",
                 Timestamp = DateTime.UtcNow,
-                Details = $"Device: {session.DeviceId}-{session.DeviceName}"
+                Details = $"Device: {session.DeviceId}"
             };
             _dbContext.SessionLogs.Add(sessionLog);
             await _dbContext.SaveChangesAsync();
@@ -283,6 +287,8 @@ public class SessionService : ISessionService
             // Update session status
             session.Status = "Ended";
             session.EndedAt = DateTime.UtcNow;
+            session.SessionLog = session.SessionLog + " \n " + request.SessionLog;
+            session.SessionTrascript = session.SessionTrascript + " \n " + request.SessionTrascript;
             await _dbContext.SaveChangesAsync();
 
             // Calculate duration

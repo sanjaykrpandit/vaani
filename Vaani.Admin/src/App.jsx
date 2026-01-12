@@ -6,6 +6,7 @@ import AddMeeting from './pages/AddMeeting'
 import EditMeeting from './pages/EditMeeting'
 import MeetingMetricsPage from './pages/MeetingMetricsPage'
 import ProtectedRoute from './components/ProtectedRoute'
+import LanguageList from './components/LanguageList'
 import './App.css'
 
 function App() {
@@ -46,6 +47,14 @@ function App() {
         element={
           <ProtectedRoute>
             <MeetingMetricsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/languages"
+        element={
+          <ProtectedRoute>
+            <LanguageList />
           </ProtectedRoute>
         }
       />

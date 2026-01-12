@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Vaani.API.Data;
@@ -11,9 +12,11 @@ using Vaani.API.Data;
 namespace Vaani.API.Migrations
 {
     [DbContext(typeof(VaaniDbContext))]
-    partial class VaaniDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260110192228_language")]
+    partial class language
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -219,9 +222,7 @@ namespace Vaani.API.Migrations
 
                     b.Property<string>("CreatedBy")
                         .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
-                        .HasColumnName("created_by");
+                        .HasColumnType("text");
 
                     b.Property<bool>("IsActive")
                         .ValueGeneratedOnAdd()
@@ -247,9 +248,7 @@ namespace Vaani.API.Migrations
 
                     b.Property<string>("UpdatedBy")
                         .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
-                        .HasColumnName("updated_by");
+                        .HasColumnType("text");
 
                     b.Property<DateTime>("ValidFrom")
                         .HasColumnType("timestamp with time zone")
@@ -285,8 +284,7 @@ namespace Vaani.API.Migrations
                         .HasColumnName("app_version");
 
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("DeviceId")
                         .IsRequired()
@@ -318,13 +316,11 @@ namespace Vaani.API.Migrations
 
                     b.Property<string>("SessionLog")
                         .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("session_log");
+                        .HasColumnType("text");
 
                     b.Property<string>("SessionTrascript")
                         .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("session_transcript");
+                        .HasColumnType("text");
 
                     b.Property<DateTime>("StartedAt")
                         .ValueGeneratedOnAdd()
@@ -342,8 +338,7 @@ namespace Vaani.API.Migrations
 
                     b.Property<string>("UserName")
                         .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("user_name");
+                        .HasColumnType("text");
 
                     b.HasKey("Id");
 

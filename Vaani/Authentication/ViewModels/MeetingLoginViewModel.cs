@@ -27,11 +27,12 @@ public class MeetingLoginViewModel : ReactiveObject
     private readonly AudioSourceVerificationService _audioVerificationService;
 
     private string _meetingId = "";
+    private string _userName = "";
     private bool _isValidating;
     private bool _hasError;
     private string _errorMessage = string.Empty;
     private string _statusMessage = string.Empty;
-    public string? _appVersion;
+    public string _appVersion = "";
 
     public MeetingLoginViewModel()
     {
@@ -51,6 +52,12 @@ public class MeetingLoginViewModel : ReactiveObject
    
 
     #region Properties
+
+    public string UserName
+    {
+        get => _userName;
+        set => this.RaiseAndSetIfChanged(ref _userName, value);
+    }
 
     public string AppVersion
     {
@@ -108,6 +115,12 @@ public class MeetingLoginViewModel : ReactiveObject
             return;
         }
 
+        if (string.IsNullOrWhiteSpace(UserName))
+        {
+            ShowError("Please enter a your name");
+            return;
+        }
+
         // Reset state
         HasError = false;
         IsValidating = true;
@@ -134,7 +147,8 @@ public class MeetingLoginViewModel : ReactiveObject
             var response = await _authService.ValidateMeetingAsync(
                 MeetingId.Trim(),
                 deviceId,
-                deviceName
+                deviceName,
+                UserName
             );
 
             if (!response.IsValid)
@@ -159,14 +173,7 @@ public class MeetingLoginViewModel : ReactiveObject
             StatusMessage = "Decrypting configuration...";
             await Task.Delay(100); // Small delay for UX
 
-            // TODO: In production, encryption key should come from API response
-            // For now, using a placeholder approach
-            // The backend API will need to provide the key or a way to derive it
-
-            // For demonstration, we'll assume the encrypted config can be decrypted
-            // In real implementation, you'll need to handle the encryption key properly
             MeetingConfiguration? config = null;
-
             try
             {
                 // Placeholder: In production, get the key from the API response or derive it
@@ -207,7 +214,7 @@ public class MeetingLoginViewModel : ReactiveObject
             {
                 // User cancelled or test failed
                 ShowError("Audio test was not completed. Please retry or check your audio setup.");
-                
+
                 // Clear session since we won't proceed
                 _sessionManager.ClearSession();
                 return;

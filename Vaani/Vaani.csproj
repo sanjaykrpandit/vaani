@@ -43,6 +43,17 @@
   <ItemGroup>
     <AvaloniaResource Include="Assets\**" />
   </ItemGroup>
+
+  <ItemGroup>
+    <AvaloniaXaml Remove="Docs\**" />
+    <AvaloniaXaml Remove="installer\**" />
+    <Compile Remove="Docs\**" />
+    <Compile Remove="installer\**" />
+    <EmbeddedResource Remove="Docs\**" />
+    <EmbeddedResource Remove="installer\**" />
+    <None Remove="Docs\**" />
+    <None Remove="installer\**" />
+  </ItemGroup>
 <ItemGroup>
   <None Include="appsettings.json">
     <CopyToOutputDirectory>Always</CopyToOutputDirectory>

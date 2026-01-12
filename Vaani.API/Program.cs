@@ -7,12 +7,17 @@ using Vaani.API.Data;
 using Vaani.API.Interfaces;
 using Vaani.API.Services;
 using Microsoft.AspNetCore.StaticFiles;
-
+using System.Security.Claims;
+using System.IdentityModel.Tokens.Jwt;
+using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container
 builder.Services.AddControllers();
+
+// Add IHttpContextAccessor for services that need current user info
+builder.Services.AddHttpContextAccessor();
 
 // Configure PostgreSQL Database with retry logic
 var connectionString = builder.Configuration.GetConnectionString("PostgreSQL");
@@ -34,6 +39,17 @@ builder.Services.AddDbContext<VaaniDbContext>(options =>
     }
 });
 
+// Register application services
+builder.Services.AddScoped<IVaaniRepository, VaaniRepository>();
+builder.Services.AddScoped<IMeetingService, MeetingService>();
+builder.Services.AddScoped<ISessionService, SessionService>();
+builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
+builder.Services.AddScoped<IEncryptionService, EncryptionService>();
+builder.Services.AddScoped<IAdminService, AdminService>();
+builder.Services.AddScoped<IAzureSubscriptionService, AzureSubscriptionService>();
+// Register language service implementation
+builder.Services.AddScoped<ILanguageService, LanguageService>();
+
 // Configure JWT Authentication
 var jwtSecret = builder.Configuration["Jwt:Secret"] ?? throw new InvalidOperationException("JWT Secret not configured");
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "VaaniAPI";
@@ -51,20 +67,127 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateAudience = true,
             ValidAudience = jwtAudience,
             ValidateLifetime = true,
-            ClockSkew = TimeSpan.Zero
+            ClockSkew = TimeSpan.Zero,
+            // Use 'role' as the default RoleClaimType (common), but we also map other claim names on token validated
+            NameClaimType = "name",
+            RoleClaimType = "role"
+        };
+
+        // Map other role claim names (e.g. 'roles', 'realm_access', 'resource_access') into the configured RoleClaimType so Authorize(Roles=...) works
+        options.Events = new JwtBearerEvents
+        {
+            OnTokenValidated = ctx =>
+            {
+                try
+                {
+                    JwtSecurityToken? jwt = null;
+
+                    // Prefer the already-parsed SecurityToken if it's a JwtSecurityToken
+                    if (ctx.SecurityToken is JwtSecurityToken parsedJwt)
+                    {
+                        jwt = parsedJwt;
+                    }
+                    else
+                    {
+                        // Fallback: try to read raw token string from Authorization header or query string
+                        string? token = null;
+
+                        if (ctx.Request.Headers.TryGetValue("Authorization", out var auth) && auth.Count > 0)
+                        {
+                            var authHeader = auth.FirstOrDefault();
+                            if (!string.IsNullOrEmpty(authHeader) && authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+                                token = authHeader.Substring("Bearer ".Length).Trim();
+                        }
+
+                        if (string.IsNullOrEmpty(token) && ctx.Request.Query.TryGetValue("access_token", out var at) && at.Count > 0)
+                        {
+                            token = at.FirstOrDefault();
+                        }
+
+                        if (!string.IsNullOrEmpty(token))
+                        {
+                            try
+                            {
+                                jwt = new JwtSecurityTokenHandler().ReadJwtToken(token!);
+                            }
+                            catch
+                            {
+                                // ignore parse errors
+                            }
+                        }
+                    }
+
+                    if (jwt == null)
+                        return Task.CompletedTask;
+
+                    var identity = ctx.Principal?.Identity as ClaimsIdentity;
+                    if (identity == null) return Task.CompletedTask;
+
+                    var roleClaimType = identity.RoleClaimType ?? ClaimTypes.Role;
+
+                    // 1) Direct role-like claims
+                    var directRoleTypes = new[] { "role", "roles", ClaimTypes.Role, "http://schemas.microsoft.com/ws/2008/06/identity/claims/role" };
+                    foreach (var c in jwt.Claims.Where(c => directRoleTypes.Contains(c.Type, StringComparer.OrdinalIgnoreCase)))
+                    {
+                        if (!identity.HasClaim(roleClaimType, c.Value))
+                            identity.AddClaim(new Claim(roleClaimType, c.Value));
+                    }
+
+                    // 2) realm_access.roles (Keycloak style)
+                    if (jwt.Payload.TryGetValue("realm_access", out var realmObj) && realmObj != null)
+                    {
+                        try
+                        {
+                            using var doc = JsonDocument.Parse(realmObj.ToString() ?? "{}");
+                            if (doc.RootElement.TryGetProperty("roles", out var rolesElement) && rolesElement.ValueKind == JsonValueKind.Array)
+                            {
+                                foreach (var r in rolesElement.EnumerateArray())
+                                {
+                                    var role = r.GetString();
+                                    if (!string.IsNullOrWhiteSpace(role) && !identity.HasClaim(roleClaimType, role))
+                                        identity.AddClaim(new Claim(roleClaimType, role!));
+                                }
+                            }
+                        }
+                        catch { /* ignore parse errors */ }
+                    }
+
+                    // 3) resource_access -> { client: { roles: [...] } }
+                    if (jwt.Payload.TryGetValue("resource_access", out var resObj) && resObj != null)
+                    {
+                        try
+                        {
+                            using var doc = JsonDocument.Parse(resObj.ToString() ?? "{}");
+                            if (doc.RootElement.ValueKind == JsonValueKind.Object)
+                            {
+                                foreach (var clientProp in doc.RootElement.EnumerateObject())
+                                {
+                                    if (clientProp.Value.TryGetProperty("roles", out var clientRoles) && clientRoles.ValueKind == JsonValueKind.Array)
+                                    {
+                                        foreach (var r in clientRoles.EnumerateArray())
+                                        {
+                                            var role = r.GetString();
+                                            if (!string.IsNullOrWhiteSpace(role) && !identity.HasClaim(roleClaimType, role))
+                                                identity.AddClaim(new Claim(roleClaimType, role!));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        catch { /* ignore parse errors */ }
+                    }
+                }
+                catch
+                {
+                    // swallow - don't fail authentication because of mapping
+                }
+
+                return Task.CompletedTask;
+            }
         };
     });
 
 builder.Services.AddAuthorization();
-
-// Register application services
-builder.Services.AddScoped<IVaaniRepository, VaaniRepository>();
-builder.Services.AddScoped<IMeetingService, MeetingService>();
-builder.Services.AddScoped<ISessionService, SessionService>();
-builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
-builder.Services.AddScoped<IEncryptionService, EncryptionService>();
-builder.Services.AddScoped<IAdminService, AdminService>();
-builder.Services.AddScoped<IAzureSubscriptionService, AzureSubscriptionService>();
 
 // Configure Swagger/OpenAPI
 builder.Services.AddEndpointsApiExplorer();
@@ -82,14 +205,15 @@ builder.Services.AddSwaggerGen(c =>
         }
     });
 
-    // Add JWT Authentication to Swagger
+    // Use HTTP Bearer scheme so Swagger can send JWT tokens
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
-        Description = "JWT Authorization header using the Bearer scheme. Enter 'Bearer' [space] and then your token in the text input below.",
+        Description = "JWT Authorization header using the Bearer scheme. Example: 'Bearer {token}'",
         Name = "Authorization",
         In = ParameterLocation.Header,
-        Type = SecuritySchemeType.ApiKey,
-        Scheme = "Bearer"
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT"
     });
 
     c.AddSecurityRequirement(new OpenApiSecurityRequirement

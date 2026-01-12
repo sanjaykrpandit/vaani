@@ -10,7 +10,7 @@ namespace Vaani.API.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/admin/[controller]")]
-[Authorize]
+[Authorize(Roles = "admin")]
 public class AdminMeetingsController : ControllerBase
 {
     private readonly IAdminService _adminService;

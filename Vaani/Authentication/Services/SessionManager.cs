@@ -98,14 +98,14 @@ public class SessionManager
     /// <summary>
     /// Stop the current session
     /// </summary>
-    public async Task StopSessionAsync()
-    {
-        if (_currentSession != null)
-        {
-            await _authService.EndSessionAsync();
-        }
-        StopSession();
-    }
+    //public async Task StopSessionAsync()
+    //{
+    //    if (_currentSession != null)
+    //    {
+    //        await _authService.EndSessionAsync();
+    //    }
+    //    StopSession();
+    //}
 
     /// <summary>
     /// Stop session without API call (local only)

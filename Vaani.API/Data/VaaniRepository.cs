@@ -177,4 +177,66 @@ public class VaaniRepository : IVaaniRepository
     }
 
     #endregion
+
+    # region Language Operations
+    // Additional language-related methods can be added here
+    public async Task<IEnumerable<Language>> GetAllLanguagesAsync()
+    {
+        try
+        {
+            return await _context.Languages.ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting all languages");
+            throw;
+        }
+    }
+    public async Task<Language> CreateLanguageAsync(Language language)
+    {
+        try
+        {
+            _context.Languages.Add(language);
+            await _context.SaveChangesAsync();
+            return language;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating language");
+            throw;
+        }
+    }
+    public async Task UpdateLanguageAsync(Language language)
+    {
+        try
+        {
+            _context.Languages.Update(language);
+            await _context.SaveChangesAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating language: {LanguageId}", language.Id);
+            throw;
+        }
+    }
+    public async Task DeleteLanguageAsync(int languageId)
+    {
+        try
+        {
+            var language = await _context.Languages.FindAsync(languageId);
+            if (language != null)
+            {
+                _context.Languages.Remove(language);
+                await _context.SaveChangesAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error deleting language: {LanguageId}", languageId);
+            throw;
+        }
+    }
+
+    #endregion
+
 }

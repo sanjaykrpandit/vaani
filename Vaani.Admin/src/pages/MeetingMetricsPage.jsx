@@ -5,6 +5,9 @@ import MeetingMetrics from '../components/MeetingMetrics'
 import { analyticsService } from '../services/analyticsService'
 import { meetingService } from '../services/meetingService'
 import './MeetingMetricsPage.css'
+import exportIcon from '../Assets/download.png'
+import refreshIcon from '../Assets/reload.png'
+import backIcon from '../Assets/back.png'
 
 function MeetingMetricsPage() {
   const { meetingId } = useParams()
@@ -109,7 +112,7 @@ function MeetingMetricsPage() {
         <div className="metrics-header">
           <div className="header-left">
             <button className="btn-back" onClick={() => navigate('/dashboard')}>
-              ? Back to Dashboard
+               <img src={backIcon} alt="Back" width={24} className="icon" />
             </button>
             <div className="meeting-info">
               <h1>Session Analytics</h1>
@@ -145,11 +148,11 @@ function MeetingMetricsPage() {
                 </select>
               )}
             </div>
-            <button className="btn btn-secondary" onClick={handleRefresh}>
-              ?? Refresh
+            <button className="btn btn-gray" onClick={handleRefresh}>
+               <img src={refreshIcon} width={22} alt="Refresh" className="icon" />
             </button>
-            <button className="btn btn-primary" onClick={handleExport}>
-              ?? Export Data
+            <button className="btn btn-gray" onClick={handleExport}>
+              <img src={exportIcon} width={22} alt="Export" className="icon" />
             </button>
           </div>
         </div>

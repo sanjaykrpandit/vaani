@@ -1,6 +1,7 @@
 import { useAuth } from '../context/AuthContext'
 import { useNavigate } from 'react-router-dom'
 import logo from '../Assets/logo.png'
+import './Layout.css'
 
 function Layout({ children }) {
   const { user, logout } = useAuth()
@@ -34,10 +35,27 @@ function Layout({ children }) {
         </div>
       </header>
       
+      <p className="nav-content">
+          <nav className="nav-menu">
+        <button className="btn btn-sm" onClick={() => navigate('/dashboard')}>
+          📊 Dashboard
+        </button>
+        <button className="btn btn-sm" onClick={() => navigate('/languages')}>
+          🌐 Languages
+        </button>
+        <button className="btn btn-sm" onClick={() => navigate('/meetings')}>
+          📞 Meetings
+        </button>
+        <button className="btn btn-sm" onClick={() => navigate('/users')}>
+          👥 Users
+        </button>
+      </nav>
+        </p>
+
+
       <main className="main-content">
         {children}
-      </main>
-      
+      </main>      
       <footer className="footer">
         <p>&copy; 2026 Vaani Admin Console. All rights reserved.</p>
       </footer>

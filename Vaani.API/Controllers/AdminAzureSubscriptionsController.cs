@@ -10,7 +10,7 @@ namespace Vaani.API.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/admin/[controller]")]
-[Authorize]
+[Authorize(Roles = "admin")]
 public class AzureSubscriptionsController : ControllerBase
 {
     private readonly IAzureSubscriptionService _subscriptionService;
