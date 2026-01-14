@@ -8,8 +8,9 @@ public class MeetingResponse
     public int Id { get; set; }
     public string MeetingId { get; set; } = string.Empty;
     public string MeetingName { get; set; } = string.Empty;
+    public string MeetingLanguage { get; set; } = string.Empty;
     public int AzureSubscriptionId { get; set; }
-    public AzureSubscriptionResponse? AzureSubscription { get; set; }
+    public LanguageDto? Lanuage { get; set; }
     public DateTime ValidFrom { get; set; }
     public DateTime ValidUntil { get; set; }
     public DateTime CreatedAt { get; set; }

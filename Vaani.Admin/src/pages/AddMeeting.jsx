@@ -3,37 +3,41 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Layout from '../components/Layout'
 import { meetingService } from '../services/meetingService'
+import languageService from '../services/languageService'
 
 function AddMeeting() {
   const navigate = useNavigate()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [subscriptions, setSubscriptions] = useState([])
-  const [subsLoading, setSubsLoading] = useState(true)
+  const [languages, setLanguages] = useState([])
+  const [langsLoading, setLangsLoading] = useState(true)
 
   const [formData, setFormData] = useState({
     meetingId: '',
     meetingName: '',
-    azureSubscriptionId: '',
+    meetingLanguage: 'en-US',
     validFrom: '',
     validUntil: ''
   })
 
   useEffect(() => {
     let mounted = true
-    setSubsLoading(true)
-    meetingService.getAzureSubscriptions()
+    setLangsLoading(true)
+    languageService.getAllLanguages()
       .then(data => {
         if (!mounted) return
-        setSubscriptions(data || [])
+        setLanguages(data || [])
+        if (!formData.meetingLanguage) {
+          setFormData(prev => ({ ...prev, meetingLanguage: 'en-US' }))
+        }
       })
       .catch(() => {
         if (!mounted) return
-        setError('Failed to load subscriptions')
+        setError('Failed to load languages')
       })
       .finally(() => {
         if (!mounted) return
-        setSubsLoading(false)
+        setLangsLoading(false)
       })
 
     return () => { mounted = false }
@@ -66,7 +70,7 @@ function AddMeeting() {
       const meetingData = {
         meetingId: formData.meetingId,
         meetingName: formData.meetingName,
-        azureSubscriptionId: parseInt(formData.azureSubscriptionId, 10),
+        meetingLanguage: formData.meetingLanguage || 'en-US',
         validFrom: validFrom.toISOString(),
         validUntil: validUntil.toISOString()
       }
@@ -127,22 +131,20 @@ function AddMeeting() {
           </div>
 
           <div className="form-group">
-            <label htmlFor="azureSubscriptionId">Azure Subscription *</label>
-            {subsLoading ? (
-              <div>Loading subscriptions...</div>
+            <label htmlFor="meetingLanguage">Meeting Language *</label>
+            {langsLoading ? (
+              <div>Loading languages...</div>
             ) : (
               <select
-                id="azureSubscriptionId"
-                name="azureSubscriptionId"
-                value={formData.azureSubscriptionId}
+                id="meetingLanguage"
+                name="meetingLanguage"
+                value={formData.meetingLanguage}
                 onChange={handleChange}
                 required
               >
-                <option value="">-- Select subscription --</option>
-                {subscriptions.map(s => (
-                  <option key={s.id} value={s.id}>
-                    {s.description}
-                  </option>
+                <option value="">-- Select language --</option>
+                {languages.map(l => (
+                  <option key={l.languageCode} value={l.languageCode}>{l.languageName}</option>
                 ))}
               </select>
             )}

@@ -6,6 +6,7 @@ namespace Vaani.API.Models.DTOs;
 public class UpdateMeetingRequest
 {
     public string? MeetingName { get; set; }
+    public string? MeetingLanguage { get; set; }
     public int? AzureSubscriptionId { get; set; }
     public DateTime? ValidFrom { get; set; }
     public DateTime? ValidUntil { get; set; }

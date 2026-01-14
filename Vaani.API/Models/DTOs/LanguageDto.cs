@@ -13,4 +13,12 @@
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     }
+
+    public class MeetingLanguage
+    {      
+        public string LanguageCode { get; set; } = string.Empty;
+        public string LanguageName { get; set; } = string.Empty;
+        public string LanguageMaleNeural { get; set; } = string.Empty;
+        public string LanguageFemaleNeural { get; set; } = string.Empty;       
+    }
 }

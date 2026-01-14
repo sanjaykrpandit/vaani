@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import Layout from '../components/Layout'
 import { meetingService } from '../services/meetingService'
+import languageService from '../services/languageService'
 
 function EditMeeting() {
   const { meetingId } = useParams()
@@ -9,17 +10,40 @@ function EditMeeting() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [languages, setLanguages] = useState([])
+  const [langsLoading, setLangsLoading] = useState(true)
   const [formData, setFormData] = useState({
     meetingName: '',
     azureSubscriptionId: '',
     validFrom: '',
     validUntil: '',
-    isActive: true
+    isActive: true,
+    meetingLanguage: 'en-US'
   })
 
   useEffect(() => {
     loadMeeting()
+    loadLanguages()
   }, [meetingId])
+
+  const formatDateForInput = (dateStr) => {
+    if (!dateStr) return ''
+    const d = new Date(dateStr)
+    const pad = (n) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+  }
+
+  const loadLanguages = async () => {
+    try {
+      setLangsLoading(true)
+      const data = await languageService.getAllLanguages()
+      setLanguages(data || [])
+    } catch (err) {
+      console.error('Failed to load languages', err)
+    } finally {
+      setLangsLoading(false)
+    }
+  }
 
   const loadMeeting = async () => {
     try {
@@ -27,15 +51,13 @@ function EditMeeting() {
       const meeting = await meetingService.getMeetingById(meetingId)
       
       // Convert dates to datetime-local format
-      const validFrom = new Date(meeting.validFrom)
-      const validUntil = new Date(meeting.validUntil)
-      
       setFormData({
         meetingName: meeting.meetingName,
         azureSubscriptionId: meeting.azureSubscriptionId,
-        validFrom: validFrom.toISOString().slice(0, 16),
-        validUntil: validUntil.toISOString().slice(0, 16),
-        isActive: meeting.isActive
+        validFrom: formatDateForInput(meeting.validFrom),
+        validUntil: formatDateForInput(meeting.validUntil),
+        isActive: meeting.isActive,
+        meetingLanguage: meeting.meetingLanguage || 'en-US'
       })
     } catch (err) {
       setError('Failed to load meeting')
@@ -79,7 +101,7 @@ function EditMeeting() {
 
       const updateData = {
         meetingName: formData.meetingName,
-        azureSubscriptionId: parseInt(formData.azureSubscriptionId),
+        meetingLanguage: formData.meetingLanguage || 'en-US',
         validFrom: validFrom.toISOString(),
         validUntil: validUntil.toISOString(),
         isActive: formData.isActive
@@ -148,16 +170,23 @@ function EditMeeting() {
           </div>
 
           <div className="form-group">
-            <label htmlFor="azureSubscriptionId">Azure Subscription ID *</label>
-            <input
-              id="azureSubscriptionId"
-              name="azureSubscriptionId"
-              type="number"
-              value={formData.azureSubscriptionId}
-              onChange={handleChange}
-              placeholder="e.g., 1"
-              required
-            />
+            <label htmlFor="meetingLanguage">Meeting Language *</label>
+            {langsLoading ? (
+              <div>Loading languages...</div>
+            ) : (
+              <select
+                id="meetingLanguage"
+                name="meetingLanguage"
+                value={formData.meetingLanguage}
+                onChange={handleChange}
+                required
+              >
+                <option value="">-- Select language --</option>
+                {languages.map(l => (
+                  <option key={l.languageCode} value={l.languageCode}>{l.languageName}</option>
+                ))}
+              </select>
+            )}
           </div>
 
           <div className="form-row">

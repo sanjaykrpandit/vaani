@@ -131,7 +131,7 @@ public class MeetingService : IMeetingService
             {
                 SessionToken = accessToken ?? "",
                 IsValid = true,
-                MeetingName = meeting.MeetingName,
+                MeetingName = meeting.MeetingName,                
                 EncryptedConfig = encryptedConfig,
                 ValidUntil = meeting.ValidUntil,
                 RemainingMinutes = remainingMinutes,

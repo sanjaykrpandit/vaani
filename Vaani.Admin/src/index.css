@@ -222,6 +222,46 @@ body {
   color: #991b1b;
 }
 
+.badge-running {
+     background-color: #b2e9df;
+    color: #757575;
+    font-size: 13px;
+    min-width: 90px;
+}
+
+
+
+.status-with-dot {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-transform: capitalize;
+  font-weight: 500;
+  min-width: 100px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+/* Dot colors */
+.status-dot.upcoming {
+  background-color: #ffc107;
+}
+
+.status-dot.running {
+  background-color: #28a745;
+}
+
+.status-dot.completed {
+  background-color: #6c757d;
+}
+
+
+
 /* Utilities */
 .text-muted {
   color: var(--text-secondary);

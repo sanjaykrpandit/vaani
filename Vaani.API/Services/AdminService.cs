@@ -103,7 +103,7 @@ public class AdminService : IAdminService
             }
 
             // Verify Azure subscription exists
-            var azureSubscription = await _dbContext.AzureSubscriptions.FindAsync(request.AzureSubscriptionId);
+            var azureSubscription = await _dbContext.AzureSubscriptions.FirstOrDefaultAsync();
             if (azureSubscription == null)
             {
                 _logger.LogWarning("Azure subscription not found: {AzureSubscriptionId}", request.AzureSubscriptionId);
@@ -114,11 +114,12 @@ public class AdminService : IAdminService
             {
                 MeetingId = request.MeetingId.ToUpperInvariant(),
                 MeetingName = request.MeetingName,
-                AzureSubscriptionId = request.AzureSubscriptionId,
+                AzureSubscriptionId = azureSubscription.Id,
                 ValidFrom = request.ValidFrom,
                 ValidUntil = request.ValidUntil,
                 IsActive = true,
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = DateTime.UtcNow,
+                MeetingLanguage = request.MeetingLanguage ?? "en-US"
             };
 
             _dbContext.Meetings.Add(meeting);
@@ -169,6 +170,7 @@ public class AdminService : IAdminService
             if (request.ValidFrom.HasValue) meeting.ValidFrom = request.ValidFrom.Value;
             if (request.ValidUntil.HasValue) meeting.ValidUntil = request.ValidUntil.Value;
             if (request.IsActive.HasValue) meeting.IsActive = request.IsActive.Value;
+            if (request.MeetingLanguage != null) meeting.MeetingLanguage = request.MeetingLanguage;
 
             meeting.UpdatedAt = DateTime.UtcNow;
 
@@ -265,21 +267,22 @@ public class AdminService : IAdminService
             MeetingId = meeting.MeetingId,
             MeetingName = meeting.MeetingName,
             AzureSubscriptionId = meeting.AzureSubscriptionId,
-            AzureSubscription = meeting.AzureSubscription != null ? new AzureSubscriptionResponse
-            {
-                Id = meeting.AzureSubscription.Id,
-                SubscriptionKey = meeting.AzureSubscription.SubscriptionKey,
-                Region = meeting.AzureSubscription.Region,
-                Description = meeting.AzureSubscription.Description,
-                IsActive = meeting.AzureSubscription.IsActive,
-                CreatedAt = meeting.AzureSubscription.CreatedAt,
-                UpdatedAt = meeting.AzureSubscription.UpdatedAt
-            } : null,
+            //AzureSubscription = meeting.AzureSubscription != null ? new AzureSubscriptionResponse
+            //{
+            //    Id = meeting.AzureSubscription.Id,
+            //    SubscriptionKey = meeting.AzureSubscription.SubscriptionKey,
+            //    Region = meeting.AzureSubscription.Region,
+            //    Description = meeting.AzureSubscription.Description,
+            //    IsActive = meeting.AzureSubscription.IsActive,
+            //    CreatedAt = meeting.AzureSubscription.CreatedAt,
+            //    UpdatedAt = meeting.AzureSubscription.UpdatedAt
+            //} : null,
             ValidFrom = meeting.ValidFrom,
             ValidUntil = meeting.ValidUntil,
             CreatedAt = meeting.CreatedAt,
             UpdatedAt = meeting.UpdatedAt,
-            IsActive = meeting.IsActive
+            IsActive = meeting.IsActive,
+            MeetingLanguage = meeting.MeetingLanguage
         };
     }
 

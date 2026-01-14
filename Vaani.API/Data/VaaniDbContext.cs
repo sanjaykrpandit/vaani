@@ -66,14 +66,14 @@ public class VaaniDbContext : DbContext
             entity.ToTable("meetings");
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => e.MeetingId).IsUnique();
-            entity.HasIndex(e => e.AzureSubscriptionId);
-            
+            entity.HasIndex(e => e.AzureSubscriptionId);            
             entity.Property(e => e.Id).HasColumnName("id");
             entity.Property(e => e.MeetingId).HasColumnName("meeting_id").IsRequired().HasMaxLength(50);
             entity.Property(e => e.MeetingName).HasColumnName("meeting_name").IsRequired().HasMaxLength(255);
             entity.Property(e => e.AzureSubscriptionId).HasColumnName("azure_subscription_id").IsRequired();
             entity.Property(e => e.ValidFrom).HasColumnName("valid_from");
             entity.Property(e => e.ValidUntil).HasColumnName("valid_until");
+            entity.Property(e => e.MeetingLanguage).HasColumnName("meeting_language").IsRequired().HasMaxLength(20);
             entity.Property(e => e.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("CURRENT_TIMESTAMP");
             entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
             entity.Property(e => e.IsActive).HasColumnName("is_active").HasDefaultValue(true);

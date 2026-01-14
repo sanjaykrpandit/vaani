@@ -18,14 +18,21 @@ function Layout({ children }) {
         <div className="header-content">
           <div className="header-left">
             <h2 className="logo">
-              <img src={logo} height="20" alt="Vaani" className="logo-image" /> Admin Console
+              <img
+                src={logo}
+                height="20"
+                alt="Vaani"
+                className="logo-image"
+              />{' '}
+              Admin Console
             </h2>
           </div>
+
           <div className="header-right">
             <span className="user-info">
               Welcome, {user?.fullName || user?.userId}
             </span>
-            <button 
+            <button
               className="btn btn-secondary btn-sm"
               onClick={handleLogout}
             >
@@ -34,28 +41,44 @@ function Layout({ children }) {
           </div>
         </div>
       </header>
-      
-      <p className="nav-content">
-          <nav className="nav-menu">
-        <button className="btn btn-sm" onClick={() => navigate('/dashboard')}>
-          📊 Dashboard
-        </button>
-        <button className="btn btn-sm" onClick={() => navigate('/languages')}>
-          🌐 Languages
-        </button>
-        <button className="btn btn-sm" onClick={() => navigate('/meetings')}>
-          📞 Meetings
-        </button>
-        <button className="btn btn-sm" onClick={() => navigate('/users')}>
-          👥 Users
-        </button>
-      </nav>
-        </p>
 
+      {/* ✅ FIXED: div instead of p */}
+      <div className="nav-content">
+        <nav className="nav-menu">
+          <button
+            className="btn btn-sm"
+            onClick={() => navigate('/dashboard')}
+          >
+            📊 Dashboard
+          </button>
+
+          <button
+            className="btn btn-sm"
+            onClick={() => navigate('/languages')}
+          >
+            🌐 Languages
+          </button>
+
+          <button
+            className="btn btn-sm"
+            onClick={() => navigate('/meetings')}
+          >
+            📞 Meetings
+          </button>
+
+          <button
+            className="btn btn-sm"
+            onClick={() => navigate('/users')}
+          >
+            👥 Users
+          </button>
+        </nav>
+      </div>
 
       <main className="main-content">
         {children}
-      </main>      
+      </main>
+
       <footer className="footer">
         <p>&copy; 2026 Vaani Admin Console. All rights reserved.</p>
       </footer>
