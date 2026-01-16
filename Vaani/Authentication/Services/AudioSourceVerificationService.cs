@@ -37,8 +37,10 @@ public class AudioSourceVerificationService
 
         try
         {
-            // Step 1: Check if VB-CABLE A+B is installed
-            if (!IsVBCableABInstalled())
+            // Step 1: Check if VB-CABLE A+B is installed (run in background to avoid UI freeze)
+            var hasVBCable = await Task.Run(() => IsVBCableABInstalled());
+            
+            if (!hasVBCable)
             {
                 result.IsValid = false;
                 result.ErrorCode = "VBCABLE_NOT_FOUND";
@@ -95,8 +97,8 @@ public class AudioSourceVerificationService
     {
         try
         {
-            DeviceService ds = new DeviceService();
-            return ds.HasCableABDevices();
+            // Use singleton instance to benefit from caching
+            return DeviceService.Instance.HasCableABDevices();
         }
         catch
         {

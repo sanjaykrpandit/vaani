@@ -23,7 +23,8 @@ public class AudioLoopbackTestService
 
     public AudioLoopbackTestService()
     {
-        _deviceService = new DeviceService();
+        // Use singleton instance to share device cache across entire app
+        _deviceService = DeviceService.Instance;
         _deviceService.LogMessage += (s, msg) => LogMessage?.Invoke(this, msg);
     }
 

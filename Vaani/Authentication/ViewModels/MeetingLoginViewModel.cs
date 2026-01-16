@@ -26,9 +26,10 @@ public class MeetingLoginViewModel : ReactiveObject
     private readonly SessionManager _sessionManager;
     private readonly DriverInstallationService _driverService;
     private readonly AudioSourceVerificationService _audioVerificationService;
+    private readonly DeviceService _deviceService; // Singleton instance for cache pre-warming
 
-    private string _meetingId = "VAANI-TEST-009";
-    private string _userName = "John Doe";
+    private string _meetingId = "";
+    private string _userName = "";
     private bool _isValidating;
     private bool _hasError;
     private string _errorMessage = string.Empty;
@@ -41,6 +42,7 @@ public class MeetingLoginViewModel : ReactiveObject
         _sessionManager = new SessionManager();
         _driverService = new DriverInstallationService();
         _audioVerificationService = new AudioSourceVerificationService();
+        _deviceService = DeviceService.Instance; // Use singleton for cache sharing
 
         // Initialize commands
         ValidateCommand = ReactiveCommand.CreateFromTask(ValidateMeetingAsync);
@@ -129,6 +131,11 @@ public class MeetingLoginViewModel : ReactiveObject
 
         try
         {
+            // 🚀 OPTIMIZATION: Pre-warm device cache in background EARLY
+            // This runs in parallel with audio verification and API calls
+            // By the time we reach TestAudio, cache will be hot!
+            _ = Task.Run(() => _deviceService.GetAllDevices());
+
             // ✅ STEP 1: Verify audio source FIRST
             var audioSourceResult = await _audioVerificationService.VerifyAudioSourceAsync();
 
@@ -144,7 +151,7 @@ public class MeetingLoginViewModel : ReactiveObject
             var deviceId = MeetingAuthenticationService.GetDeviceId();
             var deviceName = MeetingAuthenticationService.GetDeviceName();
 
-            // Call API to validate
+            // Call API to validate (device cache is warming in background)
             var response = await _authService.ValidateMeetingAsync(
                 MeetingId.Trim(),
                 deviceId,
@@ -209,6 +216,7 @@ public class MeetingLoginViewModel : ReactiveObject
             await Task.Delay(500);
 
             // ✅ STEP 3: Launch Audio Test BEFORE opening main window
+            // Device cache is now pre-warmed from background task!
             var audioTestPassed = await LaunchAudioTestAsync();
 
             if (!audioTestPassed)
@@ -374,10 +382,14 @@ public class MeetingLoginViewModel : ReactiveObject
     }
 
     /// <summary>
-    /// Check driver on window load
+    /// Check driver on window load and pre-warm device cache
     /// </summary>
     public async Task OnWindowLoadedAsync()
     {
+        // 🚀 OPTIMIZATION: Pre-warm device cache immediately on window load
+        // This runs in background while user types Meeting ID
+        _ = Task.Run(() => _deviceService.GetAllDevices());
+
         // Check if driver is installed, if not show installation window
         if (!_driverService.IsVBCableInstalled())
         {

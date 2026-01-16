@@ -24,6 +24,7 @@ public class TestAudioViewModel : ReactiveObject
     private readonly AudioLoopbackTestService _testService;
     private CancellationTokenSource? _cts;
     private readonly bool _isFromLogin; // Flag to indicate if launched from login flow
+    private readonly SessionManager _sessionManager; // Cache to avoid repeated instantiation
 
     // Test state
     private TestPhase _currentPhase = TestPhase.NotStarted;
@@ -75,6 +76,7 @@ public class TestAudioViewModel : ReactiveObject
         _testService.LogMessage += OnLogMessage;
         _testService.AudioLevelChanged += OnAudioLevelChanged;
         _isFromLogin = isFromLogin;
+        _sessionManager = new SessionManager(); // Initialize once
 
         StartTestCommand = ReactiveCommand.CreateFromTask(StartTestAsync, 
             this.WhenAnyValue(x => x.IsRunning, running => !running));
@@ -352,9 +354,8 @@ public class TestAudioViewModel : ReactiveObject
             // (Login flow handles navigation itself)
             if (!_isFromLogin)
             {
-                // Check session state before deciding where to navigate
-                var sessionManager = new SessionManager();
-                bool hasValidSession = sessionManager.LoadSession() && sessionManager.HasActiveSession();
+                // Check session state before deciding where to navigate (use cached instance)
+                bool hasValidSession = _sessionManager.LoadSession() && _sessionManager.HasActiveSession();
                 
                 if (hasValidSession)
                 {
@@ -404,25 +405,27 @@ public class TestAudioViewModel : ReactiveObject
 
     private async Task OpenMainWindowAsync(MeetingConfiguration config)
     {
-        await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+        await Dispatcher.UIThread.InvokeAsync(() =>
         {
-            if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+            if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime desktop)
+                return;
+
+            // Create main window with session configuration
+            var mainWindow = new MainWindow();
+            desktop.MainWindow = mainWindow;
+            mainWindow.Show();
+
+            // Close all other windows (optimize with single enumeration)
+            var windowsToClose = desktop.Windows?
+                .Where(w => w is MeetingLoginWindow or TestAudioWindow)
+                .ToList();
+
+            if (windowsToClose != null)
             {
-                // Create main window with session configuration
-                var mainWindow = new MainWindow();
-
-                // TODO: Pass configuration to MainWindow/MainViewModel
-                // You'll need to modify MainViewModel to accept session configuration
-
-                desktop.MainWindow = mainWindow;
-                mainWindow.Show();
-
-                // Close all other windows
-                var loginWindow = desktop.Windows?.FirstOrDefault(w => w is MeetingLoginWindow);
-                loginWindow?.Close();
-                
-                var testWindow = desktop.Windows?.FirstOrDefault(w => w is TestAudioWindow);
-                testWindow?.Close();
+                foreach (var window in windowsToClose)
+                {
+                    window.Close();
+                }
             }
         });
     }
@@ -431,35 +434,27 @@ public class TestAudioViewModel : ReactiveObject
     {
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
-            if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+            if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime desktop)
+                return;
+
+            var testWindow = desktop.Windows?.FirstOrDefault(w => w is TestAudioWindow);
+            var existingLoginWindow = desktop.Windows?.FirstOrDefault(w => w is MeetingLoginWindow);
+
+            if (existingLoginWindow != null)
             {
-                var testWindow = desktop.Windows?.FirstOrDefault(w => w is TestAudioWindow);
-
-                // Check if there's an existing login window (from driver installation flow)
-                var existingLoginWindow = desktop.Windows?.FirstOrDefault(w => w is MeetingLoginWindow);
-
-                if (existingLoginWindow != null)
-                {
-                    // Login window exists, just show it again
-                    testWindow?.Hide();
-                    existingLoginWindow.Show();
-                    testWindow?.Close();
-                }
-                else
-                {
-                    // No login window exists, create a new one
-                    var loginWindow = new MeetingLoginWindow();
-
-                    // Hide test window
-                    testWindow?.Hide();
-
-                    // Show login window
-                    desktop.MainWindow = loginWindow;
-                    loginWindow.Show();
-
-                    // Close test window
-                    testWindow?.Close();
-                }
+                // Login window exists, just show it again
+                testWindow?.Hide();
+                existingLoginWindow.Show();
+                testWindow?.Close();
+            }
+            else
+            {
+                // No login window exists, create a new one
+                var loginWindow = new MeetingLoginWindow();
+                testWindow?.Hide();
+                desktop.MainWindow = loginWindow;
+                loginWindow.Show();
+                testWindow?.Close();
             }
         });
     }
@@ -479,26 +474,26 @@ public class TestAudioViewModel : ReactiveObject
             
             await Dispatcher.UIThread.InvokeAsync(() =>
             {
-                if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+                if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime desktop)
+                    return;
+
+                var testWindow = desktop.Windows?.FirstOrDefault(w => w is TestAudioWindow);
+                
+                if (testWindow != null)
                 {
-                    var testWindow = desktop.Windows?.FirstOrDefault(w => w is TestAudioWindow);
+                    // Hide test window
+                    testWindow.Hide();
                     
-                    if (testWindow != null)
+                    // Show driver installation window with auto-reinstall flag
+                    var driverWindow = new DriverInstallationWindow(autoReinstall: true);
+                    driverWindow.Show();
+                    
+                    // Handle driver window closing
+                    driverWindow.Closed += (s, e) =>
                     {
-                        // Hide test window
-                        testWindow.Hide();
-                        
-                        // Show driver installation window with auto-reinstall flag
-                        var driverWindow = new DriverInstallationWindow(autoReinstall: true);
-                        driverWindow.Show();
-                        
-                        // Handle driver window closing
-                        driverWindow.Closed += (s, e) =>
-                        {
-                            // Close test window when driver window closes
-                            testWindow.Close();
-                        };
-                    }
+                        // Close test window when driver window closes
+                        testWindow.Close();
+                    };
                 }
             });
         }

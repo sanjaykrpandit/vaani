@@ -7,6 +7,10 @@ namespace Vaani.Services;
 
 public class DeviceService
 {
+    // Singleton instance for shared caching across the entire app
+    private static readonly Lazy<DeviceService> _instance = new(() => new DeviceService());
+    public static DeviceService Instance => _instance.Value;
+
     private CancellationTokenSource? _cts;
     private bool _isPlayingToMeeting;
     private readonly object _playbackLock = new();
@@ -20,24 +24,77 @@ public class DeviceService
 
     public bool IsRunning => _cts != null && !_cts.Token.IsCancellationRequested;
 
+    // Keep public constructor for backward compatibility, but singleton is preferred
+    public DeviceService()
+    {
+    }
 
-    //-------------- Cached Device Lists --------------
+
+    //-------------- Enhanced Device Caching (OPTIMIZED FOR PERFORMANCE) --------------
     private static readonly MMDeviceEnumerator _enumerator = new();
     private static List<AudioDeviceInfo>? _cachedInputs;
     private static List<AudioDeviceInfo>? _cachedOutputs;
-    private static readonly object _lock = new();
+    private static MMDevice? _cachedOutgoingCable;
+    private static MMDevice? _cachedIncomingCable;
+    private static MMDevice? _cachedPhysicalMic;
+    private static MMDevice? _cachedPhysicalSpeaker;
+    private static DateTime _lastCacheTime = DateTime.MinValue;
+    
+    // Cache expires after 15 seconds for optimal performance
+    // Balances responsiveness with minimal overhead (device changes are rare)
+    // MainViewModel's 3-second timer will still benefit from cache hits
+    private static readonly TimeSpan _cacheExpiration = TimeSpan.FromSeconds(60);
+    
+    private static readonly object _cacheLock = new();
+
+    /// <summary>
+    /// Force refresh the device cache (call after device changes or when needed)
+    /// </summary>
+    public void RefreshDeviceCache()
+    {
+        lock (_cacheLock)
+        {
+            _cachedInputs = null;
+            _cachedOutputs = null;
+            _cachedOutgoingCable?.Dispose();
+            _cachedOutgoingCable = null;
+            _cachedIncomingCable?.Dispose();
+            _cachedIncomingCable = null;
+            _cachedPhysicalMic?.Dispose();
+            _cachedPhysicalMic = null;
+            _cachedPhysicalSpeaker?.Dispose();
+            _cachedPhysicalSpeaker = null;
+            _lastCacheTime = DateTime.MinValue;
+            Log("[CACHE] Device cache cleared");
+        }
+    }
+
+    /// <summary>
+    /// Check if cache is still valid (expires after 15 seconds)
+    /// </summary>
+    private bool IsCacheValid()
+    {
+        return (DateTime.UtcNow - _lastCacheTime) < _cacheExpiration;
+    }
+
+    /// <summary>
+    /// Get all devices with smart caching that respects auto-refresh requirements
+    /// </summary>
     public (List<AudioDeviceInfo> Inputs, List<AudioDeviceInfo> Outputs) GetAllDevices()
     {
-        lock (_lock)
+        lock (_cacheLock)
         {
-            if (_cachedInputs != null && _cachedOutputs != null)
+            // Return cached data if still valid (within 15 seconds)
+            if (_cachedInputs != null && _cachedOutputs != null && IsCacheValid())
+            {
                 return (_cachedInputs, _cachedOutputs);
+            }
         }
 
         var inputs = new List<AudioDeviceInfo>();
         var outputs = new List<AudioDeviceInfo>();
-        var defaultInput = default(MMDevice);
-        var defaultOutput = default(MMDevice);
+        MMDevice? defaultInput = null;
+        MMDevice? defaultOutput = null;
 
         try
         {
@@ -70,50 +127,33 @@ public class DeviceService
                 device.Dispose();
             }
 
-            defaultInput.Dispose();
-            defaultOutput.Dispose();
+            defaultInput?.Dispose();
+            defaultOutput?.Dispose();
         }
         catch (Exception ex)
         {
-            Log($"Error listing devices: {ex.Message}");
+            Log($"[CACHE] Error listing devices: {ex.Message}");
+            defaultInput?.Dispose();
+            defaultOutput?.Dispose();
         }
 
-        lock (_lock)
+        lock (_cacheLock)
         {
             _cachedInputs = inputs;
             _cachedOutputs = outputs;
+            _lastCacheTime = DateTime.UtcNow;
         }
 
         return (inputs, outputs);
     }
 
-
-    //--------------
+    /// <summary>
+    /// Get input devices (now uses smart cache)
+    /// </summary>
     public List<AudioDeviceInfo> GetInputDevices()
     {
-        var devices = new List<AudioDeviceInfo>();
-        try
-        {
-            var enumerator = new MMDeviceEnumerator();
-            var captureDevices = enumerator.EnumerateAudioEndPoints(DataFlow.Capture, DeviceState.Active);
-            var defaultCapture = enumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Console);
-
-            foreach (var device in captureDevices)
-            {
-                devices.Add(new AudioDeviceInfo
-                {
-                    Id = device.ID,
-                    FriendlyName = device.FriendlyName,
-                    IsDefault = device.ID == defaultCapture.ID,
-                    IsCableDevice = device.FriendlyName.Contains("CABLE", StringComparison.OrdinalIgnoreCase)
-                });
-            }
-        }
-        catch (Exception ex)
-        {
-            Log($"Error listing input devices: {ex.Message}");
-        }
-        return devices;
+        var (inputs, _) = GetAllDevices();
+        return inputs;
     }
 
     private void Log(string message)
@@ -121,102 +161,65 @@ public class DeviceService
         LogMessage?.Invoke(this, message);
     }
 
+    /// <summary>
+    /// Get output devices (now uses smart cache)
+    /// </summary>
     public List<AudioDeviceInfo> GetOutputDevices()
     {
-        var devices = new List<AudioDeviceInfo>();
-        try
-        {
-            var enumerator = new MMDeviceEnumerator();
-            var renderDevices = enumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active);
-            var defaultRender = enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Console);
-
-            foreach (var device in renderDevices)
-            {
-                devices.Add(new AudioDeviceInfo
-                {
-                    Id = device.ID,
-                    FriendlyName = device.FriendlyName,
-                    IsDefault = device.ID == defaultRender.ID,
-                    IsCableDevice = device.FriendlyName.Contains("CABLE", StringComparison.OrdinalIgnoreCase)
-                });
-            }
-        }
-        catch (Exception ex)
-        {
-            Log($"Error listing output devices: {ex.Message}");
-        }
-        return devices;
+        var (_, outputs) = GetAllDevices();
+        return outputs;
     }
 
     /// <summary>
-    /// Finds cable device for OUTGOING audio (your voice to meeting)
+    /// Finds cable device for OUTGOING audio with short-term caching
     /// Priority: CABLE-A Input > CABLE-B Input > Standard CABLE Input
     /// </summary>
     public MMDevice? FindOutgoingCableDevice()
     {
+        lock (_cacheLock)
+        {
+            if (_cachedOutgoingCable != null && IsCacheValid())
+            {
+                return _cachedOutgoingCable;
+            }
+        }
+
+        MMDevice? device = null;
         try
         {
             var enumerator = new MMDeviceEnumerator();
             var devices = enumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active);
 
             // Priority 1: CABLE-A Input (send your translated voice here)
-            foreach (var device in devices)
+            foreach (var dev in devices)
             {
-                var name = device.FriendlyName;
+                var name = dev.FriendlyName;
                 if (name.Contains("CABLE-A Input", StringComparison.OrdinalIgnoreCase) ||
                     name.Contains("CABLE A Input", StringComparison.OrdinalIgnoreCase))
                 {
                     Log($"[OUTGOING] Using CABLE-A Input: {name}");
-                    return device;
+                    device = dev;
+                    break;
                 }
             }
 
-            // Priority 2: CABLE-B Input
-            //foreach (var device in devices)
-            //{
-            //    var name = device.FriendlyName;
-            //    if (name.Contains("CABLE-B Input", StringComparison.OrdinalIgnoreCase) ||
-            //        name.Contains("CABLE B Input", StringComparison.OrdinalIgnoreCase))
-            //    {
-            //        Log($"[OUTGOING] Using CABLE-B Input: {name}");
-            //        return device;
-            //    }
-            //}
-
-            // Priority 3: Standard CABLE Input
-            //foreach (var device in devices)
-            //{
-            //    var name = device.FriendlyName;
-            //    if (name.Contains("CABLE Input", StringComparison.OrdinalIgnoreCase) &&
-            //        !name.Contains("CABLE-A", StringComparison.OrdinalIgnoreCase) &&
-            //        !name.Contains("CABLE-B", StringComparison.OrdinalIgnoreCase) &&
-            //        !name.Contains("CABLE A", StringComparison.OrdinalIgnoreCase) &&
-            //        !name.Contains("CABLE B", StringComparison.OrdinalIgnoreCase))
-            //    {
-            //        Log($"[OUTGOING] Using standard CABLE Input: {name}");
-            //        return device;
-            //    }
-            //}
-
-            // Fallback: CABLE Speakers
-            //foreach (var device in devices)
-            //{
-            //    if (device.FriendlyName.Contains("CABLE", StringComparison.OrdinalIgnoreCase) &&
-            //        device.FriendlyName.Contains("Speakers", StringComparison.OrdinalIgnoreCase))
-            //    {
-            //        Log($"[OUTGOING] Using CABLE Speakers (fallback): {device.FriendlyName}");
-            //        return device;
-            //    }
-            //}
-
-            Log("[OUTGOING] ⚠️ No CABLE output device found!");
+            if (device == null)
+            {
+                Log("[OUTGOING] ⚠️ No CABLE output device found!");
+            }
         }
         catch (Exception ex)
         {
             Log($"[OUTGOING] Error finding cable device: {ex.Message}");
         }
 
-        return null;
+        lock (_cacheLock)
+        {
+            _cachedOutgoingCable = device;
+            _lastCacheTime = DateTime.UtcNow;
+        }
+
+        return device;
     }
 
 
@@ -247,12 +250,21 @@ public class DeviceService
 
 
     /// <summary>
-    /// Finds cable device for INCOMING audio (meeting audio capture)
+    /// Finds cable device for INCOMING audio with short-term caching
     /// Priority: CABLE-B Output > CABLE-A Output > Standard CABLE Output
     /// Uses opposite cable from outgoing to avoid conflicts
     /// </summary>
     public MMDevice? FindIncomingCableDevice()
     {
+        lock (_cacheLock)
+        {
+            if (_cachedIncomingCable != null && IsCacheValid())
+            {
+                return _cachedIncomingCable;
+            }
+        }
+
+        MMDevice? device = null;
         try
         {
             var enumerator = new MMDeviceEnumerator();
@@ -260,52 +272,35 @@ public class DeviceService
 
             // Priority 1: CABLE-B Output (capture meeting audio from here)
             // Using CABLE-B for incoming if CABLE-A is used for outgoing
-            foreach (var device in devices)
+            foreach (var dev in devices)
             {
-                var name = device.FriendlyName;
+                var name = dev.FriendlyName;
                 if (name.Contains("CABLE-B Output", StringComparison.OrdinalIgnoreCase) ||
                     name.Contains("CABLE B Output", StringComparison.OrdinalIgnoreCase))
                 {
                     Log($"[INCOMING] Using CABLE-B Output: {name}");
-                    return device;
+                    device = dev;
+                    break;
                 }
             }
 
-            //// Priority 2: CABLE-A Output
-            //foreach (var device in devices)
-            //{
-            //    var name = device.FriendlyName;
-            //    if (name.Contains("CABLE-A Output", StringComparison.OrdinalIgnoreCase) ||
-            //        name.Contains("CABLE A Output", StringComparison.OrdinalIgnoreCase))
-            //    {
-            //        Log($"[INCOMING] Using CABLE-A Output: {name}");
-            //        return device;
-            //    }
-            //}
-
-            //// Priority 3: Standard CABLE Output
-            //foreach (var device in devices)
-            //{
-            //    var name = device.FriendlyName;
-            //    if (name.Contains("CABLE Output", StringComparison.OrdinalIgnoreCase) &&
-            //        !name.Contains("CABLE-A", StringComparison.OrdinalIgnoreCase) &&
-            //        !name.Contains("CABLE-B", StringComparison.OrdinalIgnoreCase) &&
-            //        !name.Contains("CABLE A", StringComparison.OrdinalIgnoreCase) &&
-            //        !name.Contains("CABLE B", StringComparison.OrdinalIgnoreCase))
-            //    {
-            //        Log($"[INCOMING] Using standard CABLE Output: {name}");
-            //        return device;
-            //    }
-            //}
-
-            Log("[INCOMING] ⚠️ No CABLE input device found!");
+            if (device == null)
+            {
+                Log("[INCOMING] ⚠️ No CABLE input device found!");
+            }
         }
         catch (Exception ex)
         {
             Log($"[INCOMING] Error finding cable device: {ex.Message}");
         }
 
-        return null;
+        lock (_cacheLock)
+        {
+            _cachedIncomingCable = device;
+            _lastCacheTime = DateTime.UtcNow;
+        }
+
+        return device;
     }
 
     public MMDevice? FindIncomingReaderCableDevice()
@@ -342,7 +337,7 @@ public class DeviceService
 
         try
         {
-            var (inputs, outputs) = GetAllDevices();  // Returns List<AudioDeviceInfo>
+            var (inputs, outputs) = GetAllDevices();  // Now uses cache
 
             // OUTGOING: Find from outputs (Render devices)
             AudioDeviceInfo? outgoingDevice = null;
@@ -352,7 +347,6 @@ public class DeviceService
                 if (name.Contains("CABLE-A Input", StringComparison.OrdinalIgnoreCase) ||
                     name.Contains("CABLE A Input", StringComparison.OrdinalIgnoreCase))
                 {
-                    Log($"[OUTGOING] Using CABLE-A Input: {name}");
                     outgoingDevice = device; break;
                 }
             }
@@ -364,12 +358,10 @@ public class DeviceService
                     if (name.Contains("CABLE-B Input", StringComparison.OrdinalIgnoreCase) ||
                         name.Contains("CABLE B Input", StringComparison.OrdinalIgnoreCase))
                     {
-                        Log($"[OUTGOING] Using CABLE-B Input: {name}");
                         outgoingDevice = device; break;
                     }
                 }
             }
-            // ... continue other priorities with AudioDeviceInfo
 
             // Map to microphone name
             if (outgoingDevice != null)
@@ -390,11 +382,9 @@ public class DeviceService
                 var name = device.FriendlyName;
                 if (name.Contains("CABLE-B Output", StringComparison.OrdinalIgnoreCase))
                 {
-                    Log($"[INCOMING] Using CABLE-B Output: {name}");
                     incomingDevice = device; break;
                 }
             }
-            // ... continue priorities
 
             if (incomingDevice != null)
             {
@@ -406,9 +396,6 @@ public class DeviceService
                 else
                     speakerName = "CABLE Input (VB-Audio Cable)";
             }
-
-            Log($"[MEETING SETUP] Recommended Microphone: {microphoneName}");
-            Log($"[MEETING SETUP] Recommended Speaker: {speakerName}");
         }
         catch (Exception ex)
         {
@@ -417,40 +404,20 @@ public class DeviceService
 
         return (microphoneName, speakerName);
     }
+
     public bool HasCableABDevices()
     {
         try
         {
-            var enumerator = new MMDeviceEnumerator();
+            var (inputs, outputs) = GetAllDevices(); // Now uses cache
 
-            bool hasCableA = false;
-            bool hasCableB = false;
+            bool hasCableA = outputs.Any(d =>
+                d.FriendlyName.Contains("CABLE-A", StringComparison.OrdinalIgnoreCase) ||
+                d.FriendlyName.Contains("CABLE A", StringComparison.OrdinalIgnoreCase));
 
-            // Check for CABLE-A devices (Input or Output)
-            var renderDevices = enumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active);
-            foreach (var device in renderDevices)
-            {
-                if (device.FriendlyName.Contains("CABLE-A", StringComparison.OrdinalIgnoreCase) ||
-                    device.FriendlyName.Contains("CABLE A", StringComparison.OrdinalIgnoreCase))
-                {
-                    hasCableA = true;
-                    Log($"[DEVICE DETECTION] Found CABLE-A (Render): {device.FriendlyName}");
-                    break;
-                }
-            }
-
-            // Check for CABLE-B devices (Input or Output)
-            var captureDevices = enumerator.EnumerateAudioEndPoints(DataFlow.Capture, DeviceState.Active);
-            foreach (var device in captureDevices)
-            {
-                if (device.FriendlyName.Contains("CABLE-B", StringComparison.OrdinalIgnoreCase) ||
-                    device.FriendlyName.Contains("CABLE B", StringComparison.OrdinalIgnoreCase))
-                {
-                    hasCableB = true;
-                    Log($"[DEVICE DETECTION] Found CABLE-B (Capture): {device.FriendlyName}");
-                    break;
-                }
-            }
+            bool hasCableB = inputs.Any(d =>
+                d.FriendlyName.Contains("CABLE-B", StringComparison.OrdinalIgnoreCase) ||
+                d.FriendlyName.Contains("CABLE B", StringComparison.OrdinalIgnoreCase));
 
             bool hasAB = hasCableA && hasCableB;
 
@@ -478,24 +445,28 @@ public class DeviceService
 
     public MMDevice? FindPhysicalMicrophone()
     {
+        lock (_cacheLock)
+        {
+            if (_cachedPhysicalMic != null && IsCacheValid())
+            {
+                return _cachedPhysicalMic;
+            }
+        }
+
+        MMDevice? device = null;
         try
         {
             var enumerator = new MMDeviceEnumerator();
             var devices = enumerator.EnumerateAudioEndPoints(DataFlow.Capture, DeviceState.Active);
 
-            Log("[DEVICE] Searching for physical microphone with priority (1-Headset Mic, 2-Internal Mic)...");
-
             // PRIORITY 1: Look for Headset/USB microphones first (highest priority)
-            foreach (var device in devices)
+            foreach (var dev in devices)
             {
-                var name = device.FriendlyName;
+                var name = dev.FriendlyName;
 
                 // Skip CABLE devices entirely
                 if (name.Contains("CABLE", StringComparison.OrdinalIgnoreCase))
-                {
-                    Log($"[DEVICE] Skipping CABLE device: {name}");
                     continue;
-                }
 
                 // Check for headset microphone (highest priority)
                 if (name.Contains("Headset", StringComparison.OrdinalIgnoreCase) ||
@@ -504,63 +475,86 @@ public class DeviceService
                       name.Contains("Mic", StringComparison.OrdinalIgnoreCase))))
                 {
                     Log($"[DEVICE] ✅ Found HEADSET MIC (Priority 1): {name}");
-                    return device;
+                    device = dev;
+                    break;
                 }
             }
 
             // PRIORITY 2: Look for internal/built-in microphones (second priority)
-            foreach (var device in devices)
+            if (device == null)
             {
-                var name = device.FriendlyName;
-
-                // Skip CABLE devices entirely
-                if (name.Contains("CABLE", StringComparison.OrdinalIgnoreCase))
-                    continue;
-
-                // Check for internal/built-in microphones
-                if (name.Contains("Microphone", StringComparison.OrdinalIgnoreCase) ||
-                    name.Contains("Mic", StringComparison.OrdinalIgnoreCase) ||
-                    name.Contains("Array", StringComparison.OrdinalIgnoreCase) ||
-                    name.Contains("Webcam", StringComparison.OrdinalIgnoreCase))
+                foreach (var dev in devices)
                 {
-                    Log($"[DEVICE] ✅ Found INTERNAL MIC (Priority 2): {name}");
-                    return device;
+                    var name = dev.FriendlyName;
+
+                    // Skip CABLE devices entirely
+                    if (name.Contains("CABLE", StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    // Check for internal/built-in microphones
+                    if (name.Contains("Microphone", StringComparison.OrdinalIgnoreCase) ||
+                        name.Contains("Mic", StringComparison.OrdinalIgnoreCase) ||
+                        name.Contains("Array", StringComparison.OrdinalIgnoreCase) ||
+                        name.Contains("Webcam", StringComparison.OrdinalIgnoreCase))
+                    {
+                        Log($"[DEVICE] ✅ Found INTERNAL MIC (Priority 2): {name}");
+                        device = dev;
+                        break;
+                    }
                 }
             }
 
             // PRIORITY 3: Fallback - Return first non-CABLE capture device
-            foreach (var device in devices)
+            if (device == null)
             {
-                if (!device.FriendlyName.Contains("CABLE", StringComparison.OrdinalIgnoreCase))
+                foreach (var dev in devices)
                 {
-                    Log($"[DEVICE] ⚠️ Using fallback device (Priority 3): {device.FriendlyName}");
-                    return device;
+                    if (!dev.FriendlyName.Contains("CABLE", StringComparison.OrdinalIgnoreCase))
+                    {
+                        Log($"[DEVICE] ⚠️ Using fallback device (Priority 3): {dev.FriendlyName}");
+                        device = dev;
+                        break;
+                    }
                 }
             }
 
-            Log("[DEVICE] ❌ No physical microphone found");
+            if (device == null)
+                Log("[DEVICE] ❌ No physical microphone found");
         }
         catch (Exception ex)
         {
             Log($"[DEVICE] ❌ Error finding physical microphone: {ex.Message}");
         }
 
-        return null;
+        lock (_cacheLock)
+        {
+            _cachedPhysicalMic = device;
+            _lastCacheTime = DateTime.UtcNow;
+        }
+
+        return device;
     }
 
     public MMDevice? FindPhysicalSpeaker()
     {
+        lock (_cacheLock)
+        {
+            if (_cachedPhysicalSpeaker != null && IsCacheValid())
+            {
+                return _cachedPhysicalSpeaker;
+            }
+        }
+
+        MMDevice? device = null;
         try
         {
             var enumerator = new MMDeviceEnumerator();
             var devices = enumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active);
 
-            Log("[DEVICE] Searching for physical speakers with priority (1-Headset, 2-Internal Speaker)...");
-
             // PRIORITY 1: Look for Headset/Headphone devices first (highest priority)
-            foreach (var device in devices)
+            foreach (var dev in devices)
             {
-                var name = device.FriendlyName;
+                var name = dev.FriendlyName;
 
                 // Skip CABLE devices entirely
                 if (name.Contains("CABLE", StringComparison.OrdinalIgnoreCase))
@@ -571,47 +565,63 @@ public class DeviceService
                     name.Contains("Headphone", StringComparison.OrdinalIgnoreCase))
                 {
                     Log($"[DEVICE] ✅ Found HEADSET (Priority 1): {name}");
-                    return device;
+                    device = dev;
+                    break;
                 }
             }
 
             // PRIORITY 2: Look for internal/laptop speakers (second priority)
-            foreach (var device in devices)
+            if (device == null)
             {
-                var name = device.FriendlyName;
-
-                // Skip CABLE devices entirely
-                if (name.Contains("CABLE", StringComparison.OrdinalIgnoreCase))
-                    continue;
-
-                // Check for internal speakers
-                if (name.Contains("Speaker", StringComparison.OrdinalIgnoreCase) ||
-                    name.Contains("Realtek", StringComparison.OrdinalIgnoreCase) ||
-                    name.Contains("Audio", StringComparison.OrdinalIgnoreCase))
+                foreach (var dev in devices)
                 {
-                    Log($"[DEVICE] ✅ Found INTERNAL SPEAKER (Priority 2): {name}");
-                    return device;
+                    var name = dev.FriendlyName;
+
+                    // Skip CABLE devices entirely
+                    if (name.Contains("CABLE", StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    // Check for internal speakers
+                    if (name.Contains("Speaker", StringComparison.OrdinalIgnoreCase) ||
+                        name.Contains("Realtek", StringComparison.OrdinalIgnoreCase) ||
+                        name.Contains("Audio", StringComparison.OrdinalIgnoreCase))
+                    {
+                        Log($"[DEVICE] ✅ Found INTERNAL SPEAKER (Priority 2): {name}");
+                        device = dev;
+                        break;
+                    }
                 }
             }
 
             // PRIORITY 3: Fallback - Return first non-CABLE render device
-            foreach (var device in devices)
+            if (device == null)
             {
-                if (!device.FriendlyName.Contains("CABLE", StringComparison.OrdinalIgnoreCase))
+                foreach (var dev in devices)
                 {
-                    Log($"[DEVICE] ⚠️ Using fallback device (Priority 3): {device.FriendlyName}");
-                    return device;
+                    if (!dev.FriendlyName.Contains("CABLE", StringComparison.OrdinalIgnoreCase))
+                    {
+                        Log($"[DEVICE] ⚠️ Using fallback device (Priority 3): {dev.FriendlyName}");
+                        device = dev;
+                        break;
+                    }
                 }
             }
 
-            Log("[DEVICE] ❌ No physical speaker found");
+            if (device == null)
+                Log("[DEVICE] ❌ No physical speaker found");
         }
         catch (Exception ex)
         {
             Log($"[DEVICE] ❌ Error finding physical speaker: {ex.Message}");
         }
 
-        return null;
+        lock (_cacheLock)
+        {
+            _cachedPhysicalSpeaker = device;
+            _lastCacheTime = DateTime.UtcNow;
+        }
+
+        return device;
     }
 
 }

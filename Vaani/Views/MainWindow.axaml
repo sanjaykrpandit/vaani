@@ -233,7 +233,7 @@
                       <Setter Property="Padding" Value="0"/>
                       <Setter Property="Margin" Value="0,0,0,16"/>
                       <Setter Property="Background" Value="Transparent"/>
-                      <Setter Property="Opacity" Value="0"/>
+                      <Setter Property="Opacity" Value="1"/>
                     </Style>
                     <Style Selector="ListBoxItem:selected">
                       <Setter Property="Background" Value="Transparent"/>
@@ -1348,32 +1348,48 @@
           <TextBlock Text="Setup Meeting Audio"
                   FontSize="12"
                   Foreground="#333" TextWrapping="Wrap"
-             MaxWidth="350" FontWeight="SemiBold" Padding="4"/>
+             MaxWidth="350" FontWeight="SemiBold" Padding="2"/>
           
           <TextBlock Text="• Microphone: CABLE-A Output (VB-Audio Cable A)"
                     FontSize="12"
                     Foreground="#333" TextWrapping="Wrap"
-               MaxWidth="350" Padding="4"/>
+               MaxWidth="350" Padding="2"/>
 
           <TextBlock Text="• Speaker: CABLE-B Input (VB-Audio Cable B)"
                      FontSize="12"
                      Foreground="#333" TextWrapping="Wrap"
-                MaxWidth="350" Padding="4"/>
+                MaxWidth="350" Padding="2"/>
           
         </StackPanel>
 
         <!-- Close Button -->
-        <Button Content="Got it"
-                HorizontalAlignment="Center"
-                Padding="18,6"
-                FontSize="12"
-                FontWeight="SemiBold"
-                Background="#FFB74D"
-                Foreground="#222"
-                CornerRadius="16"
-                Command="{Binding CloseUserGuideCommand}"/>
+		  <Button Content="Got it"
+			HorizontalAlignment="Center"
+			Padding="18,6"
+			FontSize="12"
+			FontWeight="SemiBold"
+			Background="#FFB74D"
+			Foreground="#222"
+			CornerRadius="16"
+			Command="{Binding CloseUserGuideCommand}">
+			  <Button.Styles>
+				  <!-- This targets the internal part of the button that handles hover colors -->
+				  <Style Selector="Button:pointerover /template/ ContentPresenter">
+					  <!-- Set your desired gray background here -->
+					  <Setter Property="Background" Value="#E0E0E0" />
+					  <!-- Ensure text remains visible -->
+					  <Setter Property="Foreground" Value="#222" />
+				  </Style>
 
-      </StackPanel>
+				  <!-- Optional: Style for when the button is actually clicked/pressed -->
+				  <Style Selector="Button:pressed /template/ ContentPresenter">
+					  <Setter Property="Background" Value="#CCCCCC" />
+				  </Style>
+			  </Button.Styles>
+		  </Button>
+
+
+	  </StackPanel>
     </Border>
 
 
