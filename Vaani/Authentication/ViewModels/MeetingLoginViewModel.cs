@@ -14,6 +14,7 @@ using Vaani.Authentication.Views;
 using Vaani.DriverInstallation.Services;
 using Vaani.Services;
 using Vaani.TestAudio.Views;
+using Vaani.ViewModels;
 using Vaani.Views;
 
 
@@ -26,8 +27,8 @@ public class MeetingLoginViewModel : ReactiveObject
     private readonly DriverInstallationService _driverService;
     private readonly AudioSourceVerificationService _audioVerificationService;
 
-    private string _meetingId = "";
-    private string _userName = "";
+    private string _meetingId = "VAANI-TEST-009";
+    private string _userName = "John Doe";
     private bool _isValidating;
     private bool _hasError;
     private string _errorMessage = string.Empty;
@@ -346,8 +347,8 @@ public class MeetingLoginViewModel : ReactiveObject
 
         return await tcs.Task;
     }
-   
 
+   
     /// <summary>
     /// Open main window with configuration
     /// </summary>
@@ -359,10 +360,6 @@ public class MeetingLoginViewModel : ReactiveObject
             {
                 // Create main window with session configuration
                 var mainWindow = new MainWindow();
-
-                // TODO: Pass configuration to MainWindow/MainViewModel
-                // You'll need to modify MainViewModel to accept session configuration
-
                 desktop.MainWindow = mainWindow;
                 mainWindow.Show();
 

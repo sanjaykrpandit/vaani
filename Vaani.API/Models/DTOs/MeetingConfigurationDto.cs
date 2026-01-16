@@ -7,7 +7,7 @@ public class MeetingConfigurationDto
 {
     public string MeetingId { get; set; } = string.Empty;
     public string MeetingName { get; set; } = string.Empty;
-    public string MeetingLanguage { get; set; } = string.Empty;
+    //public string MeetingLanguage { get; set; } = string.Empty;
     public AzureConfigDto AzureConfig { get; set; } = new();
     public TranslationConfigDto TranslationConfig { get; set; } = new();
     public TimeWindowDto TimeWindow { get; set; } = new();

@@ -192,9 +192,13 @@ public class MeetingService : IMeetingService
                 voiceFemale.Gender = "Female";
                 _availableVoices.Add(voiceFemale);
             }
-        }        
+        }
 
-     
+        //get default meeting language
+        var meetingLanguage = await _dbContext.Languages
+            .FirstOrDefaultAsync(lang => lang.LanguageCode == meeting.MeetingLanguage && lang.IsActive);
+
+
         return new MeetingConfigurationDto
         {
             MeetingId = meeting.MeetingId,
@@ -204,11 +208,17 @@ public class MeetingService : IMeetingService
                 SubscriptionKey = meeting.AzureSubscription.SubscriptionKey,
                 Region = meeting.AzureSubscription.Region
             },
+           
             TranslationConfig = new TranslationConfigDto
             {
-                VendorLanguage = new LanguageConfigDto { Code = "hi-IN", Voice = "hi-IN-SwaraNeural" },
-                OrganizerLanguage = new LanguageConfigDto { Code = "en-US", Voice = "en-US-JennyNeural" }
+                VendorLanguage = new LanguageConfigDto { Code = "hi-IN", Voice = "hi-IN-SwaraNeural" },             
+                OrganizerLanguage = new LanguageConfigDto
+                {
+                    Code = meeting.MeetingLanguage,
+                    Voice = _availableVoices.FirstOrDefault(v => v.LanguageCode == meeting.MeetingLanguage && v.Gender == "Male")?.Name ?? "en-US-JennyNeural"
+                }
             },
+
             TimeWindow = new TimeWindowDto
             {
                 ValidFrom = meeting.ValidFrom.AddMinutes(-10),
@@ -227,60 +237,7 @@ public class MeetingService : IMeetingService
                 ConfigVersion = 1
             },
             AvailableLanguages = _availableLanguages,
-            AvailableVoices = _availableVoices
-
-            //AvailableLanguages = new List<LanguageInfo>
-            //{
-            //    new LanguageInfo { Code = "en-US", DisplayName = "English (US)" },
-            //    new LanguageInfo { Code = "en-GB", DisplayName = "English (UK)" },
-            //    new LanguageInfo { Code = "hi-IN", DisplayName = "Hindi (India)" },
-            //    new LanguageInfo { Code = "es-ES", DisplayName = "Spanish (Spain)" },
-            //    new LanguageInfo { Code = "fr-FR", DisplayName = "French (France)" },
-            //    new LanguageInfo { Code = "de-DE", DisplayName = "German (Germany)" },
-            //    new LanguageInfo { Code = "ja-JP", DisplayName = "Japanese (Japan)" },
-            //    new LanguageInfo { Code = "zh-CN", DisplayName = "Chinese (Simplified)" }
-            //},
-            // AvailableVoices = new List<Voice>
-            // {
-            //// English (US)
-            // new Voice { Name = "en-US-GuyNeural", DisplayName = "Guy (Natural)", LanguageCode = "en-US", Gender = "Male" },
-            // new Voice { Name = "en-US-DavisNeural", DisplayName = "Davis (Natural)", LanguageCode = "en-US", Gender = "Male" },
-            // new Voice { Name = "en-US-JasonNeural", DisplayName = "Jason (Natural)", LanguageCode = "en-US", Gender = "Male" },
-            // new Voice { Name = "en-US-AriaNeural", DisplayName = "Aria (Natural)", LanguageCode = "en-US", Gender = "Female" },
-            // new Voice { Name = "en-US-JennyNeural", DisplayName = "Jenny (Natural)", LanguageCode = "en-US", Gender = "Female" },
-            // new Voice { Name = "en-US-NancyNeural", DisplayName = "Nancy (Natural)", LanguageCode = "en-US", Gender = "Female" },
-
-            // // English (UK)
-            // new Voice { Name = "en-GB-RyanNeural", DisplayName = "Ryan (Natural)", LanguageCode = "en-GB", Gender = "Male" },
-            // new Voice { Name = "en-GB-ThomasNeural", DisplayName = "Thomas (Natural)", LanguageCode = "en-GB", Gender = "Male" },
-            // new Voice { Name = "en-GB-LibbyNeural", DisplayName = "Libby (Natural)", LanguageCode = "en-GB", Gender = "Female" },
-            // new Voice { Name = "en-GB-SoniaNeural", DisplayName = "Sonia (Natural)", LanguageCode = "en-GB", Gender = "Female" },
-
-            // // Hindi (India)
-            // new Voice { Name = "hi-IN-MadhurNeural", DisplayName = "Madhur (Natural)", LanguageCode = "hi-IN", Gender = "Male" },
-            // new Voice { Name = "hi-IN-SwaraNeural", DisplayName = "Swara (Natural)", LanguageCode = "hi-IN", Gender = "Female" },
-
-            // // Spanish (Spain)
-            // new Voice { Name = "es-ES-AlvaroNeural", DisplayName = "Alvaro (Natural)", LanguageCode = "es-ES", Gender = "Male" },
-            // new Voice { Name = "es-ES-ElviraNeural", DisplayName = "Elvira (Natural)", LanguageCode = "es-ES", Gender = "Female" },
-
-            // // French (France)
-            // new Voice { Name = "fr-FR-HenriNeural", DisplayName = "Henri (Natural)", LanguageCode = "fr-FR", Gender = "Male" },
-            // new Voice { Name = "fr-FR-DeniseNeural", DisplayName = "Denise (Natural)", LanguageCode = "fr-FR", Gender = "Female" },
-
-            // // German (Germany)
-            // new Voice { Name = "de-DE-ConradNeural", DisplayName = "Conrad (Natural)", LanguageCode = "de-DE", Gender = "Male" },
-            // new Voice { Name = "de-DE-KatjaNeural", DisplayName = "Katja (Natural)", LanguageCode = "de-DE", Gender = "Female" },
-
-            // // Japanese (Japan)
-            // new Voice { Name = "ja-JP-KeitaNeural", DisplayName = "Keita (Natural)", LanguageCode = "ja-JP", Gender = "Male" },
-            // new Voice { Name = "ja-JP-NanamiNeural", DisplayName = "Nanami (Natural)", LanguageCode = "ja-JP", Gender = "Female" },
-
-            // // Chinese (Simplified)
-            // new Voice { Name = "zh-CN-YunxiNeural", DisplayName = "Yunxi (Natural)", LanguageCode = "zh-CN", Gender = "Male" },
-            // new Voice { Name = "zh-CN-XiaoxiaoNeural", DisplayName = "Xiaoxiao (Natural)", LanguageCode = "zh-CN", Gender = "Female" }
-
-            // }
+            AvailableVoices = _availableVoices           
 
         };
     }
