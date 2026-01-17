@@ -463,8 +463,169 @@ public class AdminService : IAdminService
 
             var sessions = await _dbContext.Sessions
                 .Where(s => s.MeetingId == meetingId.ToUpperInvariant())
+                .ToListAsync();
+
+            if (!sessions.Any())
+            {
+                return new SessionMetricsDto
+                {
+                    MeetingId = meeting.MeetingId,
+                    MeetingName = meeting.MeetingName
+                };
+            }
+
+            // Get all session IDs
+            var sessionIds = sessions.Select(s => s.Id).ToList();
+
+            // Pull SessionLogs directly from database for all sessions
+            var sessionLogs = await _dbContext.SessionLogs
+                .Where(l => sessionIds.Contains(l.SessionId) &&
+                           (l.EventType == "StartSession" || l.EventType == "EndSession" || l.EventType == "Heartbeat"))
+                .OrderBy(l => l.SessionId)
+                .ThenBy(l => l.Timestamp)
+                .ToListAsync();
+
+            // Group logs by session ID
+            var logsBySession = sessionLogs.GroupBy(l => l.SessionId).ToDictionary(g => g.Key, g => g.ToList());
+
+            // Calculate actual duration from SessionLogs for each session
+            double CalculateActualDuration(int sessionId)
+            {
+                if (!logsBySession.TryGetValue(sessionId, out var logs))
+                    return 0;
+
+                var startEvents = logs.Where(l => l.EventType == "StartSession").OrderBy(l => l.Timestamp).ToList();
+                var endEvents = logs.Where(l => l.EventType == "EndSession").OrderBy(l => l.Timestamp).ToList();
+
+                double totalMinutes = 0;
+
+                for (int i = 0; i < startEvents.Count; i++)
+                {
+                    // Find the next end event after this start event
+                    var endEvent = endEvents.FirstOrDefault(e => e.Timestamp > startEvents[i].Timestamp);
+
+                    if (endEvent != null)
+                    {
+                        totalMinutes += (endEvent.Timestamp - startEvents[i].Timestamp).TotalMinutes;
+                    }
+                }
+
+                return totalMinutes;
+            }
+
+            int GetHeartbeatCount(int sessionId)
+            {
+                if (!logsBySession.TryGetValue(sessionId, out var logs))
+                    return 0;
+
+                return logs.Count(l => l.EventType == "Heartbeat");
+            }
+
+            // Calculate metrics
+            var totalSessions = sessions.Count;
+            var activeSessions = sessions.Count(s => s.Status == "Active");
+            var endedSessions = sessions.Count(s => s.Status == "Ended");
+            var expiredSessions = sessions.Count(s => s.Status == "Expired");
+
+            // Calculate average duration using actual session logs
+            var sessionDurations = sessions
+                .Select(s => CalculateActualDuration(s.Id))
+                .Where(d => d > 0)
+                .ToList();
+
+            var avgDuration = sessionDurations.Any() ? sessionDurations.Average() : 0;
+
+            var totalHeartbeats = sessionLogs.Count(l => l.EventType == "Heartbeat");
+
+            // Device breakdown with actual durations
+            var deviceBreakdown = sessions
+                .GroupBy(s => new { s.DeviceId, s.DeviceName })
+                .Select(g => new DeviceMetricDto
+                {
+                    DeviceId = g.Key.DeviceId,
+                    DeviceName = g.Key.DeviceName,
+                    SessionCount = g.Count(),
+                    TotalMinutes = g.Sum(s => CalculateActualDuration(s.Id)),
+                    LastActivity = g.Max(s => s.LastHeartbeat)
+                })
+                .OrderByDescending(d => d.LastActivity)
+                .ToList();
+
+            // Session timeline (group by date)
+            var timeline = sessions
+                .GroupBy(s => s.StartedAt.Date)
+                .Select(g => new SessionTimelineDto
+                {
+                    Date = g.Key,
+                    SessionCount = g.Count(),
+                    TotalHeartbeats = g.Sum(s => GetHeartbeatCount(s.Id))
+                })
+                .OrderBy(t => t.Date)
+                .ToList();
+
+            // Recent sessions with actual durations
+            var recentSessions = sessions
+                .OrderByDescending(s => s.StartedAt)
+                .Take(10)
+                .Select(s => new SessionDetailDto
+                {
+                    SessionId = s.Id,
+                    DeviceId = s.DeviceId,
+                    DeviceName = s.DeviceName,
+                    AppVersion = s.AppVersion,
+                    StartedAt = s.StartedAt,
+                    EndedAt = s.EndedAt,
+                    LastHeartbeat = s.LastHeartbeat,
+                    Status = s.Status,
+                    DurationMinutes = CalculateActualDuration(s.Id),
+                    HeartbeatCount = GetHeartbeatCount(s.Id)
+                })
+                .ToList();
+
+            return new SessionMetricsDto
+            {
+                MeetingId = meeting.MeetingId,
+                MeetingName = meeting.MeetingName,
+                TotalSessions = totalSessions,
+                ActiveSessions = activeSessions,
+                EndedSessions = endedSessions,
+                ExpiredSessions = expiredSessions,
+                AverageSessionDurationMinutes = avgDuration,
+                TotalHeartbeats = totalHeartbeats,
+                FirstSessionStarted = sessions.Min(s => s.StartedAt),
+                LastSessionActivity = sessions.Max(s => s.LastHeartbeat),
+                DeviceBreakdown = deviceBreakdown,
+                SessionTimeline = timeline,
+                RecentSessions = recentSessions
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting session metrics for meeting: {MeetingId}", meetingId);
+            return null;
+        }
+    }
+    public async Task<SessionMetricsDto?> GetSessionMetricsAsyncXXX(string meetingId)
+    {
+        try
+        {
+            var meeting = await _dbContext.Meetings
+                .FirstOrDefaultAsync(m => m.MeetingId == meetingId.ToUpperInvariant());
+
+            if (meeting == null)
+            {
+                _logger.LogWarning("Meeting not found for metrics: {MeetingId}", meetingId);
+                return null;
+            }
+
+            var sessions = await _dbContext.Sessions
+                .Where(s => s.MeetingId == meetingId.ToUpperInvariant())
                 .Include(s => s.SessionLogs)
                 .ToListAsync();
+
+            //pull actual timedurationfro  sessionlogs for each sessions by sessionid where EventType EndSession, StartSession
+
+     
 
             if (!sessions.Any())
             {
@@ -515,6 +676,10 @@ public class AdminService : IAdminService
                 .OrderBy(t => t.Date)
                 .ToList();
 
+
+
+
+
             // Recent sessions
             var recentSessions = sessions
                 .OrderByDescending(s => s.StartedAt)
@@ -535,6 +700,9 @@ public class AdminService : IAdminService
                     HeartbeatCount = s.SessionLogs.Count(l => l.EventType == "Heartbeat")
                 })
                 .ToList();
+
+
+
 
             return new SessionMetricsDto
             {
