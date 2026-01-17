@@ -81,7 +81,7 @@ function MeetingMetrics({ metrics }) {
             <p className="metric-value">{metrics.totalSessions}</p>
           </div>
         </div>
-        
+
         <div className="metric-card">
           <div className="metric-icon"><img src={sessions} width={48} className="icon" /></div>
           <div className="metric-content">
@@ -89,7 +89,7 @@ function MeetingMetrics({ metrics }) {
             <p className="metric-value">{metrics.activeSessions}</p>
           </div>
         </div>
-        
+
         <div className="metric-card">
           <div className="metric-icon"><img src={duration} width={48} className="icon" /></div>
           <div className="metric-content">
@@ -99,7 +99,7 @@ function MeetingMetrics({ metrics }) {
             </p>
           </div>
         </div>
-        
+
         {/* <div className="metric-card">
           <div className="metric-icon"><img src={heart} width={48} className="icon" /></div>
           <div className="metric-content">
@@ -123,19 +123,19 @@ function MeetingMetrics({ metrics }) {
                 <YAxis yAxisId="right" orientation="right" />
                 <Tooltip />
                 <Legend />
-                <Line 
+                <Line
                   yAxisId="left"
-                  type="monotone" 
-                  dataKey="sessions" 
-                  stroke="#8884d8" 
+                  type="monotone"
+                  dataKey="sessions"
+                  stroke="#8884d8"
                   strokeWidth={2}
                   name="Sessions"
                 />
-                <Line 
+                <Line
                   yAxisId="right"
-                  type="monotone" 
-                  dataKey="heartbeats" 
-                  stroke="#82ca9d" 
+                  type="monotone"
+                  dataKey="heartbeats"
+                  stroke="#82ca9d"
                   strokeWidth={2}
                   name="Heartbeats"
                 />
@@ -226,6 +226,7 @@ function MeetingMetrics({ metrics }) {
             <thead>
               <tr>
                 <th>Device</th>
+                <th>User</th>
                 <th>App Version</th>
                 <th>Started</th>
                 <th>Duration</th>
@@ -235,12 +236,13 @@ function MeetingMetrics({ metrics }) {
             </thead>
             <tbody>
               {metrics.recentSessions.map((session) => (
-                <tr 
+                <tr
                   key={session.sessionId}
                   onClick={() => setSelectedSession(session)}
                   className="clickable"
                 >
-                  <td>{session.deviceName || 'Unknown'}</td>
+                  <td>{session.deviceName || ''}</td>
+                  <td>{session.userName || ''}</td>
                   <td>{session.appVersion}</td>
                   <td>{new Date(session.startedAt).toLocaleString()}</td>
                   <td>{formatDuration(session.durationMinutes)}</td>

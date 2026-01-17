@@ -326,7 +326,7 @@ public class SessionManager
     /// Logout and clear all session data
     /// This will end the session with the API and clear local storage
     /// </summary>
-    public async Task LogoutAsync()
+    public async Task LogoutAsync(bool isRunningTranslation=false)
     {
         // Get statistics before clearing session
         var statistics = GetSessionStatistics();
@@ -334,7 +334,10 @@ public class SessionManager
         // End session with API if active
         if (_currentSession != null && !string.IsNullOrEmpty(_currentSession.SessionToken))
         {
-            await _authService.EndSessionAsync();
+            if (isRunningTranslation)
+            {
+                await _authService.EndSessionAsync();
+            }            
         }
 
         // Stop all timers and clear session data

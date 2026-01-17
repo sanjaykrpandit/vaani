@@ -112,39 +112,6 @@
   flex-wrap: wrap;
 }
 
-.status-item {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.status-item strong {
-  font-size: 0.85rem;
-  color: #666;
-  font-weight: 600;
-}
-
-.status-item span {
-  font-size: 0.9rem;
-  color: #333;
-}
-
-.status-badge {
-  padding: 4px 12px;
-  border-radius: 12px;
-  font-size: 0.85rem;
-  font-weight: 600;
-}
-
-.status-badge.active {
-  background: #4caf50;
-  color: white;
-}
-
-.status-badge.inactive {
-  background: #9e9e9e;
-  color: white;
-}
 
 .error-message {
   background: #ffebee;
@@ -189,8 +156,13 @@
 }
 
 @keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
 .loading p {
@@ -198,39 +170,6 @@
   margin: 0;
 }
 
-/* Button Styles */
-.btn {
-  padding: 10px 20px;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 0.95rem;
-  font-weight: 500;
-  transition: all 0.2s;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.btn-primary {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-}
-
-.btn-primary:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(102, 126, 234, 0.4);
-}
-
-.btn-secondary {
-  background: white;
-  color: #667eea;
-  border: 1px solid #667eea;
-}
-
-.btn-secondary:hover {
-  background: #f5f7ff;
-}
 
 /* Responsive */
 @media (max-width: 768px) {

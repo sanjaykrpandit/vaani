@@ -101,37 +101,37 @@ function LanguageList() {
           <div>Loading languages...</div>
         ) : (
 
-           <div className="meeting-list">
-      <table className="meeting-table">
-          
-            <thead>
-              <tr>
-                <th>Code</th>
-                <th>Name</th>
-                <th>Male Neural</th>
-                <th>Female Neural</th>
-                <th>Active</th>
-                <th  align='center'></th>
-              </tr>
-            </thead>
-            <tbody>
-              {languages.map(lang => (
-                <tr key={lang.id}>
-                  <td>{lang.languageCode}</td>
-                  <td>{lang.languageName}</td>
-                  <td>{lang.languageMaleNeural}</td>
-                  <td>{lang.languageFemaleNeural}</td>
-                  <td>{lang.isActive ? 'Yes' : 'No'}</td>
-                  <td align='right'>
-                    <button className="btn btn-xsm" onClick={() => openEdit(lang)}>
-                       ✏️
-                    </button>&nbsp;&nbsp;
-                    <button className="btn btn-xsm fnt-red" onClick={() => handleDelete(lang.languageCode)}> 🗑 </button>
-                  </td>
+          <div className="meeting-list">
+            <table className="meeting-table">
+
+              <thead>
+                <tr>
+                  <th>Code</th>
+                  <th>Name</th>
+                  <th>Male Neural</th>
+                  <th>Female Neural</th>
+                  <th>Active</th>
+                  <th align='center'></th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {languages.map(lang => (
+                  <tr key={lang.id}>
+                    <td>{lang.languageCode}</td>
+                    <td>{lang.languageName}</td>
+                    <td>{lang.languageMaleNeural}</td>
+                    <td>{lang.languageFemaleNeural}</td>
+                    <td>{lang.isActive ? 'Yes' : 'No'}</td>
+                    <td align='right'>
+                      <button className="btn btn-xsm" onClick={() => openEdit(lang)}>
+                        ✏️
+                      </button>&nbsp;&nbsp;
+                      <button className="btn btn-xsm fnt-red" onClick={() => handleDelete(lang.languageCode)}> 🗑 </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
 
@@ -162,8 +162,8 @@ function LanguageList() {
                   </label>
                 </div>
                 <div className="form-actions">
-                  <button type="button" className="btn btn-xsm btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
-                  <button type="submit" className="btn btn-xsm  btn-primary">{editingLanguage ? 'Update' : 'Create'}</button>
+                  <button type="button" className="btn btn-sm btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
+                  <button type="submit" className="btn btn-sm  btn-primary">{editingLanguage ? 'Update' : 'Create'}</button>
                 </div>
               </form>
             </div>

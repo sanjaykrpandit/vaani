@@ -1435,10 +1435,15 @@ public class MainViewModel : ViewModelBase
         if (IsRunning)
         {
             await StopTranslation();
+            var sessionManager = _clientService.GetSessionManager();
+            await sessionManager.LogoutAsync(true);
         }
-
-        var sessionManager = _clientService.GetSessionManager();
-        await sessionManager.LogoutAsync();
+        else
+        {
+            var sessionManager = _clientService.GetSessionManager();
+            await sessionManager.LogoutAsync(false);
+        }
+               
 
         AddLog("🚪 Logged out successfully");
         Toast.Show("Logged out successfully");

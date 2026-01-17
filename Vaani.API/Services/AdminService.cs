@@ -480,7 +480,7 @@ public class AdminService : IAdminService
             // Pull SessionLogs directly from database for all sessions
             var sessionLogs = await _dbContext.SessionLogs
                 .Where(l => sessionIds.Contains(l.SessionId) &&
-                           (l.EventType == "StartSession" || l.EventType == "EndSession" || l.EventType == "Heartbeat"))
+                           (l.EventType == "SessionStarted" || l.EventType == "SessionEnded"))
                 .OrderBy(l => l.SessionId)
                 .ThenBy(l => l.Timestamp)
                 .ToListAsync();
@@ -494,8 +494,8 @@ public class AdminService : IAdminService
                 if (!logsBySession.TryGetValue(sessionId, out var logs))
                     return 0;
 
-                var startEvents = logs.Where(l => l.EventType == "StartSession").OrderBy(l => l.Timestamp).ToList();
-                var endEvents = logs.Where(l => l.EventType == "EndSession").OrderBy(l => l.Timestamp).ToList();
+                var startEvents = logs.Where(l => l.EventType == "SessionStarted").OrderBy(l => l.Timestamp).ToList();
+                var endEvents = logs.Where(l => l.EventType == "SessionEnded").OrderBy(l => l.Timestamp).ToList();
 
                 double totalMinutes = 0;
 
@@ -570,8 +570,9 @@ public class AdminService : IAdminService
                 .Select(s => new SessionDetailDto
                 {
                     SessionId = s.Id,
-                    DeviceId = s.DeviceId,
+                    DeviceId = s.DeviceName,
                     DeviceName = s.DeviceName,
+                    UserName = s.UserName,
                     AppVersion = s.AppVersion,
                     StartedAt = s.StartedAt,
                     EndedAt = s.EndedAt,

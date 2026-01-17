@@ -74,7 +74,7 @@
   .metrics-charts {
     grid-template-columns: repeat(2, 1fr);
   }
-  
+
   .chart-container:first-child {
     grid-column: span 2;
   }
@@ -146,8 +146,13 @@
   display: inline-block;
   padding: 4px 12px;
   border-radius: 12px;
-  font-size: 0.85rem;
+  font-size: 0.7rem;
   font-weight: 600;
+}
+
+.status-badge.initial {
+  background: #cdcdcd;
+  color: white;
 }
 
 .status-badge.active {
@@ -261,15 +266,15 @@
   .metrics-summary {
     grid-template-columns: 1fr;
   }
-  
+
   .chart-container {
     padding: 15px;
   }
-  
+
   .metrics-table {
     font-size: 0.9rem;
   }
-  
+
   .metrics-table th,
   .metrics-table td {
     padding: 8px;

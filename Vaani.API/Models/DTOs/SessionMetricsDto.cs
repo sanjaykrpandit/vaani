@@ -41,6 +41,7 @@ public class SessionDetailDto
     public int SessionId { get; set; }
     public string DeviceId { get; set; } = string.Empty;
     public string DeviceName { get; set; } = string.Empty;
+    public string UserName { get; set; } = string.Empty;
     public string AppVersion { get; set; } = string.Empty;
     public DateTime StartedAt { get; set; }
     public DateTime? EndedAt { get; set; }
