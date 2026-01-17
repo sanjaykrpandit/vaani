@@ -60,7 +60,7 @@ function AddMeeting() {
       // Validate dates
       const validFrom = new Date(formData.validFrom)
       const validUntil = new Date(formData.validUntil)
-      
+
       if (validUntil <= validFrom) {
         setError('End date must be after start date')
         setLoading(false)
@@ -88,13 +88,7 @@ function AddMeeting() {
     <Layout>
       <div className="page-container">
         <div className="page-header">
-          <h1>Add New Meeting</h1>
-          <button 
-            className="btn btn-secondary"
-            onClick={() => navigate('/dashboard')}
-          >
-            Cancel
-          </button>
+          <h1 className="h1-header">Add New Meeting</h1>
         </div>
 
         <form onSubmit={handleSubmit} className="meeting-form">
@@ -177,15 +171,15 @@ function AddMeeting() {
           </div>
 
           <div className="form-actions">
-            <button 
-              type="button" 
+            <button
+              type="button"
               className="btn btn-secondary"
               onClick={() => navigate('/dashboard')}
             >
               Cancel
             </button>
-            <button 
-              type="submit" 
+            <button
+              type="submit"
               className="btn btn-primary"
               disabled={loading}
             >

@@ -7,6 +7,7 @@ import EditMeeting from './pages/EditMeeting'
 import MeetingMetricsPage from './pages/MeetingMetricsPage'
 import PublicMeetingAccess from './pages/PublicMeetingAccess'
 import MeetingDownload from './pages/MeetingDownload'
+import Thanks from './pages/Thanks'
 import ProtectedRoute from './components/ProtectedRoute'
 import LanguageList from './components/LanguageList'
 import UserList from './components/UserList'
@@ -20,11 +21,12 @@ function App() {
       {/* Public routes - no authentication required */}
       <Route path="/public-access" element={<PublicMeetingAccess />} />
       <Route path="/meeting-download" element={<MeetingDownload />} />
-      
+      <Route path="/thanks" element={<Thanks />} />
+
       {/* Authentication route */}
-      <Route 
-        path="/login" 
-        element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Login />} 
+      <Route
+        path="/login"
+        element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Login />}
       />
 
       {/* Protected admin routes */}

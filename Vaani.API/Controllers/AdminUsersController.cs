@@ -9,7 +9,7 @@ namespace Vaani.API.Controllers;
 /// Controller for admin user management (CRUD operations)
 /// </summary>
 [ApiController]
-[Route("api/admin/[controller]")]
+[Route("api/admin/users")]
 [Authorize(Roles = "admin")]
 public class AdminUsersController : ControllerBase
 {
@@ -37,11 +37,7 @@ public class AdminUsersController : ControllerBase
     public async Task<ActionResult<IEnumerable<AdminUserResponse>>> GetAllAdminUsers()
     {
         try
-        {
-            if (!ValidateAdminToken())
-            {
-                return Unauthorized(new { message = "Invalid or expired token" });
-            }
+        {          
 
             var adminUsers = await _adminService.GetAllAdminUsersAsync();
             return Ok(adminUsers);
@@ -65,11 +61,7 @@ public class AdminUsersController : ControllerBase
     public async Task<ActionResult<AdminUserResponse>> GetAdminUser(string userId)
     {
         try
-        {
-            if (!ValidateAdminToken())
-            {
-                return Unauthorized(new { message = "Invalid or expired token" });
-            }
+        {         
 
             var adminUser = await _adminService.GetAdminUserResponseByIdAsync(userId);
 
@@ -100,11 +92,7 @@ public class AdminUsersController : ControllerBase
     public async Task<ActionResult<AdminUserResponse>> CreateAdminUser([FromBody] CreateAdminUserRequest request)
     {
         try
-        {
-            if (!ValidateAdminToken())
-            {
-                return Unauthorized(new { message = "Invalid or expired token" });
-            }
+        {         
 
             // Validation
             if (string.IsNullOrWhiteSpace(request.UserId))
@@ -161,11 +149,7 @@ public class AdminUsersController : ControllerBase
     public async Task<ActionResult<AdminUserResponse>> UpdateAdminUser(string userId, [FromBody] UpdateAdminUserRequest request)
     {
         try
-        {
-            if (!ValidateAdminToken())
-            {
-                return Unauthorized(new { message = "Invalid or expired token" });
-            }
+        {           
 
             // Validation
             if (string.IsNullOrWhiteSpace(userId))
@@ -187,23 +171,5 @@ public class AdminUsersController : ControllerBase
             _logger.LogError(ex, "Error updating admin user: {UserId}", userId);
             return StatusCode(StatusCodes.Status500InternalServerError, new { message = "An error occurred" });
         }
-    }
-
-    /// <summary>
-    /// Validates the admin token from the Authorization header
-    /// </summary>
-    /// <returns>True if valid, false otherwise</returns>
-    private bool ValidateAdminToken()
-    {
-        var authHeader = Request.Headers.Authorization.FirstOrDefault();
-        if (string.IsNullOrEmpty(authHeader) || !authHeader.StartsWith("Bearer "))
-        {
-            return false;
-        }
-
-        var token = authHeader.Substring("Bearer ".Length).Trim();
-        var (isValid, _, _) = _jwtTokenService.ValidateAdminToken(token);
-
-        return isValid;
     }
 }

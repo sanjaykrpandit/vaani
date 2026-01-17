@@ -12,20 +12,34 @@ function MeetingList({
 }) {
   const [copyingId, setCopyingId] = useState(null)
 
+  const onLaunchApp = async (meetingId) => {
+    try {
+      const token = await generateMeetingToken(meetingId)
+      const origin = window.location.origin
+      const publicUrl = `${origin}/public-access?token=${token}`
+      window.open(publicUrl, '_blank')
+      setTimeout(() => setCopyingId(null), 2000)
+    } catch (error) {
+      console.error('Failed to copy link:', error)
+      alert('Failed to generate meeting link. Please try again.')
+      setCopyingId(null)
+    }
+  }
+
   const handleCopyLink = async (meetingId) => {
     try {
       setCopyingId(meetingId)
-      
+
       // Generate token from backend
       const token = await generateMeetingToken(meetingId)
-      
+
       // Create public access URL with only token parameter
       const origin = window.location.origin
       const publicUrl = `${origin}/public-access?token=${token}`
-      
+
       // Copy to clipboard
       await navigator.clipboard.writeText(publicUrl)
-      
+
       // Show success feedback
       setTimeout(() => setCopyingId(null), 2000)
     } catch (error) {
@@ -34,7 +48,7 @@ function MeetingList({
       setCopyingId(null)
     }
   }
- 
+
   const formatDate = (dateString) => {
     const date = new Date(dateString)
     return date.toLocaleString('en-US', {
@@ -113,11 +127,11 @@ function MeetingList({
                 <td>{formatDate(meeting.validUntil)}</td>
 
                 {/* Launch */}
-               <td>
+                <td>
                   {status === 'running' && meeting.isActive && (
                     <button
                       className="btn btn-xsm btn-primary d-inline-flex align-items-center gap-2"
-                      onClick={() => onLaunch(meeting.meetingId)}
+                      onClick={() => onLaunchApp(meeting.meetingId)}
                     >
                       Launch
                       <img src={logo} alt="logo" height="10" />

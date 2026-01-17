@@ -675,21 +675,21 @@ public class AdminService : IAdminService
                 {
                     MeetingId = meeting.MeetingId,
                     MeetingName = meeting.MeetingName,
-                    MeetingLanguage = meeting.MeetingLanguage,
+                    ValidUntil = meeting.ValidUntil,
                     IsValid = false
                 };
             }
 
             // Validate meeting time window
             var now = DateTime.UtcNow;
-            if (now < meeting.ValidFrom || now > meeting.ValidUntil)
+            if (now < meeting.ValidFrom.AddMinutes(-15) || now > meeting.ValidUntil)
             {
                 _logger.LogWarning("Meeting outside valid time window: {MeetingId}", request.MeetingId);
                 return new ValidateMeetingTokenResponse
                 {
                     MeetingId = meeting.MeetingId,
                     MeetingName = meeting.MeetingName,
-                    MeetingLanguage = meeting.MeetingLanguage,
+                    ValidUntil = meeting.ValidUntil,
                     IsValid = false
                 };
             }
@@ -703,7 +703,7 @@ public class AdminService : IAdminService
             {
                 MeetingId = meeting.MeetingId,
                 MeetingName = meeting.MeetingName,
-                MeetingLanguage = meeting.MeetingLanguage,
+                ValidUntil = meeting.ValidUntil,
                 IsValid = true,
                 DownloadLink = downloadLink
             };

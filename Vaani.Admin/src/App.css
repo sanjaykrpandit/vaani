@@ -185,10 +185,12 @@
   background: var(--background);
   border-bottom: 2px solid var(--border);
 }
-.h1-header{
-  color:#888888 !important;
+
+.h1-header {
+  color: #888888 !important;
   font-size: 22px !important;
-  }
+}
+
 .meeting-table th {
   padding: 0.10rem;
   text-align: left;
@@ -214,12 +216,12 @@
 }
 
 .meeting-table thead th {
-    padding: 0.7rem 0.3rem;
-    text-align: left;
-    font-weight: 700;
-    font-size: 0.65rem;
-    letter-spacing: 0.5px;
-    border: none;
+  padding: 0.7rem 0.3rem;
+  text-align: left;
+  font-weight: 700;
+  font-size: 0.65rem;
+  letter-spacing: 0.5px;
+  border: none;
 }
 
 .meeting-row.completed {
@@ -242,7 +244,7 @@
 
 /* Meeting Form */
 .page-container {
-  max-width: 800px;
+  max-width: 600px;
   margin: 0 auto;
 }
 
@@ -270,8 +272,8 @@
   display: flex;
   gap: 1rem;
   justify-content: flex-end;
-  margin-top: 2rem;
-  padding-top: 2rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
   border-top: 1px solid var(--border);
 }
 

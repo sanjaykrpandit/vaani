@@ -30,7 +30,7 @@ function EditMeeting() {
     if (!dateStr) return ''
     const d = new Date(dateStr)
     const pad = (n) => String(n).padStart(2, '0')
-    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
   }
 
   const loadLanguages = async () => {
@@ -49,7 +49,7 @@ function EditMeeting() {
     try {
       setLoading(true)
       const meeting = await meetingService.getMeetingById(meetingId)
-      
+
       // Convert dates to datetime-local format
       setFormData({
         meetingName: meeting.meetingName,
@@ -84,7 +84,7 @@ function EditMeeting() {
       // Validate dates
       const validFrom = new Date(formData.validFrom)
       const validUntil = new Date(formData.validUntil)
-      
+
       if (validUntil <= validFrom) {
         setError('End date must be after start date')
         setSaving(false)
@@ -128,13 +128,7 @@ function EditMeeting() {
     <Layout>
       <div className="page-container">
         <div className="page-header">
-          <h1>Edit Meeting</h1>
-          <button 
-            className="btn btn-secondary"
-            onClick={() => navigate('/dashboard')}
-          >
-            Cancel
-          </button>
+          <h1 className="h1-header"> Edit Meeting</h1>
         </div>
 
         <form onSubmit={handleSubmit} className="meeting-form">
@@ -226,18 +220,17 @@ function EditMeeting() {
               <span>Active</span>
             </label>
           </div>
-
           <div className="form-actions">
-            <button 
-              type="button" 
-              className="btn btn-secondary"
+            <button
+              type="button"
+              className="btn btn-sm btn-secondary"
               onClick={() => navigate('/dashboard')}
             >
               Cancel
             </button>
-            <button 
-              type="submit" 
-              className="btn btn-primary"
+            <button
+              type="submit"
+              className="btn btn-sm btn-primary"
               disabled={saving}
             >
               {saving ? 'Saving...' : 'Save Changes'}

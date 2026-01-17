@@ -38,11 +38,6 @@ public class AdminMeetingsController : ControllerBase
     {
         try
         {
-            if (!ValidateAdminToken())
-            {
-                return Unauthorized(new { message = "Invalid or expired token" });
-            }
-
             var meetings = await _adminService.GetAllMeetingsAsync();
             return Ok(meetings);
         }
@@ -65,11 +60,7 @@ public class AdminMeetingsController : ControllerBase
     public async Task<ActionResult<MeetingResponse>> GetMeeting(string meetingId)
     {
         try
-        {
-            if (!ValidateAdminToken())
-            {
-                return Unauthorized(new { message = "Invalid or expired token" });
-            }
+        {          
 
             var meeting = await _adminService.GetMeetingByIdAsync(meetingId);
 
@@ -100,11 +91,7 @@ public class AdminMeetingsController : ControllerBase
     public async Task<ActionResult<MeetingResponse>> CreateMeeting([FromBody] CreateMeetingRequest request)
     {
         try
-        {
-            if (!ValidateAdminToken())
-            {
-                return Unauthorized(new { message = "Invalid or expired token" });
-            }
+        {            
 
             if (string.IsNullOrWhiteSpace(request.MeetingId))
             {
@@ -153,11 +140,7 @@ public class AdminMeetingsController : ControllerBase
     public async Task<ActionResult<MeetingResponse>> UpdateMeeting(string meetingId, [FromBody] UpdateMeetingRequest request)
     {
         try
-        {
-            if (!ValidateAdminToken())
-            {
-                return Unauthorized(new { message = "Invalid or expired token" });
-            }
+        {           
 
             if (request.ValidFrom.HasValue && request.ValidUntil.HasValue && request.ValidUntil <= request.ValidFrom)
             {
@@ -194,11 +177,7 @@ public class AdminMeetingsController : ControllerBase
     public async Task<ActionResult> DeleteMeeting(string meetingId)
     {
         try
-        {
-            if (!ValidateAdminToken())
-            {
-                return Unauthorized(new { message = "Invalid or expired token" });
-            }
+        {          
 
             var result = await _adminService.DeleteMeetingAsync(meetingId);
 
@@ -230,11 +209,7 @@ public class AdminMeetingsController : ControllerBase
     public async Task<ActionResult<SessionMetricsDto>> GetSessionMetrics(string meetingId)
     {
         try
-        {
-            if (!ValidateAdminToken())
-            {
-                return Unauthorized(new { message = "Invalid or expired token" });
-            }
+        {          
 
             var metrics = await _adminService.GetSessionMetricsAsync(meetingId);
 
@@ -263,11 +238,7 @@ public class AdminMeetingsController : ControllerBase
     public async Task<ActionResult<IEnumerable<SessionLogDto>>> GetSessionLogs(int sessionId)
     {
         try
-        {
-            if (!ValidateAdminToken())
-            {
-                return Unauthorized(new { message = "Invalid or expired token" });
-            }
+        {          
 
             var logs = await _adminService.GetSessionLogsAsync(sessionId);
             return Ok(logs);
@@ -292,11 +263,6 @@ public class AdminMeetingsController : ControllerBase
     {
         try
         {
-            if (!ValidateAdminToken())
-            {
-                return Unauthorized(new { message = "Invalid or expired token" });
-            }
-
             var response = await _adminService.GenerateMeetingTokenAsync(meetingId);
 
             if (response == null)
@@ -315,17 +281,17 @@ public class AdminMeetingsController : ControllerBase
         }
     }
 
-    private bool ValidateAdminToken()
-    {
-        var authHeader = Request.Headers.Authorization.FirstOrDefault();
-        if (string.IsNullOrWhiteSpace(authHeader) || !authHeader.StartsWith("Bearer "))
-        {
-            return false;
-        }
+    //private bool ValidateAdminToken()
+    //{
+    //    var authHeader = Request.Headers.Authorization.FirstOrDefault();
+    //    if (string.IsNullOrWhiteSpace(authHeader) || !authHeader.StartsWith("Bearer "))
+    //    {
+    //        return false;
+    //    }
 
-        var token = authHeader.Substring("Bearer ".Length).Trim();
-        var (isValid, _, _) = _jwtTokenService.ValidateAdminToken(token);
+    //    var token = authHeader.Substring("Bearer ".Length).Trim();
+    //    var (isValid, _, _) = _jwtTokenService.ValidateAdminToken(token);
 
-        return isValid;
-    }
+    //    return isValid;
+    //}
 }

@@ -8,7 +8,7 @@ import api from './api'
  */
 export const generateMeetingToken = async (meetingId) => {
   try {
-    const response = await api.post(`/admin/meetinglink/${meetingId}/generate-token`)
+    const response = await api.post(`/admin/adminmeetings/${meetingId}/generate-token`)
     return response.data.token
   } catch (error) {
     console.error('Error generating meeting token:', error)

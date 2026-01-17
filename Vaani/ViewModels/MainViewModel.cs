@@ -1001,7 +1001,7 @@ public class MainViewModel : ViewModelBase
         if (SelectedSourceLanguage == null || SelectedGender == null)
             return;
 
-        var voice = _clientService.GetVoiceForLanguageAndGender("en-US", SelectedGender.Value);
+        var voice = _clientService.GetVoiceForLanguageAndGender(_settings.TargetLanguage, SelectedGender.Value);
 
         if (voice != null)
         {

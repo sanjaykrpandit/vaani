@@ -12,11 +12,9 @@ function UserList() {
   const [editingUser, setEditingUser] = useState(null)
   const [form, setForm] = useState({
     userId: '',
-    username: '',
-    email: '',
-    password: '',
-    role: 'Admin',
-    isActive: true
+    FullName: '',
+    Email: '',
+    Password: ''
   })
 
   useEffect(() => {
@@ -39,13 +37,12 @@ function UserList() {
 
   const openAdd = () => {
     setEditingUser(null)
-    setForm({ 
-      userId: '', 
-      username: '', 
-      email: '', 
-      password: '', 
-      role: 'Admin', 
-      isActive: true 
+    setForm({
+      userId: '',
+      FullName: '',
+      Email: '',
+      Password: '',
+      isActive: true
     })
     setShowModal(true)
   }
@@ -54,10 +51,9 @@ function UserList() {
     setEditingUser(user)
     setForm({
       userId: user.userId,
-      username: user.username,
+      fullName: user.fullName,
       email: user.email,
-      password: '', // Don't show password
-      role: user.role || 'Admin',
+      password: user.password,
       isActive: user.isActive
     })
     setShowModal(true)
@@ -117,7 +113,7 @@ function UserList() {
               <thead>
                 <tr>
                   <th>User ID</th>
-                  <th>Username</th>
+                  <th>Name</th>
                   <th>Email</th>
                   <th>Role</th>
                   <th>Status</th>
@@ -136,7 +132,7 @@ function UserList() {
                   users.map(user => (
                     <tr key={user.userId}>
                       <td>{user.userId}</td>
-                      <td>{user.username}</td>
+                      <td>{user.fullName}</td>
                       <td>{user.email}</td>
                       <td>{user.role || 'Admin'}</td>
                       <td>
@@ -146,12 +142,12 @@ function UserList() {
                       </td>
                       <td>{user.createdDate ? new Date(user.createdDate).toLocaleDateString() : '-'}</td>
                       <td align='right'>
-                        <button className="btn btn-sm" onClick={() => openEdit(user)}>
+                        <button className="btn btn-xsm" onClick={() => openEdit(user)}>
                           ✏️
                         </button>&nbsp;&nbsp;
-                        <button className="btn btn-sm fnt-red" onClick={() => handleDelete(user.userId)}>
+                        {/* <button className="btn btn-sm fnt-red" onClick={() => handleDelete(user.userId)}>
                           🗑
-                        </button>
+                        </button> */}
                       </td>
                     </tr>
                   ))
@@ -168,66 +164,66 @@ function UserList() {
               <form onSubmit={handleSubmit} className="modal-form">
                 <div className="form-group">
                   <label>User ID *</label>
-                  <input 
-                    name="userId" 
-                    value={form.userId} 
-                    onChange={handleChange} 
-                    required 
+                  <input
+                    name="userId"
+                    value={form.userId}
+                    onChange={handleChange}
+                    required
                     disabled={editingUser !== null}
                   />
                 </div>
                 <div className="form-group">
-                  <label>Username *</label>
-                  <input 
-                    name="username" 
-                    value={form.username} 
-                    onChange={handleChange} 
-                    required 
+                  <label>Name *</label>
+                  <input
+                    name="fullName"
+                    value={form.fullName}
+                    onChange={handleChange}
+                    required
                   />
                 </div>
                 <div className="form-group">
                   <label>Email *</label>
-                  <input 
+                  <input
                     type="email"
-                    name="email" 
-                    value={form.email} 
-                    onChange={handleChange} 
-                    required 
+                    name="email"
+                    value={form.email}
+                    onChange={handleChange}
+                    required
                   />
                 </div>
                 <div className="form-group">
                   <label>Password {editingUser ? '(leave blank to keep current)' : '*'}</label>
-                  <input 
+                  <input
                     type="password"
-                    name="password" 
-                    value={form.password} 
-                    onChange={handleChange} 
+                    name="password"
+                    value={form.password}
+                    onChange={handleChange}
                     required={!editingUser}
                   />
                 </div>
-                <div className="form-group">
+                {/* <div className="form-group">
                   <label>Role *</label>
                   <select name="role" value={form.role} onChange={handleChange} required>
                     <option value="Admin">Admin</option>
                     <option value="SuperAdmin">Super Admin</option>
                     <option value="Moderator">Moderator</option>
                   </select>
-                </div>
+                </div> */}
                 <div className="form-group">
                   <label>
-                    <input 
-                      type="checkbox" 
-                      name="isActive" 
-                      checked={form.isActive} 
-                      onChange={handleChange} 
+                    <input
+                      type="checkbox"
+                      name="isActive"
+                      checked={form.isActive}
+                      onChange={handleChange}
                     /> Active
                   </label>
                 </div>
                 <div className="form-actions">
-                  <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>
+                  <button type="button" className="btn btn-sm  btn-secondary" onClick={() => setShowModal(false)}>
                     Cancel
                   </button>
-                  <button type="submit" className="btn btn-primary">
+                  <button type="submit" className="btn btn-sm btn-primary">
                     {editingUser ? 'Update' : 'Create'}
                   </button>
                 </div>

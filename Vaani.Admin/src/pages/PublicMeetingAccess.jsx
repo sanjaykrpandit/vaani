@@ -6,7 +6,7 @@ import './PublicMeetingAccess.css'
 function PublicMeetingAccess() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
-  
+
   const [meetingId, setMeetingId] = useState('')
   const [token, setToken] = useState('')
   const [loading, setLoading] = useState(false)
@@ -16,7 +16,7 @@ function PublicMeetingAccess() {
   useEffect(() => {
     // Read token from URL query parameter (hidden from user)
     const urlToken = searchParams.get('token')
-    
+
     if (urlToken) {
       setToken(urlToken)
     } else {
@@ -41,7 +41,7 @@ function PublicMeetingAccess() {
     try {
       // Validate the meeting token (backend decrypts and validates)
       const data = await validateMeetingToken(meetingId, token)
-      
+
       // Check if meeting is valid
       if (!data.isValid) {
         setError('Meeting validation failed. Please check your meeting ID.')
@@ -53,7 +53,7 @@ function PublicMeetingAccess() {
       sessionStorage.setItem('meetingAccess', JSON.stringify({
         meetingId: data.meetingId,
         meetingName: data.meetingName,
-        meetingLanguage: data.meetingLanguage,
+        validUntil: data.validUntil,
         downloadLink: data.downloadLink,
         accessToken: token,
         validatedAt: new Date().toISOString()
@@ -61,11 +61,11 @@ function PublicMeetingAccess() {
 
       // Redirect to download page
       navigate('/meeting-download')
-      
+
     } catch (error) {
-      const errorMessage = error.response?.data?.message || 
-                          error.response?.data?.error ||
-                          'Invalid or expired meeting link. Please contact the meeting organizer.'
+      const errorMessage = error.response?.data?.message ||
+        error.response?.data?.error ||
+        'Invalid or expired meeting link. Please contact the meeting organizer.'
       setError(errorMessage)
       setLoading(false)
     }
