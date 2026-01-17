@@ -16,6 +16,16 @@ public interface IAdminService
     Task<IEnumerable<MeetingResponse>> GetAllMeetingsAsync();
     Task<AdminUser?> GetAdminUserByIdAsync(string userId);
     
+    // Admin User management methods
+    Task<AdminUserResponse?> CreateAdminUserAsync(CreateAdminUserRequest request);
+    Task<AdminUserResponse?> UpdateAdminUserAsync(string userId, UpdateAdminUserRequest request);
+    Task<AdminUserResponse?> GetAdminUserResponseByIdAsync(string userId);
+    Task<IEnumerable<AdminUserResponse>> GetAllAdminUsersAsync();
+    
+    // Meeting token methods
+    Task<GenerateMeetingTokenResponse?> GenerateMeetingTokenAsync(string meetingId);
+    Task<ValidateMeetingTokenResponse> ValidateMeetingTokenAsync(ValidateMeetingTokenRequest request);
+    
     // Analytics methods
     Task<SessionMetricsDto?> GetSessionMetricsAsync(string meetingId);
     Task<IEnumerable<SessionLogDto>> GetSessionLogsAsync(int sessionId);

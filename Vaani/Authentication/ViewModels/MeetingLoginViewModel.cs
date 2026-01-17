@@ -231,7 +231,7 @@ public class MeetingLoginViewModel : ReactiveObject
 
             // ✅ STEP 4: Open main window only after audio test passes
             StatusMessage = "Audio verified! Launching Vaani...";
-            await Task.Delay(500);
+            //await Task.Delay(500);
 
             await OpenMainWindowAsync(config);
         }

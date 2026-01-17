@@ -1,0 +1,154 @@
+.download-container {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 20px;
+}
+
+.download-card {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+  max-width: 600px;
+  width: 100%;
+  overflow: hidden;
+}
+
+.download-card .card-header {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 30px;
+  text-align: center;
+}
+
+.download-card .card-header h1 {
+  margin: 0 0 10px 0;
+  font-size: 32px;
+  font-weight: 600;
+}
+
+.download-card .card-header p {
+  margin: 0;
+  opacity: 0.9;
+  font-size: 16px;
+}
+
+.download-card .card-body {
+  padding: 30px;
+}
+
+.meeting-info {
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 30px;
+}
+
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.info-row:last-child {
+  border-bottom: none;
+}
+
+.info-label {
+  font-weight: 600;
+  color: #555;
+  font-size: 14px;
+}
+
+.info-value {
+  color: #333;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.launch-section {
+  text-align: center;
+}
+
+.btn-launch {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  padding: 16px 40px;
+  font-size: 18px;
+  font-weight: 600;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  width: 100%;
+  margin-bottom: 30px;
+}
+
+.btn-launch:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+}
+
+.btn-launch:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.btn-launch:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.instructions {
+  background: #e8f4f8;
+  border-left: 4px solid #667eea;
+  padding: 20px;
+  margin-bottom: 20px;
+  border-radius: 4px;
+  text-align: left;
+}
+
+.instructions h3 {
+  margin: 0 0 15px 0;
+  font-size: 16px;
+  color: #333;
+}
+
+.instructions ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.instructions li {
+  margin-bottom: 8px;
+  color: #555;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.help-section {
+  background: #fff9e6;
+  border-left: 4px solid #ffc107;
+  padding: 20px;
+  border-radius: 4px;
+  text-align: left;
+}
+
+.help-text {
+  margin: 0 0 10px 0;
+  font-size: 14px;
+  color: #333;
+}
+
+.troubleshooting {
+  margin: 10px 0 0 0;
+  padding-left: 20px;
+}
+
+.troubleshooting li {
+  margin-bottom: 6px;
+  color: #666;
+  font-size: 13px;
+}

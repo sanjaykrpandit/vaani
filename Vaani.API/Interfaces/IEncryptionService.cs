@@ -18,6 +18,16 @@ public interface IEncryptionService
     MeetingConfigurationDto DecryptConfiguration(string encryptedData, string key);
     
     /// <summary>
+    /// Encrypt meeting token (combines meetingId and publicToken)
+    /// </summary>
+    string EncryptMeetingToken(string meetingId, string publicToken);
+    
+    /// <summary>
+    /// Decrypt meeting token and extract meetingId and publicToken
+    /// </summary>
+    (string meetingId, string publicToken)? DecryptMeetingToken(string encryptedToken);
+    
+    /// <summary>
     /// Hash password using BCrypt
     /// </summary>
     string HashPassword(string password);

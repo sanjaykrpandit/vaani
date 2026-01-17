@@ -17,6 +17,7 @@ public class Meeting
     public bool IsActive { get; set; } = true;
     public string CreatedBy { get; set; } = string.Empty;
     public string UpdatedBy { get; set; } = string.Empty;
+    public string PublicToken { get; set; } = string.Empty;
 
     // Navigation properties
     public AzureSubscription AzureSubscription { get; set; } = null!;

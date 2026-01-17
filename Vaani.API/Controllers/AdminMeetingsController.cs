@@ -279,6 +279,42 @@ public class AdminMeetingsController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Generate encrypted token for meeting app download
+    /// </summary>
+    /// <param name="meetingId">Meeting ID</param>
+    /// <returns>Encrypted token</returns>
+    [HttpPost("{meetingId}/generate-token")]
+    [ProducesResponseType(typeof(GenerateMeetingTokenResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<GenerateMeetingTokenResponse>> GenerateMeetingToken(string meetingId)
+    {
+        try
+        {
+            if (!ValidateAdminToken())
+            {
+                return Unauthorized(new { message = "Invalid or expired token" });
+            }
+
+            var response = await _adminService.GenerateMeetingTokenAsync(meetingId);
+
+            if (response == null)
+            {
+                return NotFound(new { message = "Meeting not found or inactive" });
+            }
+
+            _logger.LogInformation("Token generated for meeting: {MeetingId}", meetingId);
+
+            return Ok(response);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error generating token for meeting: {MeetingId}", meetingId);
+            return StatusCode(StatusCodes.Status500InternalServerError, new { message = "An error occurred" });
+        }
+    }
+
     private bool ValidateAdminToken()
     {
         var authHeader = Request.Headers.Authorization.FirstOrDefault();

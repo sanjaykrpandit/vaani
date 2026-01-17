@@ -79,6 +79,7 @@ public class VaaniDbContext : DbContext
             entity.Property(e => e.IsActive).HasColumnName("is_active").HasDefaultValue(true);
             entity.Property(e => e.CreatedBy).HasColumnName("created_by").IsRequired().HasMaxLength(255);
             entity.Property(e => e.UpdatedBy).HasColumnName("updated_by").IsRequired().HasMaxLength(255);
+            entity.Property(e => e.PublicToken).HasColumnName("public_token").IsRequired().HasMaxLength(255);
 
             entity.HasMany(e => e.Sessions)
                 .WithOne(e => e.Meeting)

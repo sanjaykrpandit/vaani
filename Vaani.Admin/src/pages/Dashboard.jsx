@@ -104,9 +104,9 @@ function Dashboard() {
     <Layout>
       <div className="dashboard">
         <div className="dashboard-header">
-          <h1>Meeting Management</h1>
+          <h1 className='h1-header'>Meetings</h1>
           <button
-            className="btn btn-primary"
+            className="btn btn-sm btn-primary"
             onClick={() => navigate('/meetings/add')}
           >
             + Add Meeting

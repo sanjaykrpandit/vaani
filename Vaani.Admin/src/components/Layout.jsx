@@ -20,7 +20,7 @@ function Layout({ children }) {
             <h2 className="logo">
               <img
                 src={logo}
-                height="20"
+                height="12"
                 alt="Vaani"
                 className="logo-image"
               />{' '}
@@ -33,7 +33,7 @@ function Layout({ children }) {
               Welcome, {user?.fullName || user?.userId}
             </span>
             <button
-              className="btn btn-secondary btn-sm"
+              className="btn btn-secondary btn-xsm"
               onClick={handleLogout}
             >
               Logout
@@ -46,28 +46,28 @@ function Layout({ children }) {
       <div className="nav-content">
         <nav className="nav-menu">
           <button
-            className="btn btn-sm"
+            className="btn btn-xsm"
             onClick={() => navigate('/dashboard')}
           >
             📊 Dashboard
           </button>
 
           <button
-            className="btn btn-sm"
+            className="btn btn-xsm"
             onClick={() => navigate('/languages')}
           >
             🌐 Languages
           </button>
 
           <button
-            className="btn btn-sm"
+            className="btn btn-xsm"
             onClick={() => navigate('/meetings')}
           >
             📞 Meetings
           </button>
 
           <button
-            className="btn btn-sm"
+            className="btn btn-xsm"
             onClick={() => navigate('/users')}
           >
             👥 Users

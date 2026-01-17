@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { generateMeetingToken } from '../services/tokenService'
 
 function MeetingList({
   analysis,
@@ -9,6 +10,30 @@ function MeetingList({
   onLaunch,
   onViewMetrics
 }) {
+  const [copyingId, setCopyingId] = useState(null)
+
+  const handleCopyLink = async (meetingId) => {
+    try {
+      setCopyingId(meetingId)
+      
+      // Generate token from backend
+      const token = await generateMeetingToken(meetingId)
+      
+      // Create public access URL with only token parameter
+      const origin = window.location.origin
+      const publicUrl = `${origin}/public-access?token=${token}`
+      
+      // Copy to clipboard
+      await navigator.clipboard.writeText(publicUrl)
+      
+      // Show success feedback
+      setTimeout(() => setCopyingId(null), 2000)
+    } catch (error) {
+      console.error('Failed to copy link:', error)
+      alert('Failed to generate meeting link. Please try again.')
+      setCopyingId(null)
+    }
+  }
  
   const formatDate = (dateString) => {
     const date = new Date(dateString)
@@ -91,11 +116,11 @@ function MeetingList({
                <td>
                   {status === 'running' && meeting.isActive && (
                     <button
-                      className="btn btn-sm btn-primary d-inline-flex align-items-center gap-2"
+                      className="btn btn-xsm btn-primary d-inline-flex align-items-center gap-2"
                       onClick={() => onLaunch(meeting.meetingId)}
                     >
                       Launch
-                      <img src={logo} alt="logo" height="14" />
+                      <img src={logo} alt="logo" height="10" />
                     </button>
                   )}
 
@@ -117,15 +142,27 @@ function MeetingList({
                 {/* Actions */}
                 <td className="actions">
                   <button
-                    className="btn btn-sm"
+                    className="btn btn-xsm"
                     onClick={() => onViewMetrics(meeting.meetingId)}
+                    title="View Analytics"
                   >
                     <img src={analysis} alt="Analytics" height="16" />
                   </button>
 
+                  {status === 'running' && meeting.isActive && (
+                    <button
+                      className="btn btn-xsm"
+                      onClick={() => handleCopyLink(meeting.meetingId)}
+                      title="Copy Public Access Link"
+                      disabled={copyingId === meeting.meetingId}
+                    >
+                      {copyingId === meeting.meetingId ? '✓' : '🔗'}
+                    </button>
+                  )}
+
                   {isEditable && (
                     <button
-                      className="btn btn-sm"
+                      className="btn btn-xsm"
                       onClick={() => onEdit(meeting.meetingId)}
                     >
                       ✏️
@@ -134,7 +171,7 @@ function MeetingList({
 
                   {isEditable && (
                     <button
-                      className="btn btn-sm"
+                      className="btn btn-xsm"
                       onClick={() => onDelete(meeting.meetingId)}
                     >
                       🗑

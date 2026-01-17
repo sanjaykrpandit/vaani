@@ -15,15 +15,21 @@ public class AdminService : IAdminService
 {
     private readonly VaaniDbContext _dbContext;
     private readonly IJwtTokenService _jwtTokenService;
+    private readonly IEncryptionService _encryptionService;
+    private readonly IConfiguration _configuration;
     private readonly ILogger<AdminService> _logger;
 
     public AdminService(
         VaaniDbContext dbContext,
         IJwtTokenService jwtTokenService,
+        IEncryptionService encryptionService,
+        IConfiguration configuration,
         ILogger<AdminService> logger)
     {
         _dbContext = dbContext;
         _jwtTokenService = jwtTokenService;
+        _encryptionService = encryptionService;
+        _configuration = configuration;
         _logger = logger;
     }
 
@@ -119,7 +125,8 @@ public class AdminService : IAdminService
                 ValidUntil = request.ValidUntil,
                 IsActive = true,
                 CreatedAt = DateTime.UtcNow,
-                MeetingLanguage = request.MeetingLanguage ?? "en-US"
+                MeetingLanguage = request.MeetingLanguage ?? "en-US",
+                PublicToken = Guid.NewGuid().ToString("N")
             };
 
             _dbContext.Meetings.Add(meeting);
@@ -257,6 +264,147 @@ public class AdminService : IAdminService
     {
         return await _dbContext.AdminUsers
             .FirstOrDefaultAsync(a => a.UserId == userId && a.IsActive);
+    }
+
+    public async Task<AdminUserResponse?> CreateAdminUserAsync(CreateAdminUserRequest request)
+    {
+        try
+        {
+            // Check if user already exists
+            var existingUser = await _dbContext.AdminUsers
+                .FirstOrDefaultAsync(a => a.UserId == request.UserId || a.Email == request.Email);
+
+            if (existingUser != null)
+            {
+                _logger.LogWarning("Attempt to create duplicate admin user: {UserId} or {Email}", request.UserId, request.Email);
+                return null;
+            }
+
+            var adminUser = new AdminUser
+            {
+                UserId = request.UserId,
+                PasswordHash = HashPassword(request.Password),
+                FullName = request.FullName,
+                Email = request.Email,
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            _dbContext.AdminUsers.Add(adminUser);
+            await _dbContext.SaveChangesAsync();
+
+            _logger.LogInformation("Admin user created: {UserId}", adminUser.UserId);
+
+            return MapToAdminUserResponse(adminUser);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating admin user: {UserId}", request.UserId);
+            return null;
+        }
+    }
+
+    public async Task<AdminUserResponse?> UpdateAdminUserAsync(string userId, UpdateAdminUserRequest request)
+    {
+        try
+        {
+            var adminUser = await _dbContext.AdminUsers
+                .FirstOrDefaultAsync(a => a.UserId == userId);
+
+            if (adminUser == null)
+            {
+                _logger.LogWarning("Admin user not found: {UserId}", userId);
+                return null;
+            }
+
+            // Check if email is being changed and if it already exists
+            if (!string.IsNullOrWhiteSpace(request.Email) && request.Email != adminUser.Email)
+            {
+                var emailExists = await _dbContext.AdminUsers
+                    .AnyAsync(a => a.Email == request.Email && a.UserId != userId);
+                
+                if (emailExists)
+                {
+                    _logger.LogWarning("Email already exists: {Email}", request.Email);
+                    return null;
+                }
+                
+                adminUser.Email = request.Email;
+            }
+
+            if (!string.IsNullOrWhiteSpace(request.FullName))
+            {
+                adminUser.FullName = request.FullName;
+            }
+
+            if (!string.IsNullOrWhiteSpace(request.Password))
+            {
+                adminUser.PasswordHash = HashPassword(request.Password);
+            }
+
+            if (request.IsActive.HasValue)
+            {
+                adminUser.IsActive = request.IsActive.Value;
+            }
+
+            await _dbContext.SaveChangesAsync();
+
+            _logger.LogInformation("Admin user updated: {UserId}", userId);
+
+            return MapToAdminUserResponse(adminUser);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating admin user: {UserId}", userId);
+            return null;
+        }
+    }
+
+    public async Task<AdminUserResponse?> GetAdminUserResponseByIdAsync(string userId)
+    {
+        try
+        {
+            var adminUser = await _dbContext.AdminUsers
+                .FirstOrDefaultAsync(a => a.UserId == userId);
+
+            return adminUser != null ? MapToAdminUserResponse(adminUser) : null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving admin user: {UserId}", userId);
+            return null;
+        }
+    }
+
+    public async Task<IEnumerable<AdminUserResponse>> GetAllAdminUsersAsync()
+    {
+        try
+        {
+            var adminUsers = await _dbContext.AdminUsers
+                .OrderByDescending(a => a.CreatedAt)
+                .ToListAsync();
+
+            return adminUsers.Select(MapToAdminUserResponse);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving all admin users");
+            return Enumerable.Empty<AdminUserResponse>();
+        }
+    }
+
+    private AdminUserResponse MapToAdminUserResponse(AdminUser adminUser)
+    {
+        return new AdminUserResponse
+        {
+            Id = adminUser.Id,
+            UserId = adminUser.UserId,
+            FullName = adminUser.FullName,
+            Email = adminUser.Email,
+            IsActive = adminUser.IsActive,
+            CreatedAt = adminUser.CreatedAt,
+            LastLoginAt = adminUser.LastLoginAt
+        };
     }
 
     private MeetingResponse MapToMeetingResponse(Meeting meeting)
@@ -434,6 +582,139 @@ public class AdminService : IAdminService
         {
             _logger.LogError(ex, "Error getting session logs for session: {SessionId}", sessionId);
             return Enumerable.Empty<SessionLogDto>();
+        }
+    }
+
+    public async Task<GenerateMeetingTokenResponse?> GenerateMeetingTokenAsync(string meetingId)
+    {
+        try
+        {
+            var meeting = await _dbContext.Meetings
+                .FirstOrDefaultAsync(m => m.MeetingId == meetingId.ToUpperInvariant() && m.IsActive);
+
+            if (meeting == null)
+            {
+                _logger.LogWarning("Meeting not found or inactive: {MeetingId}", meetingId);
+                return null;
+            }
+
+            // Generate encrypted token combining meetingId and publicToken
+            var encryptedToken = _encryptionService.EncryptMeetingToken(meeting.MeetingId, meeting.PublicToken);
+
+            _logger.LogInformation("Generated token for meeting: {MeetingId}", meetingId);
+
+            return new GenerateMeetingTokenResponse
+            {
+                Token = encryptedToken
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error generating token for meeting: {MeetingId}", meetingId);
+            return null;
+        }
+    }
+
+    public async Task<ValidateMeetingTokenResponse> ValidateMeetingTokenAsync(ValidateMeetingTokenRequest request)
+    {
+        try
+        {
+            // Decrypt the token
+            var decryptedData = _encryptionService.DecryptMeetingToken(request.Token);
+
+            if (decryptedData == null)
+            {
+                _logger.LogWarning("Invalid token format");
+                return new ValidateMeetingTokenResponse
+                {
+                    IsValid = false
+                };
+            }
+
+            var (tokenMeetingId, publicToken) = decryptedData.Value;
+
+            // Validate that the decrypted meetingId matches the request
+            if (!tokenMeetingId.Equals(request.MeetingId, StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogWarning("Meeting ID mismatch. Token: {TokenMeetingId}, Request: {RequestMeetingId}", 
+                    tokenMeetingId, request.MeetingId);
+                return new ValidateMeetingTokenResponse
+                {
+                    IsValid = false
+                };
+            }
+
+            // Get meeting from database
+            var meeting = await _dbContext.Meetings
+                .FirstOrDefaultAsync(m => m.MeetingId == request.MeetingId.ToUpperInvariant());
+
+            if (meeting == null)
+            {
+                _logger.LogWarning("Meeting not found: {MeetingId}", request.MeetingId);
+                return new ValidateMeetingTokenResponse
+                {
+                    IsValid = false
+                };
+            }
+
+            // Validate the publicToken matches
+            if (meeting.PublicToken != publicToken)
+            {
+                _logger.LogWarning("Public token mismatch for meeting: {MeetingId}", request.MeetingId);
+                return new ValidateMeetingTokenResponse
+                {
+                    IsValid = false
+                };
+            }
+
+            // Validate meeting is active
+            if (!meeting.IsActive)
+            {
+                _logger.LogWarning("Meeting is inactive: {MeetingId}", request.MeetingId);
+                return new ValidateMeetingTokenResponse
+                {
+                    MeetingId = meeting.MeetingId,
+                    MeetingName = meeting.MeetingName,
+                    MeetingLanguage = meeting.MeetingLanguage,
+                    IsValid = false
+                };
+            }
+
+            // Validate meeting time window
+            var now = DateTime.UtcNow;
+            if (now < meeting.ValidFrom || now > meeting.ValidUntil)
+            {
+                _logger.LogWarning("Meeting outside valid time window: {MeetingId}", request.MeetingId);
+                return new ValidateMeetingTokenResponse
+                {
+                    MeetingId = meeting.MeetingId,
+                    MeetingName = meeting.MeetingName,
+                    MeetingLanguage = meeting.MeetingLanguage,
+                    IsValid = false
+                };
+            }
+
+            // Get download link from configuration
+            var downloadLink = _configuration["AppDownload:Link"] ?? string.Empty;
+
+            _logger.LogInformation("Token validated successfully for meeting: {MeetingId}", request.MeetingId);
+
+            return new ValidateMeetingTokenResponse
+            {
+                MeetingId = meeting.MeetingId,
+                MeetingName = meeting.MeetingName,
+                MeetingLanguage = meeting.MeetingLanguage,
+                IsValid = true,
+                DownloadLink = downloadLink
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error validating meeting token");
+            return new ValidateMeetingTokenResponse
+            {
+                IsValid = false
+            };
         }
     }
 }
