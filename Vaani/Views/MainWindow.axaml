@@ -516,13 +516,19 @@
 					<Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
 
 						<!-- Language Settings -->
-						<Grid Grid.Row="0" Grid.ColumnSpan="2" ColumnDefinitions="*,*" Margin="0,0,15,0">
-							<StackPanel Grid.Column="0" VerticalAlignment="Top">
-								<TextBlock Text="Your Language" Foreground="White"  FontSize="13" Margin="0,0,0,7"/>
+						<Grid Grid.Row="0"
+      Grid.ColumnSpan="2"
+      RowDefinitions="Auto, Auto"
+      ColumnDefinitions="*,*"
+      Margin="0,0,15,0">
+
+							<!-- FIRST ROW: Dropdowns -->
+							<StackPanel Grid.Row="0" Grid.Column="0" Margin="0,0,5,10">
+								<TextBlock Text="Your Language" Foreground="White" FontSize="13" Margin="0,0,0,7"/>
 								<ComboBox ItemsSource="{Binding Languages}"
-                                          SelectedItem="{Binding SelectedSourceLanguage, Mode=TwoWay}"
-                                          IsEnabled="{Binding !IsRunning}"
-                                          HorizontalAlignment="Stretch"  FontSize="13">
+										  SelectedItem="{Binding SelectedSourceLanguage, Mode=TwoWay}"
+										  IsEnabled="{Binding !IsRunning}"
+										  HorizontalAlignment="Stretch" FontSize="13">
 									<ComboBox.ItemTemplate>
 										<DataTemplate>
 											<TextBlock Text="{Binding DisplayName}" />
@@ -531,12 +537,12 @@
 								</ComboBox>
 							</StackPanel>
 
-							<StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Top">
-								<TextBlock Text="Gender" Foreground="White"  FontSize="13" Margin="0,0,0,7"/>
+							<StackPanel Grid.Row="0" Grid.Column="1" Margin="5,0,0,10">
+								<TextBlock Text="Gender" Foreground="White" FontSize="13" Margin="0,0,0,7"/>
 								<ComboBox ItemsSource="{Binding Genders}"
-                                          SelectedItem="{Binding SelectedGender, Mode=TwoWay}"
-                                          IsEnabled="{Binding !IsRunning}"
-                                          HorizontalAlignment="Stretch"  FontSize="13">
+										  SelectedItem="{Binding SelectedGender, Mode=TwoWay}"
+										  IsEnabled="{Binding !IsRunning}"
+										  HorizontalAlignment="Stretch" FontSize="13">
 									<ComboBox.ItemTemplate>
 										<DataTemplate>
 											<TextBlock Text="{Binding DisplayName}" />
@@ -545,7 +551,18 @@
 								</ComboBox>
 							</StackPanel>
 
+							<!-- SECOND ROW: Label -->
+							<StackPanel Grid.Row="1" 
+										IsVisible="{Binding IsBypassModeEnabled}" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,1,0,0">
+								<TextBlock Text="(Bypass audio mode enabled: same source and target language detected.)"
+									   FontSize="11"
+									   Foreground="#CCCCCC"
+									   FontFamily="Segoe UI"
+									   FontWeight="SemiBold"
+									   FontStyle="Italic"/>
+							</StackPanel>
 						</Grid>
+
 
 						<!-- Input Devices Radio List -->
             <StackPanel Grid.Row="2"

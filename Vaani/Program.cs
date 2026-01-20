@@ -10,6 +10,7 @@ namespace Vaani;
 class Program
 {
     private static SingleInstanceService? _singleInstance;
+    public static string? MeetingId { get; private set; }
 
     // Initialization code. Don't use any Avalonia, third-party APIs or any
     // SynchronizationContext-reliant code before AppMain is called: things aren't initialized
@@ -17,14 +18,17 @@ class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        // Parse meetingId from args (optional)
+        MeetingId = ParseMeetingIdFromArgs(args);
+
         // Check for single instance
         _singleInstance = new SingleInstanceService();
-        
+
         if (!_singleInstance.IsFirstInstance())
         {
             // Another instance is already running
             Console.WriteLine("Another instance of Vaani is already running.");
-            
+
             // Try to show a visual message
             try
             {
@@ -39,7 +43,7 @@ class Program
                 Console.WriteLine("═══════════════════════════════════════════════════════");
                 Thread.Sleep(3000);
             }
-            
+
             // Exit this instance
             return;
         }
@@ -71,13 +75,44 @@ class Program
         };
 
         builder.SetupWithLifetime(lifetime);
-        
+
         var window = new Views.AlreadyRunningWindow();
         lifetime.MainWindow = window;
-        
+
         var app = (App)Avalonia.Application.Current!;
         app.ApplicationLifetime = lifetime;
-        
+
         lifetime.Start(Array.Empty<string>());
+    }
+
+    private static string? ParseMeetingIdFromArgs(string[] args)
+    {
+        if (args == null || args.Length == 0)
+            return null;
+
+        foreach (var arg in args)
+        {
+            // Support formats: meetingId=123, ?meetingId=123, --meetingId=123, /meetingId=123
+            var cleanArg = arg.TrimStart('?', '-', '/');
+
+            if (cleanArg.StartsWith("meetingId=", StringComparison.OrdinalIgnoreCase))
+            {
+                var value = cleanArg.Substring("meetingId=".Length).Trim();
+                return string.IsNullOrWhiteSpace(value) ? null : value;
+            }
+
+            // Also support: --reqId 123 (space-separated)
+            if (cleanArg.Equals("meetingId", StringComparison.OrdinalIgnoreCase))
+            {
+                var index = Array.IndexOf(args, arg);
+                if (index + 1 < args.Length)
+                {
+                    var value = args[index + 1].Trim();
+                    return string.IsNullOrWhiteSpace(value) ? null : value;
+                }
+            }
+        }
+
+        return null;
     }
 }

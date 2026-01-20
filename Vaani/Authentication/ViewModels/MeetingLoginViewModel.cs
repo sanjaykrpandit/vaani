@@ -50,6 +50,12 @@ public class MeetingLoginViewModel : ReactiveObject
         RetryCommand = ReactiveCommand.Create(ResetState);
 
         AppVersion = $"Version {AppVersionHelper.GetAppVersion()}";
+
+        if (!string.IsNullOrWhiteSpace(Program.MeetingId))
+        {
+            MeetingId = Program.MeetingId;
+        }
+
     }
    
    
