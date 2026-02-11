@@ -11,4 +11,6 @@ public class UpdateMeetingRequest
     public DateTime? ValidFrom { get; set; }
     public DateTime? ValidUntil { get; set; }
     public bool? IsActive { get; set; }
+    public string? Password { get; set; }
+    public bool? ClearPassword { get; set; } // Set to true to remove password protection
 }

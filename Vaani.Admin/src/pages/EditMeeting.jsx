@@ -18,7 +18,11 @@ function EditMeeting() {
     validFrom: '',
     validUntil: '',
     isActive: true,
-    meetingLanguage: 'en-US'
+    meetingLanguage: 'en-US',
+    requiresPassword: false,
+    password: '',
+    confirmPassword: '',
+    clearPassword: false
   })
 
   useEffect(() => {
@@ -57,7 +61,11 @@ function EditMeeting() {
         validFrom: formatDateForInput(meeting.validFrom),
         validUntil: formatDateForInput(meeting.validUntil),
         isActive: meeting.isActive,
-        meetingLanguage: meeting.meetingLanguage || 'en-US'
+        meetingLanguage: meeting.meetingLanguage || 'en-US',
+        requiresPassword: meeting.requiresPassword || false,
+        password: '',
+        confirmPassword: '',
+        clearPassword: false
       })
     } catch (err) {
       setError('Failed to load meeting')
@@ -99,12 +107,33 @@ function EditMeeting() {
         return
       }
 
+      // Validate password if being set/updated
+      if (formData.password) {
+        if (formData.password.length < 6) {
+          setError('Password must be at least 6 characters long')
+          setSaving(false)
+          return
+        }
+        if (formData.password !== formData.confirmPassword) {
+          setError('Passwords do not match')
+          setSaving(false)
+          return
+        }
+      }
+
       const updateData = {
         meetingName: formData.meetingName,
         meetingLanguage: formData.meetingLanguage || 'en-US',
         validFrom: validFrom.toISOString(),
         validUntil: validUntil.toISOString(),
         isActive: formData.isActive
+      }
+
+      // Handle password changes
+      if (formData.clearPassword) {
+        updateData.clearPassword = true
+      } else if (formData.password) {
+        updateData.password = formData.password
       }
 
       await meetingService.updateMeeting(meetingId, updateData)
@@ -207,6 +236,64 @@ function EditMeeting() {
                 required
               />
             </div>
+          </div>
+
+          <div className="form-group">
+            <label>Password Protection</label>
+            {formData.requiresPassword && (
+              <div style={{ marginBottom: '10px', padding: '10px', backgroundColor: '#f0f0f0', borderRadius: '4px' }}>
+                <span style={{ color: '#28a745', fontWeight: 'bold' }}>? Password Protected</span>
+                <p style={{ margin: '5px 0 0 0', fontSize: '0.9em', color: '#666' }}>
+                  This meeting currently requires a password to join
+                </p>
+              </div>
+            )}
+            
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                name="clearPassword"
+                checked={formData.clearPassword}
+                onChange={handleChange}
+                disabled={!formData.requiresPassword}
+              />
+              <span>Remove password protection</span>
+            </label>
+
+            {!formData.clearPassword && (
+              <>
+                <div style={{ marginTop: '15px' }}>
+                  <label htmlFor="password">
+                    {formData.requiresPassword ? 'Change Password' : 'Set Password'}
+                  </label>
+                  <input
+                    id="password"
+                    name="password"
+                    type="password"
+                    value={formData.password}
+                    onChange={handleChange}
+                    placeholder={formData.requiresPassword ? 'Enter new password (leave blank to keep current)' : 'Enter password to protect this meeting'}
+                    minLength={6}
+                  />
+                  {formData.password && <small>Minimum 6 characters</small>}
+                </div>
+
+                {formData.password && (
+                  <div style={{ marginTop: '10px' }}>
+                    <label htmlFor="confirmPassword">Confirm Password *</label>
+                    <input
+                      id="confirmPassword"
+                      name="confirmPassword"
+                      type="password"
+                      value={formData.confirmPassword}
+                      onChange={handleChange}
+                      placeholder="Confirm password"
+                      required
+                    />
+                  </div>
+                )}
+              </>
+            )}
           </div>
 
           <div className="form-group">

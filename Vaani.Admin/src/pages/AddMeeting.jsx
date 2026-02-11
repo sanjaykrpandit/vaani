@@ -17,7 +17,10 @@ function AddMeeting() {
     meetingName: '',
     meetingLanguage: 'en-US',
     validFrom: '',
-    validUntil: ''
+    validUntil: '',
+    password: '',
+    confirmPassword: '',
+    requiresPassword: false
   })
 
   useEffect(() => {
@@ -67,12 +70,36 @@ function AddMeeting() {
         return
       }
 
+      // Validate password if required
+      if (formData.requiresPassword) {
+        if (!formData.password) {
+          setError('Password is required when password protection is enabled')
+          setLoading(false)
+          return
+        }
+        if (formData.password.length < 6) {
+          setError('Password must be at least 6 characters long')
+          setLoading(false)
+          return
+        }
+        if (formData.password !== formData.confirmPassword) {
+          setError('Passwords do not match')
+          setLoading(false)
+          return
+        }
+      }
+
       const meetingData = {
         meetingId: formData.meetingId,
         meetingName: formData.meetingName,
         meetingLanguage: formData.meetingLanguage || 'en-US',
         validFrom: validFrom.toISOString(),
         validUntil: validUntil.toISOString()
+      }
+
+      // Only include password if protection is enabled
+      if (formData.requiresPassword && formData.password) {
+        meetingData.password = formData.password
       }
 
       await meetingService.createMeeting(meetingData)
@@ -143,6 +170,50 @@ function AddMeeting() {
               </select>
             )}
           </div>
+
+          <div className="form-group">
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                name="requiresPassword"
+                checked={formData.requiresPassword}
+                onChange={handleChange}
+              />
+              <span>Require password to join meeting</span>
+            </label>
+          </div>
+
+          {formData.requiresPassword && (
+            <>
+              <div className="form-group">
+                <label htmlFor="password">Meeting Password *</label>
+                <input
+                  id="password"
+                  name="password"
+                  type="password"
+                  value={formData.password}
+                  onChange={handleChange}
+                  placeholder="Enter meeting password"
+                  required={formData.requiresPassword}
+                  minLength={6}
+                />
+                <small>Minimum 6 characters</small>
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="confirmPassword">Confirm Password *</label>
+                <input
+                  id="confirmPassword"
+                  name="confirmPassword"
+                  type="password"
+                  value={formData.confirmPassword}
+                  onChange={handleChange}
+                  placeholder="Confirm meeting password"
+                  required={formData.requiresPassword}
+                />
+              </div>
+            </>
+          )}
 
           <div className="form-row">
             <div className="form-group">

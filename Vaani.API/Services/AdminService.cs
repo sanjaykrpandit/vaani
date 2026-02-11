@@ -190,6 +190,25 @@ public class AdminService : IAdminService
             if (request.IsActive.HasValue) meeting.IsActive = request.IsActive.Value;
             if (request.MeetingLanguage != null) meeting.MeetingLanguage = request.MeetingLanguage;
 
+            // Handle password update
+            if (request.ClearPassword == true)
+            {
+                // Remove password protection
+                meeting.RequiresPassword = false;
+                meeting.PasswordHash = null;
+                meeting.PasswordSalt = null;
+                _logger.LogInformation("Password protection removed from meeting: {MeetingId}", meetingId);
+            }
+            else if (!string.IsNullOrWhiteSpace(request.Password))
+            {
+                // Set or update password
+                var (hash, salt) = _passwordHashingService.HashPassword(request.Password);
+                meeting.PasswordHash = hash;
+                meeting.PasswordSalt = salt;
+                meeting.RequiresPassword = true;
+                _logger.LogInformation("Password updated for meeting: {MeetingId}", meetingId);
+            }
+
             meeting.UpdatedAt = DateTime.UtcNow;
 
             await _dbContext.SaveChangesAsync();
