@@ -18,6 +18,11 @@ public class Meeting
     public string CreatedBy { get; set; } = string.Empty;
     public string UpdatedBy { get; set; } = string.Empty;
     public string PublicToken { get; set; } = string.Empty;
+    
+    // Password protection
+    public bool RequiresPassword { get; set; } = false;
+    public string? PasswordHash { get; set; }
+    public string? PasswordSalt { get; set; }
 
     // Navigation properties
     public AzureSubscription AzureSubscription { get; set; } = null!;

@@ -18,6 +18,7 @@ public class AdminService : IAdminService
     private readonly IEncryptionService _encryptionService;
     private readonly IConfiguration _configuration;
     private readonly ILogger<AdminService> _logger;
+    private readonly PasswordHashingService _passwordHashingService;
 
     public AdminService(
         VaaniDbContext dbContext,
@@ -31,6 +32,7 @@ public class AdminService : IAdminService
         _encryptionService = encryptionService;
         _configuration = configuration;
         _logger = logger;
+        _passwordHashingService = new PasswordHashingService();
     }
 
     public async Task<AdminLoginResponse> AuthenticateAsync(string userId, string password)
@@ -128,6 +130,15 @@ public class AdminService : IAdminService
                 MeetingLanguage = request.MeetingLanguage ?? "en-US",
                 PublicToken = Guid.NewGuid().ToString("N")
             };
+
+            // Hash password if provided
+            if (!string.IsNullOrWhiteSpace(request.Password))
+            {
+                var (hash, salt) = _passwordHashingService.HashPassword(request.Password);
+                meeting.PasswordHash = hash;
+                meeting.PasswordSalt = salt;
+                meeting.RequiresPassword = true;
+            }
 
             _dbContext.Meetings.Add(meeting);
             await _dbContext.SaveChangesAsync();
@@ -430,7 +441,8 @@ public class AdminService : IAdminService
             CreatedAt = meeting.CreatedAt,
             UpdatedAt = meeting.UpdatedAt,
             IsActive = meeting.IsActive,
-            MeetingLanguage = meeting.MeetingLanguage
+            MeetingLanguage = meeting.MeetingLanguage,
+            RequiresPassword = meeting.RequiresPassword
         };
     }
 

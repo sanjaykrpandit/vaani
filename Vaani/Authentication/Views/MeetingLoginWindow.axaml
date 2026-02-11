@@ -103,6 +103,28 @@
                 </TextBox.KeyBindings>
               </TextBox>
 
+              <TextBox Text="{Binding MeetingPassword, Mode=TwoWay}"
+                        Watermark="Password (if required)"
+                        FontSize="16"
+                        Height="34"
+                        Padding="6"
+                        Background="#252526"
+                        Foreground="White"
+                        BorderBrush="#3E3E42"
+                        BorderThickness="2"
+                        CornerRadius="17"
+                        Width="250"
+                        Margin="30,10"
+                        HorizontalContentAlignment="Center"
+                        TextAlignment="Center"
+                        FontFamily="Consolas,monospace"
+                        PasswordChar="?"
+                        RevealPassword="False">
+                <TextBox.KeyBindings>
+                  <KeyBinding Gesture="Enter" Command="{Binding ValidateCommand}"/>
+                </TextBox.KeyBindings>
+              </TextBox>
+
                 <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center">
                     <!--<Button Content="Paste"
                             Command="{Binding PasteCommand}"

@@ -11,4 +11,5 @@ public class MeetingValidationRequest
     public string AppVersion { get; set; } = "1.0.0";
     public DateTime Timestamp { get; set; } = DateTime.UtcNow;
     public string UserName { get; set; } = string.Empty;
+    public string? Password { get; set; }
 }

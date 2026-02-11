@@ -16,6 +16,7 @@ public class MeetingService : IMeetingService
     private readonly IEncryptionService _encryptionService;
     private readonly ISessionService _sessionService;
     private readonly ILogger<MeetingService> _logger;
+    private readonly PasswordHashingService _passwordHashingService;
 
     public MeetingService(
         VaaniDbContext dbContext,
@@ -27,6 +28,7 @@ public class MeetingService : IMeetingService
         _encryptionService = encryptionService;
         _sessionService = sessionService;
         _logger = logger;
+        _passwordHashingService = new PasswordHashingService();
     }
 
     public async Task<MeetingValidationResponse> ValidateMeetingAsync(MeetingValidationRequest request)
@@ -86,6 +88,32 @@ public class MeetingService : IMeetingService
                     ErrorCode = "MEETING_EXPIRED",
                     Message = "Meeting has expired"
                 };
+            }
+
+            // Check password if required
+            if (meeting.RequiresPassword)
+            {
+                if (string.IsNullOrWhiteSpace(request.Password))
+                {
+                    _logger.LogWarning("Password required but not provided for meeting: {MeetingId}", request.MeetingId);
+                    return new MeetingValidationResponse
+                    {
+                        IsValid = false,
+                        ErrorCode = "PASSWORD_REQUIRED",
+                        Message = "This meeting requires a password"
+                    };
+                }
+
+                if (!_passwordHashingService.VerifyPassword(request.Password, meeting.PasswordHash!, meeting.PasswordSalt!))
+                {
+                    _logger.LogWarning("Incorrect password provided for meeting: {MeetingId}", request.MeetingId);
+                    return new MeetingValidationResponse
+                    {
+                        IsValid = false,
+                        ErrorCode = "PASSWORD_INCORRECT",
+                        Message = "Incorrect meeting password"
+                    };
+                }
             }
 
             // Create configuration DTO

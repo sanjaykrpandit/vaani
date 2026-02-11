@@ -12,4 +12,5 @@ public class MeetingValidationRequest
     public string AppVersion { get; set; } = string.Empty;
     public string DeviceName { get; internal set; } = string.Empty;
     public string UserName { get; internal set; } = string.Empty;
+    public string? Password { get; set; }
 }

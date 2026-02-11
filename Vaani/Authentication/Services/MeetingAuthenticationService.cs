@@ -41,12 +41,15 @@ public class MeetingAuthenticationService
     /// <param name="meetingId">Meeting ID provided by user</param>
     /// <param name="deviceId">Unique device identifier</param>
     /// <param name="deviceName">Human-readable device name</param>
+    /// <param name="userName">User's name</param>
+    /// <param name="password">Meeting password (if required)</param>
     /// <returns>Validation response with encrypted configuration</returns>
     public async Task<MeetingValidationResponse> ValidateMeetingAsync(
         string meetingId,
         string deviceId,
         string deviceName,
-        string userName)
+        string userName,
+        string? password = null)
     {
         if (string.IsNullOrWhiteSpace(meetingId))
             throw new ArgumentException("Meeting ID cannot be empty", nameof(meetingId));
@@ -58,7 +61,8 @@ public class MeetingAuthenticationService
             DeviceId = deviceId,
             DeviceName = deviceName,
             AppVersion = GetAppVersion(),
-            UserName = userName
+            UserName = userName,
+            Password = password
         };
 
         try

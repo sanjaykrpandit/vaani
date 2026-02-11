@@ -30,6 +30,7 @@ public class MeetingLoginViewModel : ReactiveObject
 
     private string _meetingId = "";
     private string _userName = "";
+    private string _meetingPassword = "";
     private bool _isValidating;
     private bool _hasError;
     private string _errorMessage = string.Empty;
@@ -78,6 +79,12 @@ public class MeetingLoginViewModel : ReactiveObject
     {
         get => _meetingId;
         set => this.RaiseAndSetIfChanged(ref _meetingId, value);
+    }
+
+    public string MeetingPassword
+    {
+        get => _meetingPassword;
+        set => this.RaiseAndSetIfChanged(ref _meetingPassword, value);
     }
 
     public bool IsValidating
@@ -162,7 +169,8 @@ public class MeetingLoginViewModel : ReactiveObject
                 MeetingId.Trim(),
                 deviceId,
                 deviceName,
-                UserName
+                UserName,
+                MeetingPassword
             );
 
             if (!response.IsValid)
@@ -175,6 +183,8 @@ public class MeetingLoginViewModel : ReactiveObject
                     "MEETING_EXPIRED" => "This meeting has ended. Please contact the organizer.",
                     "MAX_PARTICIPANTS_REACHED" => "Maximum participants already connected to this meeting.",
                     "MEETING_REVOKED" => "This meeting has been cancelled by the organizer.",
+                    "PASSWORD_REQUIRED" => "This meeting requires a password. Please enter the password.",
+                    "PASSWORD_INCORRECT" => "Incorrect meeting password. Please try again.",
                     "NETWORK_ERROR" => "Network error. Please check your internet connection.",
                     "TIMEOUT" => "Request timed out. Please try again.",
                     _ => response.Message ?? "Unable to validate meeting. Please try again."

@@ -11,4 +11,5 @@ public class CreateMeetingRequest
     public int AzureSubscriptionId { get; set; }
     public DateTime ValidFrom { get; set; }
     public DateTime ValidUntil { get; set; }
+    public string? Password { get; set; }
 }
