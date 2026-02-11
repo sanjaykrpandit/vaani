@@ -399,7 +399,7 @@ public class MeetingLoginViewModel : ReactiveObject
         // Check if driver is installed, if not show installation window
         if (!_driverService.IsVBCableInstalled())
         {
-            await ShowDriverInstallationWindowAsync();
+            //await ShowDriverInstallationWindowAsync();
         }
     }
 
