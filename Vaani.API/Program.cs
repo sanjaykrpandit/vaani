@@ -6,6 +6,7 @@ using Microsoft.OpenApi.Models;
 using Vaani.API.Data;
 using Vaani.API.Interfaces;
 using Vaani.API.Services;
+using Vaani.API.Hubs;
 using Microsoft.AspNetCore.StaticFiles;
 using System.Security.Claims;
 using System.IdentityModel.Tokens.Jwt;
@@ -49,6 +50,14 @@ builder.Services.AddScoped<IAdminService, AdminService>();
 builder.Services.AddScoped<IAzureSubscriptionService, AzureSubscriptionService>();
 // Register language service implementation
 builder.Services.AddScoped<ILanguageService, LanguageService>();
+// Register translation service (singleton - manages long-lived per-session Azure SDK instances)
+builder.Services.AddSingleton<ITranslationService, TranslationService>();
+// Add SignalR for real-time translation hub
+builder.Services.AddSignalR(options =>
+{
+    options.MaximumReceiveMessageSize = 128 * 1024; // 128 KB max message
+    options.EnableDetailedErrors = builder.Environment.IsDevelopment();
+});
 
 // Configure JWT Authentication
 var jwtSecret = builder.Configuration["Jwt:Secret"] ?? throw new InvalidOperationException("JWT Secret not configured");
@@ -317,6 +326,9 @@ app.UseAuthorization();
 
 // Map Controllers
 app.MapControllers();
+
+// Map SignalR Translation Hub
+app.MapHub<Vaani.API.Hubs.TranslationHub>("/hubs/translation");
 
 // Health check endpoint
 app.MapGet("/health", async (VaaniDbContext dbContext) =>
