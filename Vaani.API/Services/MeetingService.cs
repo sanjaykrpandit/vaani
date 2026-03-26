@@ -17,17 +17,20 @@ public class MeetingService : IMeetingService
     private readonly ISessionService _sessionService;
     private readonly ILogger<MeetingService> _logger;
     private readonly PasswordHashingService _passwordHashingService;
+    private readonly IConfiguration _configuration;
 
     public MeetingService(
         VaaniDbContext dbContext,
         IEncryptionService encryptionService,
         ISessionService sessionService,
-        ILogger<MeetingService> logger)
+        ILogger<MeetingService> logger,
+        IConfiguration configuration)
     {
         _dbContext = dbContext;
         _encryptionService = encryptionService;
         _sessionService = sessionService;
         _logger = logger;
+        _configuration = configuration;
         _passwordHashingService = new PasswordHashingService();
     }
 
@@ -159,10 +162,12 @@ public class MeetingService : IMeetingService
             {
                 SessionToken = accessToken ?? "",
                 IsValid = true,
-                MeetingName = meeting.MeetingName,                
+                MeetingName = meeting.MeetingName,
                 EncryptedConfig = encryptedConfig,
                 ValidUntil = meeting.ValidUntil,
                 RemainingMinutes = remainingMinutes,
+                // ✅ Backend translation hub URL — desktop connects here instead of calling Azure directly
+                BackendTranslationHubUrl = _configuration["Translation:HubUrl"] ?? "/hubs/translation",
                 Features = new MeetingFeaturesDto
                 {
                     AllowReconnect = true,
@@ -265,8 +270,9 @@ public class MeetingService : IMeetingService
                 ConfigVersion = 1
             },
             AvailableLanguages = _availableLanguages,
-            AvailableVoices = _availableVoices           
-
+            AvailableVoices = _availableVoices,
+            // ✅ Pass hub URL into encrypted config so desktop can read it after decryption
+            BackendTranslationHubUrl = _configuration["Translation:HubUrl"] ?? "/hubs/translation"
         };
     }
     public async Task<bool> IsMeetingValidAsync(string meetingId)

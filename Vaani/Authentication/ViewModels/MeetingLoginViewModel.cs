@@ -203,7 +203,10 @@ public class MeetingLoginViewModel : ReactiveObject
                 // Placeholder: In production, get the key from the API response or derive it
                 EncryptionService es = new EncryptionService();
                 config = es.DecryptConfig(response.EncryptedConfig, deviceId);
-                config.SessionToken = response.SessionToken;             
+                config.SessionToken = response.SessionToken;
+                // ✅ Store backend hub URL so TranslationSettings can use it without Azure credentials
+                if (!string.IsNullOrWhiteSpace(response.BackendTranslationHubUrl))
+                    config.BackendTranslationHubUrl = response.BackendTranslationHubUrl;
 
             }
             catch (Exception ex)

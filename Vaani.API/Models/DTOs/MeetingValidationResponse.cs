@@ -11,9 +11,16 @@ public class MeetingValidationResponse
     public DateTime ValidUntil { get; set; }
     public int RemainingMinutes { get; set; }
     public MeetingFeaturesDto Features { get; set; } = new();
-    public string SessionToken { get; set; } = string.Empty; 
+    public string SessionToken { get; set; } = string.Empty;
     public string? ErrorCode { get; set; }
     public string? Message { get; set; }
+
+    /// <summary>
+    /// SignalR hub URL for backend translation.
+    /// Desktop uses this instead of direct Azure credentials.
+    /// e.g. https://api.vaani.com/hubs/translation
+    /// </summary>
+    public string BackendTranslationHubUrl { get; set; } = string.Empty;
 }
 
 public class MeetingFeaturesDto

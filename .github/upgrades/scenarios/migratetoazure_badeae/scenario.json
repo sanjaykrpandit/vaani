@@ -1,0 +1,12 @@
+{
+  "scenarioId": "MigrateToAzure",
+  "operationId": "badeaeb2-2a9f-4ee9-b8ec-fb421e036e14",
+  "description": "Migrate project/solution to Azure",
+  "startTime": "2026-03-25T12:50:36.0790553Z",
+  "lastUpdateTime": "2026-03-26T12:41:19.4309884Z",
+  "stage": "Execution",
+  "properties": {
+    "SelectedScenarioStrategy": "AllAtOnce"
+  },
+  "folderPath": ""
+}
