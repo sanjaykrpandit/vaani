@@ -18,8 +18,8 @@ public class MainViewModel : ViewModelBase
 {
     #region Fields
     private readonly DeviceService _deviceService;
-    private readonly TranslationService _translationService;
-    private readonly BypassTranslationService _bypassService;
+    // BackendTranslationService proxies all Azure work to Vaani.API via SignalR
+    private readonly BackendTranslationService _backendService;
     private ITranslationService? _activeService;
     private readonly MeetingAuthenticationService _sessionService;
     private readonly ClientService _clientService = new();
@@ -80,12 +80,11 @@ public class MainViewModel : ViewModelBase
     {
         _settings = LoadTranslationSettings();
         _deviceService = new DeviceService();
-        _translationService = new TranslationService();
-        _bypassService = new BypassTranslationService();
+        _backendService = new BackendTranslationService();
         _sessionService = new MeetingAuthenticationService();
-        
-        // Wire up translation service by default
-        _activeService = _translationService;
+
+        // Use BackendTranslationService — all Azure work happens on the server
+        _activeService = _backendService;
         WireServiceEvents(_activeService);
 
         InitializeCommands();
@@ -661,21 +660,14 @@ public class MainViewModel : ViewModelBase
             (bool hasStarted, string message) = await _sessionService.StartSessionAsync();
             if (hasStarted)
             {
-                // ✅ Choose service based on bypass mode
-                ITranslationService serviceToStart = _isBypassModeEnabled ? _bypassService : _translationService;
-                
-                // Switch services if needed
-                if (_activeService != serviceToStart)
+                // BackendTranslationService handles all translation via Vaani.API
+                if (_activeService != _backendService)
                 {
                     UnwireServiceEvents(_activeService);
-                    _activeService = serviceToStart;
+                    _activeService = _backendService;
                     WireServiceEvents(_activeService);
-                    
-                    AddLog(_isBypassModeEnabled 
-                        ? "⚡ Starting in BYPASS mode - direct audio, no translation" 
-                        : "🔄 Starting in TRANSLATION mode - full translation active");
                 }
-                
+
                 await _activeService.StartTranslationAsync(_settings);
             }
             else
@@ -1569,8 +1561,7 @@ public class MainViewModel : ViewModelBase
             bubble.TranslationAnimationCts?.Dispose();
         }
         
-        _translationService?.Dispose();
-        _bypassService?.Dispose();
+        _backendService?.Dispose();
     }
 
     private void WireServiceEvents(ITranslationService? service)

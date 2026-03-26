@@ -78,7 +78,9 @@ public class ClientService
     }
   
     /// <summary>
-    /// Get translation settings from active session or fallback to default
+    /// Get translation settings from active session or fallback to default.
+    /// In backend-translation mode this will include the hub URL from the session;
+    /// no Azure credentials are included.
     /// </summary>
     public TranslationSettings GetTranslationSettings()
     {
