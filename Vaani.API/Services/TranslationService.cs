@@ -15,7 +15,7 @@ namespace Vaani.API.Services;
 /// Manages per-session Azure Cognitive Services lifecycle: recognizers, synthesizers,
 /// push-stream audio ingestion, and event emission back to SignalR hub.
 /// </summary>
-public class TranslationService : ITranslationService
+public class TranslationService : ITranslationService, IDisposable
 {
     private readonly VaaniDbContext _dbContext;
     private readonly ILogger<TranslationService> _logger;
@@ -527,6 +527,38 @@ public class TranslationService : ITranslationService
     {
         if (_sessions.TryGetValue(translationSessionId, out var state))
             state.OnEvent = callback;
+    }
+
+    /// <summary>
+    /// Returns true if the given session was opened by the specified SignalR connectionId.
+    /// </summary>
+    public bool IsOwnedByConnection(string translationSessionId, string connectionId)
+    {
+        if (_sessions.TryGetValue(translationSessionId, out var state))
+            return state.ConnectionId == connectionId;
+        return false;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // IDisposable
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private bool _disposed;
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        // Tear down all active sessions on host shutdown
+        var tasks = _sessions.Keys
+            .Select(id => _sessions.TryRemove(id, out var s)
+                ? TeardownStateAsync(s, "service disposed")
+                : Task.CompletedTask)
+            .ToList();
+
+        Task.WhenAll(tasks).GetAwaiter().GetResult();
+        GC.SuppressFinalize(this);
     }
 
     private static void ApplyCommonProperties(SpeechTranslationConfig config)

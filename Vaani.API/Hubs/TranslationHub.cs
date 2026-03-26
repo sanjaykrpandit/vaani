@@ -133,6 +133,14 @@ public class TranslationHub : Hub
             return;
         }
 
+        // ✅ Session ownership guard: reject if session is owned by a different connection
+        if (!IsSessionOwnedByConnection(request.TranslationSessionId))
+        {
+            await SendError("SESSION_ACCESS_DENIED",
+                "You are not authorised to control this translation session.");
+            return;
+        }
+
         switch (request.Action)
         {
             case TranslationControlAction.MuteMicrophone:
@@ -162,6 +170,14 @@ public class TranslationHub : Hub
         if (string.IsNullOrWhiteSpace(translationSessionId))
         {
             await SendError("INVALID_REQUEST", "TranslationSessionId is required.");
+            return;
+        }
+
+        // ✅ Session ownership guard
+        if (!IsSessionOwnedByConnection(translationSessionId))
+        {
+            await SendError("SESSION_ACCESS_DENIED",
+                "You are not authorised to stop this translation session.");
             return;
         }
 
@@ -223,6 +239,20 @@ public class TranslationHub : Hub
 
     private Task SendError(string code, string message) =>
         Clients.Caller.SendAsync("ReceiveError", code, message);
+
+    /// <summary>
+    /// Returns true when the session's status record indicates it was opened by this connection.
+    /// Falls through (permissive) when the session is not found — StopSession handles that case.
+    /// </summary>
+    private bool IsSessionOwnedByConnection(string translationSessionId)
+    {
+        var status = _translationService.GetStatus(translationSessionId);
+        if (status == null) return true; // let downstream report not-found
+        // Re-check via concrete service to access connection info
+        if (_translationService is TranslationService cs)
+            return cs.IsOwnedByConnection(translationSessionId, Context.ConnectionId);
+        return true;
+    }
 
     private string GetJwtToken()
     {

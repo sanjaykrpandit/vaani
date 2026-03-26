@@ -85,6 +85,15 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         // Map other role claim names (e.g. 'roles', 'realm_access', 'resource_access') into the configured RoleClaimType so Authorize(Roles=...) works
         options.Events = new JwtBearerEvents
         {
+            // ✅ SignalR: read JWT from query-string ?access_token= during WebSocket upgrade
+            OnMessageReceived = ctx =>
+            {
+                var accessToken = ctx.Request.Query["access_token"];
+                var path = ctx.HttpContext.Request.Path;
+                if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
+                    ctx.Token = accessToken;
+                return Task.CompletedTask;
+            },
             OnTokenValidated = ctx =>
             {
                 try
