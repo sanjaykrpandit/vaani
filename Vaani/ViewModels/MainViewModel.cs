@@ -5,12 +5,12 @@ using ReactiveUI;
 using System.Collections.ObjectModel;
 using System.Reactive.Linq;
 using System.Windows.Input;
-using Tmds.DBus.Protocol;
 using Vaani.Authentication.Services;
 using Vaani.Common;
 using Vaani.Models;
 using Vaani.Services;
 using System.Linq;
+using static Vaani.Common.ErrorMessages;
 
 namespace Vaani.ViewModels;
 
@@ -53,8 +53,17 @@ public class MainViewModel : ViewModelBase
     private MessageBubble? _currentRecognizingMessage;
     private MessageBubble? _currentOutgoingBubble;
     private MessageBubble? _currentIncomingBubble;
+
+    // Tracks which bubble is currently synthesizing per direction so that
+    // SynthesizingCompleted can clear it by reference instead of fragile text matching.
+    private MessageBubble? _outgoingSynthesizingBubble;
+    private MessageBubble? _incomingSynthesizingBubble;
     private const int MaxMessages = 100;
     private string _logText = "";
+    // Keep logs bounded to prevent UI/memory growth in long sessions.
+    private const int MaxLogLinesInUi = 400;
+    private readonly Queue<string> _logLines = new();
+    private readonly object _logLock = new();
     private bool _isMicrophoneMuted = false;
     private bool _isSpeakerMuted = false;
     private bool _isTransitioning = false;
@@ -71,6 +80,9 @@ public class MainViewModel : ViewModelBase
     private bool _inputDevicesLoaded = false;
     // Add this field near other private fields (Fields region)
     private CancellationTokenSource? _deviceRefreshCts = null;
+    private bool _isRefreshingDevices;
+    private bool _autoSelectInputDevice = true;
+    private bool _autoSelectOutputDevice = true;
 
     #endregion
 
@@ -79,7 +91,8 @@ public class MainViewModel : ViewModelBase
     public MainViewModel()
     {
         _settings = LoadTranslationSettings();
-        _deviceService = new DeviceService();
+        // Reuse singleton to leverage pre-warmed/shared device cache
+        _deviceService = DeviceService.Instance;
         _backendService = new BackendTranslationService();
         _sessionService = new MeetingAuthenticationService();
 
@@ -441,7 +454,8 @@ public class MainViewModel : ViewModelBase
     {
         _deviceRefreshTimer = new DispatcherTimer
         {
-            Interval = TimeSpan.FromSeconds(3)
+            // Slower poll to reduce CPU churn while settings panel stays open
+            Interval = TimeSpan.FromSeconds(5)
         };
 
         // Tick only triggers a refresh when the settings panel is visible.
@@ -542,7 +556,7 @@ public class MainViewModel : ViewModelBase
         catch (Exception ex)
         {
             // Log but don't crash the UI during startup
-            AddLog($"⚠️ Startup initialization error: {ex.Message}");
+            AddLog($"⚠️ Startup initialization error: {Classify(ex)}");
         }
     }
 
@@ -657,7 +671,7 @@ public class MainViewModel : ViewModelBase
             _currentOutgoingBubble = null;
             _currentIncomingBubble = null;         
 
-            (bool hasStarted, string message) = await _sessionService.StartSessionAsync();
+            (bool hasStarted, string message, int? startedSessionId) = await _sessionService.StartSessionAsync();
             if (hasStarted)
             {
                 // BackendTranslationService handles all translation via Vaani.API
@@ -668,6 +682,12 @@ public class MainViewModel : ViewModelBase
                     WireServiceEvents(_activeService);
                 }
 
+                if (startedSessionId.HasValue)
+                {
+                    _settings.SessionId = startedSessionId.Value.ToString();
+                }
+
+                _settings.IsBypassMode = IsBypassModeEnabled;
                 await _activeService.StartTranslationAsync(_settings);
             }
             else
@@ -682,7 +702,9 @@ public class MainViewModel : ViewModelBase
         {
             await Dispatcher.UIThread.InvokeAsync(() =>
             {
-                IsRunning = false;
+                // Do NOT set IsRunning here — it is driven exclusively by OnSystemMessage
+                // (Started → true, Stopped → true). Setting it false here races with and
+                // overwrites the SessionStarted callback on every subsequent start.
                 IsTransitioning = false;
             });
         }
@@ -785,7 +807,7 @@ public class MainViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            AddLog($"❌ Error during stop: {ex.Message}");
+            AddLog($"❌ Error during stop: {Classify(ex)}");
         }
         finally
         {
@@ -803,7 +825,7 @@ public class MainViewModel : ViewModelBase
             }
             catch (Exception ex)
             {
-                AddLog($"⚠️ Error ending session: {ex.Message}");
+                AddLog($"⚠️ Error ending session: {Classify(ex)}");
             }
 
             // 6. Update UI state
@@ -857,11 +879,19 @@ public class MainViewModel : ViewModelBase
     // Replace the existing RefreshDevices method with this incremental, cancellable implementation.
     private async Task RefreshDevices()
     {
+        // Always refresh device cache before UI refresh so plug/unplug is reflected quickly.
+        _deviceService.RefreshDeviceCache();
+
         var prevInput = SelectedInputDevice;
         var prevOutput = SelectedOutputDevice;
 
-        // Cancel any in-progress refresh and create a new token for this run
-        _deviceRefreshCts?.Cancel();
+        // Cancel + dispose previous refresh CTS before creating a new one
+        if (_deviceRefreshCts != null)
+        {
+            try { _deviceRefreshCts.Cancel(); } catch { }
+            _deviceRefreshCts.Dispose();
+        }
+
         var cts = new CancellationTokenSource();
         _deviceRefreshCts = cts;
         var token = cts.Token;
@@ -916,6 +946,8 @@ public class MainViewModel : ViewModelBase
 
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
+            _isRefreshingDevices = true;
+
             // --- INPUT DEVICES: diff + update in-place to avoid UI churn ---
 
             var existingInputById = InputDevices.ToDictionary(d => d.Id);
@@ -929,6 +961,13 @@ public class MainViewModel : ViewModelBase
                 InputDevices.Remove(dev);
             }
 
+            // If selected input disappeared, clear stale reference so fallback selection can run.
+            if (SelectedInputDevice != null && !newInputById.ContainsKey(SelectedInputDevice.Id))
+            {
+                SelectedInputDevice = null;
+                _autoSelectInputDevice = true;
+            }
+
             // update properties of existing devices (preserve object references so bindings/selection remain)
             foreach (var id in existingInputById.Keys.Intersect(newInputById.Keys))
             {
@@ -936,7 +975,8 @@ public class MainViewModel : ViewModelBase
                 var newDev = newInputById[id];
                 // update mutable properties that matter for the UI
                 oldDev.FriendlyName = newDev.FriendlyName;
-                // (copy other fields here if AudioDeviceInfo exposes them)
+                oldDev.IsDefault = newDev.IsDefault;
+                oldDev.IsCableDevice = newDev.IsCableDevice;
             }
 
             // add newly found devices
@@ -959,11 +999,20 @@ public class MainViewModel : ViewModelBase
                 OutputDevices.Remove(dev);
             }
 
+            // If selected output disappeared, clear stale reference so fallback selection can run.
+            if (SelectedOutputDevice != null && !newOutputById.ContainsKey(SelectedOutputDevice.Id))
+            {
+                SelectedOutputDevice = null;
+                _autoSelectOutputDevice = true;
+            }
+
             foreach (var id in existingOutputById.Keys.Intersect(newOutputById.Keys))
             {
                 var oldDev = existingOutputById[id];
                 var newDev = newOutputById[id];
                 oldDev.FriendlyName = newDev.FriendlyName;
+                oldDev.IsDefault = newDev.IsDefault;
+                oldDev.IsCableDevice = newDev.IsCableDevice;
             }
 
             foreach (var id in newOutputById.Keys.Except(existingOutputById.Keys))
@@ -975,7 +1024,7 @@ public class MainViewModel : ViewModelBase
 
             // --- Restore selection by Id (stable) or fall back to priority pick ---
 
-            if (prevInput != null)
+            if (prevInput != null && !_autoSelectInputDevice)
             {
                 var restored = InputDevices.FirstOrDefault(d => d.Id == prevInput.Id);
                 if (restored != null)
@@ -985,9 +1034,12 @@ public class MainViewModel : ViewModelBase
                 }
             }
             if (SelectedInputDevice == null)
-                SelectedInputDevice = PickPriorityDevice(InputDevices, prevInput);
+            {
+                SelectedInputDevice = InputDevices.FirstOrDefault(d => d.IsDefault && !d.IsCableDevice)
+                    ?? PickPriorityDevice(InputDevices, prevInput);
+            }
 
-            if (prevOutput != null)
+            if (prevOutput != null && !_autoSelectOutputDevice)
             {
                 var restored = OutputDevices.FirstOrDefault(d => d.Id == prevOutput.Id);
                 if (restored != null)
@@ -997,7 +1049,10 @@ public class MainViewModel : ViewModelBase
                 }
             }
             if (SelectedOutputDevice == null)
-                SelectedOutputDevice = PickPriorityDevice(OutputDevices, prevOutput);
+            {
+                SelectedOutputDevice = OutputDevices.FirstOrDefault(d => d.IsDefault && !d.IsCableDevice)
+                    ?? PickPriorityDevice(OutputDevices, prevOutput);
+            }
 
             // Clear initial loading flag after first successful refresh
             if (!_inputDevicesLoaded)
@@ -1005,16 +1060,23 @@ public class MainViewModel : ViewModelBase
                 _inputDevicesLoaded = true;
                 IsInputDevicesLoading = false;
             }
+
+            _isRefreshingDevices = false;
         });
 
         sw.Stop();
         AddLog($"🔄 Devices refreshed in {sw.ElapsedMilliseconds}ms");
+
+        // Keep meeting setup labels in sync with latest topology changes.
+        await getConnectedMeetingDevices();
     }
 
     private void OnInputDevicePropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(AudioDeviceInfo.IsSelected) && sender is AudioDeviceInfo device && device.IsSelected)
         {
+            if (!_isRefreshingDevices)
+                _autoSelectInputDevice = false;
             SelectedInputDevice = device;
         }
     }
@@ -1023,6 +1085,8 @@ public class MainViewModel : ViewModelBase
     {
         if (e.PropertyName == nameof(AudioDeviceInfo.IsSelected) && sender is AudioDeviceInfo device && device.IsSelected)
         {
+            if (!_isRefreshingDevices)
+                _autoSelectOutputDevice = false;
             SelectedOutputDevice = device;
         }
     }
@@ -1213,54 +1277,75 @@ public class MainViewModel : ViewModelBase
         {
             IsSynthesizing = e.IsSynthesizing;
 
-            MessageBubble? targetBubble = null;
+            ref MessageBubble? trackedRef = ref (e.IsFromMeeting
+                ? ref _incomingSynthesizingBubble
+                : ref _outgoingSynthesizingBubble);
 
-            // 1) Try exact translated-text match first (most reliable).
-            if (!string.IsNullOrWhiteSpace(e.TranslatedText))
+            if (e.IsSynthesizing)
             {
-                targetBubble = Messages.LastOrDefault(m =>
-                    m.IsFromMeeting == e.IsFromMeeting &&
-                    !m.IsSystemMessage &&
-                    !string.IsNullOrEmpty(m.TranslatedText) &&
-                    string.Equals(m.TranslatedText, e.TranslatedText, StringComparison.OrdinalIgnoreCase));
+                // SynthesizingStarted: find the bubble by text and store the reference.
+                // Text matching is reliable here because OriginalText is always set before
+                // synthesis starts and TranslatedText may still be animating.
+                MessageBubble? targetBubble = null;
 
-                // 2) If no exact match, handle progressive/partial rendering:
-                //    the bubble may contain a prefix of the full translated text (or vice-versa).
-                if (targetBubble == null)
+                // 1) Exact translated-text match.
+                if (!string.IsNullOrWhiteSpace(e.TranslatedText))
                 {
                     targetBubble = Messages.LastOrDefault(m =>
                         m.IsFromMeeting == e.IsFromMeeting &&
                         !m.IsSystemMessage &&
                         !string.IsNullOrEmpty(m.TranslatedText) &&
-                        (m.TranslatedText.Contains(e.TranslatedText, StringComparison.OrdinalIgnoreCase) ||
-                         e.TranslatedText.Contains(m.TranslatedText, StringComparison.OrdinalIgnoreCase)));
+                        string.Equals(m.TranslatedText, e.TranslatedText, StringComparison.OrdinalIgnoreCase));
+
+                    // 2) Partial/progressive text match (animation may be mid-way).
+                    if (targetBubble == null)
+                    {
+                        targetBubble = Messages.LastOrDefault(m =>
+                            m.IsFromMeeting == e.IsFromMeeting &&
+                            !m.IsSystemMessage &&
+                            !string.IsNullOrEmpty(m.TranslatedText) &&
+                            (m.TranslatedText.Contains(e.TranslatedText, StringComparison.OrdinalIgnoreCase) ||
+                             e.TranslatedText.Contains(m.TranslatedText, StringComparison.OrdinalIgnoreCase)));
+                    }
+                }
+
+                // 3) OriginalText match — reliable because recognition finishes before synthesis.
+                if (targetBubble == null && !string.IsNullOrWhiteSpace(e.OriginalText))
+                {
+                    targetBubble = Messages.LastOrDefault(m =>
+                        m.IsFromMeeting == e.IsFromMeeting &&
+                        !m.IsSystemMessage &&
+                        !string.IsNullOrEmpty(m.OriginalText) &&
+                        (string.Equals(m.OriginalText, e.OriginalText, StringComparison.OrdinalIgnoreCase) ||
+                         m.OriginalText.Contains(e.OriginalText, StringComparison.OrdinalIgnoreCase) ||
+                         e.OriginalText.Contains(m.OriginalText, StringComparison.OrdinalIgnoreCase)));
+                }
+
+                // 4) Last-resort fallback: most recent translated bubble for this direction.
+                if (targetBubble == null)
+                {
+                    targetBubble = Messages.LastOrDefault(m =>
+                        m.IsFromMeeting == e.IsFromMeeting &&
+                        !m.IsSystemMessage &&
+                        !string.IsNullOrEmpty(m.TranslatedText));
+                }
+
+                if (targetBubble != null)
+                {
+                    trackedRef = targetBubble;
+                    targetBubble.IsSynthesizing = true;
                 }
             }
-
-            // 3) Fallback: try matching by original text (sometimes only original is reliable).
-            if (targetBubble == null && !string.IsNullOrWhiteSpace(e.OriginalText))
+            else
             {
-                targetBubble = Messages.LastOrDefault(m =>
-                    m.IsFromMeeting == e.IsFromMeeting &&
-                    !m.IsSystemMessage &&
-                    !string.IsNullOrEmpty(m.OriginalText) &&
-                    (string.Equals(m.OriginalText, e.OriginalText, StringComparison.OrdinalIgnoreCase) ||
-                     m.OriginalText.Contains(e.OriginalText, StringComparison.OrdinalIgnoreCase) ||
-                     e.OriginalText.Contains(m.OriginalText, StringComparison.OrdinalIgnoreCase)));
-            }
-
-            // 4) Final fallback: pick last non-system translated bubble for that direction.
-            if (targetBubble == null)
-            {
-                targetBubble = Messages.LastOrDefault(m =>
-                    m.IsFromMeeting == e.IsFromMeeting &&
-                    !m.IsSystemMessage &&
-                    !string.IsNullOrEmpty(m.TranslatedText));
-            }
-
-            if (targetBubble != null)
-            {
-                targetBubble.IsSynthesizing = e.IsSynthesizing;
+                // SynthesizingCompleted: clear the bubble we stored on Started.
+                // This avoids re-running text matching against partially-animated text
+                // which is what caused bubbles to get stuck.
+                if (trackedRef != null)
+                {
+                    trackedRef.IsSynthesizing = false;
+                    trackedRef = null;
+                }
             }
         });
     }
@@ -1407,6 +1492,11 @@ public class MainViewModel : ViewModelBase
 
     private void HandleTranslation(TranslationEventArgs e)
     {
+        // In bypass mode (same source/target language), avoid duplicating transcript
+        // into TranslatedText. Show only the original transcript bubble.
+        if (_settings.IsBypassMode || IsBypassModeEnabled)
+            return;
+
         MessageBubble? currentBubble = e.IsFromMeeting ? _currentIncomingBubble : _currentOutgoingBubble;
 
         // ✅ FIX: Use per-bubble cancellation token instead of shared direction token
@@ -1460,7 +1550,15 @@ public class MainViewModel : ViewModelBase
 
     private void AddLog(string message)
     {
-        LogText += message + Environment.NewLine;
+        lock (_logLock)
+        {
+            _logLines.Enqueue(message);
+            while (_logLines.Count > MaxLogLinesInUi)
+                _logLines.Dequeue();
+
+            LogText = string.Join(Environment.NewLine, _logLines) + Environment.NewLine;
+        }
+
         // ✅ Also log to Output window for debugging
         System.Diagnostics.Debug.WriteLine($"[MainViewModel] {message}");
     }
@@ -1475,7 +1573,12 @@ public class MainViewModel : ViewModelBase
 
     private void ClearLogsAndMessages()
     {
-        LogText = string.Empty;
+        lock (_logLock)
+        {
+            _logLines.Clear();
+            LogText = string.Empty;
+        }
+
         Messages.Clear();
         _currentOutgoingBubble = null;
         _currentIncomingBubble = null;
@@ -1606,7 +1709,7 @@ public class MainViewModel : ViewModelBase
             }
             catch (Exception ex)
             {
-                AddLog($"⚠️ Error stopping translation: {ex.Message}");
+                AddLog($"⚠️ Error stopping translation: {Classify(ex)}");
             }
         }
         else
@@ -1621,7 +1724,7 @@ public class MainViewModel : ViewModelBase
             }
             catch (Exception ex)
             {
-                AddLog($"⚠️ Error reporting session end: {ex.Message}");
+                AddLog($"⚠️ Error reporting session end: {Classify(ex)}");
             }
         }
 
@@ -1634,7 +1737,7 @@ public class MainViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            AddLog($"⚠️ Error stopping timers: {ex.Message}");
+            AddLog($"⚠️ Error stopping timers: {Classify(ex)}");
         }
 
         // Cancel all animations
@@ -1654,7 +1757,7 @@ public class MainViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            AddLog($"⚠️ Error cancelling animations: {ex.Message}");
+            AddLog($"⚠️ Error cancelling animations: {Classify(ex)}");
         }
 
         AddLog("✅ Application cleanup complete");

@@ -118,7 +118,7 @@
                         HorizontalContentAlignment="Center"
                         TextAlignment="Center"
                         FontFamily="Consolas,monospace"
-                        PasswordChar="?"
+                        PasswordChar="*"
                         RevealPassword="False">
                 <TextBox.KeyBindings>
                   <KeyBinding Gesture="Enter" Command="{Binding ValidateCommand}"/>

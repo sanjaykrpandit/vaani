@@ -1,8 +1,14 @@
 ﻿using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Threading;
 using System;
+using System.IO;
+using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using Vaani.Authentication.ViewModels;
+using Vaani.Authentication.Views;
 using Vaani.Services;
 
 namespace Vaani;
@@ -10,6 +16,9 @@ namespace Vaani;
 class Program
 {
     private static SingleInstanceService? _singleInstance;
+    private static CancellationTokenSource? _activationListenerCts;
+    private static StreamWriter? _startupLogWriter;
+    public static event Action<string>? MeetingIdUpdated;
     public static string? MeetingId { get; private set; }
 
     // Initialization code. Don't use any Avalonia, third-party APIs or any
@@ -18,8 +27,11 @@ class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        InitializeStartupLogging();
+
         // Debug: Log all arguments
         Console.WriteLine("=== Vaani Startup Debug ===");
+        Console.WriteLine($"Timestamp: {DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}");
         Console.WriteLine($"Total args: {args?.Length ?? 0}");
         if (args != null && args.Length > 0)
         {
@@ -30,7 +42,9 @@ class Program
         }
 
         // Try to get meetingId from ClickOnce activation URI first, then fallback to command-line args
-        MeetingId = GetMeetingIdFromClickOnce() ?? ParseMeetingIdFromArgs(args);
+        MeetingId = GetMeetingIdFromClickOnce()
+                    ?? ParseMeetingIdFromArgs(args)
+                    ?? GetMeetingIdFromRawCommandLine();
         
         Console.WriteLine($"Final MeetingId: {MeetingId ?? "(null)"}");
         Console.WriteLine("===========================");
@@ -42,6 +56,15 @@ class Program
         {
             // Another instance is already running
             Console.WriteLine("Another instance of Vaani is already running.");
+
+            if (!string.IsNullOrWhiteSpace(MeetingId))
+            {
+                // Pass latest activation meetingId to the already running instance
+                if (SingleInstanceService.TryNotifyFirstInstance(MeetingId))
+                {
+                    return;
+                }
+            }
 
             // Try to show a visual message
             try
@@ -62,14 +85,61 @@ class Program
             return;
         }
 
+        _activationListenerCts = SingleInstanceService.StartActivationListener(HandleSecondaryActivation);
+        var deviceService = DeviceService.Instance;
+
+        // Do not force VB-CABLE as Windows default.
+        // Always try to restore user-facing physical defaults on launch.
+        try { deviceService.TryRestorePhysicalDefaults(); } catch { }
+
         try
         {
             BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
         }
         finally
         {
+            // Restore physical defaults again on app exit.
+            try { deviceService.TryRestorePhysicalDefaults(); } catch { }
+
+            _activationListenerCts?.Cancel();
+            _activationListenerCts?.Dispose();
+
             // Clean up single instance lock
             _singleInstance?.Dispose();
+
+            _startupLogWriter?.Dispose();
+            _startupLogWriter = null;
+        }
+    }
+
+    private static void InitializeStartupLogging()
+    {
+        try
+        {
+            var startupDebugEnabled =
+                string.Equals(Environment.GetEnvironmentVariable("VAANI_STARTUP_DEBUG"), "1", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(Environment.GetEnvironmentVariable("VAANI_STARTUP_DEBUG"), "true", StringComparison.OrdinalIgnoreCase);
+
+            if (!startupDebugEnabled)
+            {
+                return;
+            }
+
+            var logDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Vaani");
+            Directory.CreateDirectory(logDir);
+
+            var logPath = Path.Combine(logDir, "startup.log");
+            _startupLogWriter = new StreamWriter(logPath, append: true)
+            {
+                AutoFlush = true
+            };
+
+            Console.SetOut(_startupLogWriter);
+            Console.SetError(_startupLogWriter);
+        }
+        catch
+        {
+            // If file logging fails, continue app startup normally.
         }
     }
 
@@ -141,29 +211,25 @@ class Program
                 }
             }
 
-            // Method 2: Check environment variables
+            // Method 2: Check known ClickOnce environment variables
             Console.WriteLine("Checking environment variables...");
-            var envActivationUrl = Environment.GetEnvironmentVariable("ClickOnce_ActivationUrl");
-            Console.WriteLine($"ClickOnce_ActivationUrl env: {envActivationUrl ?? "(null)"}");
-            
-            if (!string.IsNullOrWhiteSpace(envActivationUrl))
+            var knownVars = new[]
             {
-                if (Uri.TryCreate(envActivationUrl, UriKind.Absolute, out var uri))
+                "ClickOnce_ActivationUri",
+                "ClickOnce_ActivationData_0",
+                "ClickOnce_UpdateLocation",
+                "ClickOnce_ActivationUrl"
+            };
+
+            foreach (var envVar in knownVars)
+            {
+                var value = Environment.GetEnvironmentVariable(envVar);
+                Console.WriteLine($"{envVar} env: {value ?? "(null)"}");
+
+                if (TryExtractMeetingIdFromUrl(value, out var meetingId))
                 {
-                    Console.WriteLine($"  Parsed env URI: {uri}");
-                    Console.WriteLine($"  Query: {uri.Query}");
-                    
-                    if (!string.IsNullOrWhiteSpace(uri.Query))
-                    {
-                        var query = uri.Query.TrimStart('?');
-                        var meetingId = ParseQueryParameter(query, "meetingId");
-                        
-                        if (!string.IsNullOrWhiteSpace(meetingId))
-                        {
-                            Console.WriteLine($"✓ ClickOnce meetingId from env detected: {meetingId}");
-                            return meetingId.Trim();
-                        }
-                    }
+                    Console.WriteLine($"✓ ClickOnce meetingId from {envVar}: {meetingId}");
+                    return meetingId;
                 }
             }
 
@@ -189,6 +255,28 @@ class Program
         }
 
         return null;
+    }
+
+    private static bool TryExtractMeetingIdFromUrl(string? rawUrl, out string meetingId)
+    {
+        meetingId = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(rawUrl))
+            return false;
+
+        if (!Uri.TryCreate(rawUrl, UriKind.Absolute, out var uri))
+            return false;
+
+        if (string.IsNullOrWhiteSpace(uri.Query))
+            return false;
+
+        var query = uri.Query.TrimStart('?');
+        var parsed = ParseQueryParameter(query, "meetingId");
+        if (string.IsNullOrWhiteSpace(parsed))
+            return false;
+
+        meetingId = parsed.Trim();
+        return true;
     }
 
     /// <summary>
@@ -273,5 +361,78 @@ class Program
 
         Console.WriteLine("No meetingId found in arguments.");
         return null;
+    }
+
+    private static string? GetMeetingIdFromRawCommandLine()
+    {
+        try
+        {
+            var raw = Environment.CommandLine;
+            Console.WriteLine($"Raw command line: {raw}");
+
+            // Try direct extraction first: ?meetingId=123 or &meetingId=123
+            var direct = Regex.Match(raw, "(?:\\?|&|\\s)meetingId=([^&\\s\"']+)", RegexOptions.IgnoreCase);
+            if (direct.Success)
+            {
+                var value = Uri.UnescapeDataString(direct.Groups[1].Value);
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    Console.WriteLine($"✓ MeetingId found in raw command line: {value}");
+                    return value.Trim();
+                }
+            }
+
+            // Some launchers encode query parts, so decode and retry
+            var decoded = Uri.UnescapeDataString(raw);
+            var encodedMatch = Regex.Match(decoded, "(?:\\?|&|\\s)meetingId=([^&\\s\"']+)", RegexOptions.IgnoreCase);
+            if (encodedMatch.Success)
+            {
+                var value = Uri.UnescapeDataString(encodedMatch.Groups[1].Value);
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    Console.WriteLine($"✓ MeetingId found in decoded command line: {value}");
+                    return value.Trim();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Raw command line parsing failed: {ex.Message}");
+        }
+
+        return null;
+    }
+
+    private static void HandleSecondaryActivation(string latestMeetingId)
+    {
+        if (string.IsNullOrWhiteSpace(latestMeetingId))
+            return;
+
+        MeetingId = latestMeetingId.Trim();
+        Console.WriteLine($"Received activation meetingId from secondary launch: {MeetingId}");
+        MeetingIdUpdated?.Invoke(MeetingId);
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime desktop)
+                return;
+
+            var loginWindow = desktop.Windows?.FirstOrDefault(w => w is MeetingLoginWindow) as MeetingLoginWindow;
+
+            if (loginWindow?.DataContext is MeetingLoginViewModel loginVm)
+            {
+                loginVm.MeetingId = MeetingId;
+            }
+
+            if (loginWindow != null)
+            {
+                if (!loginWindow.IsVisible)
+                {
+                    try { loginWindow.Show(); } catch { }
+                }
+
+                loginWindow.Activate();
+            }
+        });
     }
 }

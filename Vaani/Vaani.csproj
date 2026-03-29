@@ -13,6 +13,7 @@
     <!-- ClickOnce -->
     <GenerateManifests>true</GenerateManifests>
     <SignManifests>false</SignManifests>
+    <TrustUrlParameters>true</TrustUrlParameters>
 
     <Install>false</Install>
     <InstallFrom>Web</InstallFrom>

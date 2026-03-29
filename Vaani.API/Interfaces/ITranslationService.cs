@@ -41,4 +41,20 @@ public interface ITranslationService
     /// Cleanup all sessions owned by a hub connection (called on disconnect)
     /// </summary>
     Task CleanupConnectionAsync(string connectionId);
+
+    /// <summary>
+    /// Returns IDs of sessions whose meeting window has expired and should be torn down.
+    /// Used by the stale-session cleanup background service.
+    /// </summary>
+    IReadOnlyList<string> GetStaleSessionIds();
+
+    /// <summary>
+    /// Register callback for emitting translation events to the client connection.
+    /// </summary>
+    void RegisterEventCallback(string translationSessionId, Func<TranslationEventDto, Task> callback);
+
+    /// <summary>
+    /// Returns true if the given session belongs to the specified SignalR connection.
+    /// </summary>
+    bool IsOwnedByConnection(string translationSessionId, string connectionId);
 }

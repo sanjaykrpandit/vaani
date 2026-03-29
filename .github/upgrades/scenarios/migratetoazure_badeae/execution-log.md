@@ -59,3 +59,22 @@ Status: Complete
 
 Complete - Desktop fully migrated to backend translation service. Azure SDK removed from Vaani project.
 
+
+## [2026-03-26 20:09] TASK-004: Feature rollout and legacy cutover
+
+Status: Complete
+
+- **Verified**: Both Vaani.API and Vaani build with 0 errors ✅
+- **Files Modified**:
+  - `Vaani.API\Models\DTOs\MeetingValidationResponse.cs` — added BackendTranslationHubUrl field
+  - `Vaani.API\Models\DTOs\MeetingConfigurationDto.cs` — added BackendTranslationHubUrl field
+  - `Vaani.API\Services\MeetingService.cs` — injected IConfiguration, populates BackendTranslationHubUrl in response and encrypted config
+  - `Vaani.API\appsettings.json` — added Translation:HubUrl = https://vaani-rtt-api.tryzent.com/hubs/translation
+  - `Vaani\Authentication\Models\MeetingValidationResponse.cs` — added BackendTranslationHubUrl field
+  - `Vaani\Authentication\ViewModels\MeetingLoginViewModel.cs` — saves BackendTranslationHubUrl into MeetingConfiguration on login
+- **Code Changes**: Full data flow established — hub URL flows from server config → validation response → encrypted config → decrypted MeetingConfiguration → TranslationSettings → BackendTranslationService
+- **Tests**: Both projects build 0 errors ✅
+- **Commits**: TASK-004: Complete feature rollout and cutover
+
+Complete - Feature rollout pipeline complete. Hub URL propagates end-to-end.
+

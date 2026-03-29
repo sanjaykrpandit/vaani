@@ -1,5 +1,6 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Linq;
 using System.Text;
 using Microsoft.IdentityModel.Tokens;
 using Vaani.API.Interfaces;
@@ -129,9 +130,15 @@ public class JwtTokenService : IJwtTokenService
             
             var userId = principal.FindFirst("userId")?.Value;
             var fullName = principal.FindFirst("fullName")?.Value;
-            var role = principal.FindFirst(ClaimTypes.Role)?.Value;
 
-            if (role != "admin")
+            // Accept common role claim shapes to avoid claim-type mapping issues.
+            var hasAdminRole = principal.Claims.Any(c =>
+                (string.Equals(c.Type, ClaimTypes.Role, StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(c.Type, "role", StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(c.Type, "roles", StringComparison.OrdinalIgnoreCase)) &&
+                string.Equals(c.Value, "admin", StringComparison.OrdinalIgnoreCase));
+
+            if (!hasAdminRole)
             {
                 return (false, null, null);
             }

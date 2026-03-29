@@ -6,9 +6,12 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using ReactiveUI;
+using Vaani.Common;
 using Vaani.DriverInstallation.Models;
 using Vaani.DriverInstallation.Services;
+using static Vaani.Common.ErrorMessages;
 using Vaani.TestAudio.Views;
+using Vaani.Services;
 
 namespace Vaani.DriverInstallation.ViewModels;
 
@@ -281,6 +284,9 @@ public class DriverInstallationViewModel : ReactiveObject
             {
                 ProgressMessage = "VB-CABLE driver has been installed successfully! Please restart your computer to complete the setup.";
                 RequiresRestart = false;
+
+                // Keep Windows user-facing defaults on physical devices after installation.
+                try { DeviceService.Instance.TryRestorePhysicalDefaults(); } catch { }
                 
                 // Show completion screen briefly
                 ShowProgressScreen = false;
@@ -304,7 +310,7 @@ public class DriverInstallationViewModel : ReactiveObject
         }
         catch (Exception ex)
         {
-            ShowError("Unexpected Error", $"An unexpected error occurred: {ex.Message}");
+            ShowError("Installation Error", Classify(ex));
         }
         finally
         {
@@ -430,6 +436,9 @@ public class DriverInstallationViewModel : ReactiveObject
                 IsDriverInstalled = true;
                 ProgressMessage = "VB-CABLE driver has been reinstalled successfully! Please restart your computer to complete the setup.";
                 RequiresRestart = false;
+
+                // Keep Windows user-facing defaults on physical devices after reinstallation.
+                try { DeviceService.Instance.TryRestorePhysicalDefaults(); } catch { }
                 
                 // Show completion screen briefly
                 ShowProgressScreen = false;

@@ -1,7 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Vaani.API.Data;
 using Vaani.API.Interfaces;
-using Vaani.API.Migrations;
 using Vaani.API.Models.DTOs;
 using Vaani.API.Models.Entities;
 
@@ -119,8 +118,9 @@ public class MeetingService : IMeetingService
                 }
             }
 
-            // Create configuration DTO
-            var config = await GetMeetingConfigurationAsync(meeting.MeetingId);
+            // Create configuration DTO — pass the already-loaded meeting entity to avoid
+            // a second DB round-trip inside GetMeetingConfigurationAsync.
+            var config = await BuildConfigurationAsync(meeting);
             if (config == null)
             {
                 return new MeetingValidationResponse
@@ -195,42 +195,51 @@ public class MeetingService : IMeetingService
 
         if (meeting == null) return null;
 
-        var languages =  await _dbContext.Languages.ToListAsync();
-        var _availableLanguages = new List<LanguageInfo>();
-        var _availableVoices = new List<Voice>();
+        return await BuildConfigurationAsync(meeting);
+    }
 
-        //check only Active languages
-        _availableLanguages = languages.Where(lang => lang.IsActive).Select(lang => new LanguageInfo
+    /// <summary>
+    /// Builds the configuration DTO from an already-loaded <see cref="Meeting"/> entity.
+    /// Called by both <see cref="GetMeetingConfigurationAsync"/> and
+    /// <see cref="ValidateMeetingAsync"/> to avoid fetching the meeting twice.
+    /// </summary>
+    private async Task<MeetingConfigurationDto?> BuildConfigurationAsync(Meeting meeting)
+    {
+        var languages = await _dbContext.Languages
+            .Where(l => l.IsActive)
+            .ToListAsync();
+
+        var availableLanguages = languages.Select(lang => new LanguageInfo
         {
             Code = lang.LanguageCode,
             DisplayName = lang.LanguageName
         }).ToList();
 
-        //filter voices based on available languages
-
-        foreach (var lang in languages)
+        var availableVoices = languages.SelectMany(lang => new[]
         {
-            if (lang.IsActive)
+            new Voice
             {
-                var voiceMale = new Voice();
-                voiceMale.Name = $"{lang.LanguageMaleNeural}";
-                voiceMale.DisplayName = $"{lang.LanguageMaleNeural.Replace(lang.LanguageCode + "-", "")}";
-                voiceMale.LanguageCode = lang.LanguageCode;
-                voiceMale.Gender = "Male";
-                _availableVoices.Add(voiceMale);
-                var voiceFemale = new Voice();
-                voiceFemale.Name = $"{lang.LanguageFemaleNeural}";
-                voiceFemale.DisplayName = $"{lang.LanguageFemaleNeural.Replace(lang.LanguageCode + "-", "")}";
-                voiceFemale.LanguageCode = lang.LanguageCode;
-                voiceFemale.Gender = "Female";
-                _availableVoices.Add(voiceFemale);
+                Name = lang.LanguageMaleNeural,
+                DisplayName = lang.LanguageMaleNeural.Replace(lang.LanguageCode + "-", ""),
+                LanguageCode = lang.LanguageCode,
+                Gender = "Male"
+            },
+            new Voice
+            {
+                Name = lang.LanguageFemaleNeural,
+                DisplayName = lang.LanguageFemaleNeural.Replace(lang.LanguageCode + "-", ""),
+                LanguageCode = lang.LanguageCode,
+                Gender = "Female"
             }
-        }
+        }).ToList();
 
-        //get default meeting language
-        var meetingLanguage = await _dbContext.Languages
-            .FirstOrDefaultAsync(lang => lang.LanguageCode == meeting.MeetingLanguage && lang.IsActive);
+        // VendorLanguage and voice are configurable per deployment (appsettings.json).
+        var vendorLangCode = _configuration["Translation:VendorLanguage"] ?? "hi-IN";
+        var vendorVoiceName = _configuration["Translation:VendorVoice"] ?? "hi-IN-SwaraNeural";
 
+        var organizerVoice = availableVoices
+            .FirstOrDefault(v => v.LanguageCode == meeting.MeetingLanguage && v.Gender == "Male")?.Name
+            ?? "en-US-JennyNeural";
 
         return new MeetingConfigurationDto
         {
@@ -238,20 +247,20 @@ public class MeetingService : IMeetingService
             MeetingName = meeting.MeetingName,
             AzureConfig = new AzureConfigDto
             {
-                SubscriptionKey = meeting.AzureSubscription.SubscriptionKey,
-                Region = meeting.AzureSubscription.Region
+                // Never send Azure credentials to the desktop client.
+                // Backend owns Azure access end-to-end.
+                SubscriptionKey = string.Empty,
+                Region = string.Empty
             },
-           
             TranslationConfig = new TranslationConfigDto
             {
-                VendorLanguage = new LanguageConfigDto { Code = "hi-IN", Voice = "hi-IN-SwaraNeural" },             
+                VendorLanguage = new LanguageConfigDto { Code = vendorLangCode, Voice = vendorVoiceName },
                 OrganizerLanguage = new LanguageConfigDto
                 {
                     Code = meeting.MeetingLanguage,
-                    Voice = _availableVoices.FirstOrDefault(v => v.LanguageCode == meeting.MeetingLanguage && v.Gender == "Male")?.Name ?? "en-US-JennyNeural"
+                    Voice = organizerVoice
                 }
             },
-
             TimeWindow = new TimeWindowDto
             {
                 ValidFrom = meeting.ValidFrom.AddMinutes(-10),
@@ -269,9 +278,8 @@ public class MeetingService : IMeetingService
                 EncryptedAt = DateTime.UtcNow,
                 ConfigVersion = 1
             },
-            AvailableLanguages = _availableLanguages,
-            AvailableVoices = _availableVoices,
-            // ✅ Pass hub URL into encrypted config so desktop can read it after decryption
+            AvailableLanguages = availableLanguages,
+            AvailableVoices = availableVoices,
             BackendTranslationHubUrl = _configuration["Translation:HubUrl"] ?? "/hubs/translation"
         };
     }

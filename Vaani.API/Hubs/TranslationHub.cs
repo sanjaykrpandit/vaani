@@ -2,7 +2,6 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using Vaani.API.Interfaces;
 using Vaani.API.Models.DTOs;
-using Vaani.API.Services;
 
 namespace Vaani.API.Hubs;
 
@@ -121,6 +120,11 @@ public class TranslationHub : Hub
             return;
         }
 
+        // Throttled confirmation: seq 1 and every 100th chunk (~10 s at 100 ms intervals)
+        if (chunk.SequenceNumber == 1 || chunk.SequenceNumber % 100 == 0)
+            _logger.LogDebug("[{Id}] {Pipeline} chunk received — seq {Seq}, {Bytes}B",
+                chunk.TranslationSessionId, chunk.Pipeline, chunk.SequenceNumber, chunk.Data.Length);
+
         await _translationService.ProcessAudioChunkAsync(chunk.TranslationSessionId, chunk);
     }
 
@@ -215,26 +219,18 @@ public class TranslationHub : Hub
         var connectionId = Context.ConnectionId;
         var clients = Clients;
 
-        // We resolve the session state internally; the service exposes OnEvent via interface
-        // Here we piggyback on the service's CleanupConnectionAsync to remove this callback.
-        // The callback is registered inside StartSessionAsync in the service via the
-        // ConnectionId tracking — we need to call the service's internal state directly.
-        // To keep the interface clean, we inject the callback after start via a second call:
-        if (_translationService is TranslationService concreteService)
+        _translationService.RegisterEventCallback(translationSessionId, async (evt) =>
         {
-            concreteService.RegisterEventCallback(translationSessionId, async (evt) =>
+            try
             {
-                try
-                {
-                    await clients.Client(connectionId).SendAsync("ReceiveTranslationEvent", evt);
-                }
-                catch (Exception ex)
-                {
-                    // Client may have disconnected; log and continue
-                    _ = ex; // suppress CS0168
-                }
-            });
-        }
+                await clients.Client(connectionId).SendAsync("ReceiveTranslationEvent", evt);
+            }
+            catch (Exception ex)
+            {
+                // Client may have disconnected; log and continue
+                _ = ex; // suppress CS0168
+            }
+        });
     }
 
     private Task SendError(string code, string message) =>
@@ -248,15 +244,12 @@ public class TranslationHub : Hub
     {
         var status = _translationService.GetStatus(translationSessionId);
         if (status == null) return true; // let downstream report not-found
-        // Re-check via concrete service to access connection info
-        if (_translationService is TranslationService cs)
-            return cs.IsOwnedByConnection(translationSessionId, Context.ConnectionId);
-        return true;
+        return _translationService.IsOwnedByConnection(translationSessionId, Context.ConnectionId);
     }
 
     private string GetJwtToken()
     {
-        // Extract from Authorization header claim
+        // Extract from Authorization header first
         var httpCtx = Context.GetHttpContext();
         if (httpCtx != null &&
             httpCtx.Request.Headers.TryGetValue("Authorization", out var auth) &&
@@ -264,6 +257,15 @@ public class TranslationHub : Hub
         {
             return auth.ToString()["Bearer ".Length..].Trim();
         }
+
+        // Fallback for WebSocket/SignalR query-token auth path
+        if (httpCtx != null &&
+            httpCtx.Request.Query.TryGetValue("access_token", out var accessToken) &&
+            !string.IsNullOrWhiteSpace(accessToken))
+        {
+            return accessToken.ToString();
+        }
+
         return string.Empty;
     }
 }

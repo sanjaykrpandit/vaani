@@ -87,10 +87,15 @@ public class ClientService
         // Try to load from active session first
         if (_sessionManager.HasActiveSession() && _sessionManager.CurrentSession != null)
         {
-            return TranslationSettings.FromMeetingConfiguration(
+            var settings = TranslationSettings.FromMeetingConfiguration(
                 _sessionManager.CurrentSession.Configuration,
                 isVendor: true
             );
+
+            settings.SessionId = _sessionManager.CurrentSession.SessionId?.ToString();
+            settings.SessionToken = _sessionManager.CurrentSession.SessionToken;
+
+            return settings;
         }
         else
         {

@@ -3,10 +3,13 @@ using Microsoft.CognitiveServices.Speech.Audio;
 using Microsoft.CognitiveServices.Speech.Translation;
 using Microsoft.EntityFrameworkCore;
 using System.Collections.Concurrent;
+using System.IO;
+using System.Text.RegularExpressions;
 using System.Threading.Channels;
 using Vaani.API.Data;
 using Vaani.API.Interfaces;
 using Vaani.API.Models.DTOs;
+using Vaani.API.Models.Entities;
 
 namespace Vaani.API.Services;
 
@@ -17,7 +20,8 @@ namespace Vaani.API.Services;
 /// </summary>
 public class TranslationService : ITranslationService, IDisposable
 {
-    private readonly VaaniDbContext _dbContext;
+    private readonly IServiceScopeFactory _scopeFactory;
+    private readonly IJwtTokenService _jwtTokenService;
     private readonly ILogger<TranslationService> _logger;
     private readonly IConfiguration _configuration;
 
@@ -29,16 +33,41 @@ public class TranslationService : ITranslationService, IDisposable
 
     // Configuration limits
     private readonly int _maxConcurrentSessions;
+    private readonly int _maxSessionsPerMeeting;
+    private readonly string _contentModerationMode;
+    private readonly List<Regex> _blockedPatterns;
+
+    // Terms source is file-only (local dictionaries under Translation:BlockedTermsDirectory)
 
     public TranslationService(
-        VaaniDbContext dbContext,
+        IServiceScopeFactory scopeFactory,
+        IJwtTokenService jwtTokenService,
         ILogger<TranslationService> logger,
         IConfiguration configuration)
     {
-        _dbContext = dbContext;
+        _scopeFactory = scopeFactory;
+        _jwtTokenService = jwtTokenService;
         _logger = logger;
         _configuration = configuration;
-        _maxConcurrentSessions = _configuration.GetValue<int>("Translation:MaxConcurrentSessions", 100);
+        _maxConcurrentSessions = _configuration.GetValue<int>("Translation:MaxConcurrentSessions", 30);
+        _maxSessionsPerMeeting = _configuration.GetValue<int>("Translation:MaxSessionsPerMeeting", 5);
+        _contentModerationMode = (_configuration.GetValue<string>("Translation:ContentModerationMode", "Mask") ?? "Mask").Trim();
+
+        var localTerms = LoadLocalBlockedTerms();
+        var mergedTerms = localTerms
+            .Where(t => !string.IsNullOrWhiteSpace(t))
+            .Select(t => t.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        _blockedPatterns = mergedTerms
+            .Select(BuildBlockedRegex)
+            .Where(r => r != null)
+            .Cast<Regex>()
+            .ToList();
+
+        _logger.LogInformation("Content moderation loaded: {Patterns} patterns, mode={Mode}",
+            _blockedPatterns.Count, _contentModerationMode);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -51,17 +80,55 @@ public class TranslationService : ITranslationService, IDisposable
     {
         try
         {
-            // Guard: max sessions
+            // Guard: token must be valid and bound to this meeting
+            var (tokenValid, tokenMeetingId, tokenDeviceId) = _jwtTokenService.ValidateToken(jwtToken);
+            if (!tokenValid || string.IsNullOrWhiteSpace(tokenMeetingId) || string.IsNullOrWhiteSpace(tokenDeviceId))
+                return Fail("INVALID_TOKEN", "Invalid or expired access token.");
+
+            if (!tokenMeetingId.Equals(request.MeetingId, StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogWarning("Token meeting mismatch. Token={TokenMeetingId}, Request={RequestMeetingId}", tokenMeetingId, request.MeetingId);
+                return Fail("TOKEN_MEETING_MISMATCH", "Token does not match requested meeting.");
+            }
+
+            // Guard: global max sessions
             if (_sessions.Count >= _maxConcurrentSessions)
             {
                 _logger.LogWarning("Max concurrent translation sessions reached ({Max})", _maxConcurrentSessions);
                 return Fail("MAX_SESSIONS", "Maximum number of concurrent translation sessions reached.");
             }
 
-            // Load meeting + Azure subscription from DB
-            var meeting = await _dbContext.Meetings
-                .Include(m => m.AzureSubscription)
-                .FirstOrDefaultAsync(m => m.MeetingId == request.MeetingId.ToUpperInvariant());
+            // Guard: per-meeting session cap (prevents one meeting consuming all capacity)
+            var meetingSessionCount = _sessions.Values
+                .Count(s => s.MeetingId.Equals(request.MeetingId, StringComparison.OrdinalIgnoreCase));
+            if (meetingSessionCount >= _maxSessionsPerMeeting)
+            {
+                _logger.LogWarning("Per-meeting session cap reached for {MeetingId} ({Max})", request.MeetingId, _maxSessionsPerMeeting);
+                return Fail("MEETING_SESSION_CAP", "This meeting has reached its maximum number of concurrent sessions.");
+            }
+
+            // Session guard: requested SessionId must belong to token's device + meeting
+            if (string.IsNullOrWhiteSpace(request.SessionId) || !int.TryParse(request.SessionId, out var sessionId))
+                return Fail("INVALID_REQUEST", "SessionId is required.");
+
+            // Load meeting + Azure subscription from DB using a short-lived scope
+            Meeting? meeting;
+            using (var scope = _scopeFactory.CreateScope())
+            {
+                var dbContext = scope.ServiceProvider.GetRequiredService<VaaniDbContext>();
+                meeting = await dbContext.Meetings
+                    .Include(m => m.AzureSubscription)
+                    .FirstOrDefaultAsync(m => m.MeetingId == request.MeetingId.ToUpperInvariant());
+
+                var session = await dbContext.Sessions
+                    .FirstOrDefaultAsync(s => s.Id == sessionId
+                                           && s.MeetingId == request.MeetingId.ToUpperInvariant()
+                                           && s.DeviceId == tokenDeviceId
+                                           && (s.Status == "Active" || s.Status == "Initial"));
+
+                if (session == null)
+                    return Fail("SESSION_ACCESS_DENIED", "Session does not belong to token context.");
+            }
 
             if (meeting == null || !meeting.IsActive)
                 return Fail("MEETING_NOT_FOUND", "Meeting not found or inactive.");
@@ -94,6 +161,7 @@ public class TranslationService : ITranslationService, IDisposable
                 SourceVoice = sourceVoice,
                 TargetVoice = targetVoice,
                 Direction = request.Direction,
+                MeetingValidUntil = meeting.ValidUntil,
                 Cts = cts,
                 StartedAt = DateTime.UtcNow,
                 Status = TranslationSessionStatus.Starting
@@ -113,6 +181,9 @@ public class TranslationService : ITranslationService, IDisposable
 
             // Initialize Azure pipelines
             await InitializePipelinesAsync(state);
+
+            // Zero the key from memory now that SDK instances hold their own copy
+            state.AzureKey = string.Empty;
 
             state.Status = TranslationSessionStatus.Running;
 
@@ -176,14 +247,25 @@ public class TranslationService : ITranslationService, IDisposable
         }
 
         if (state.Status != TranslationSessionStatus.Running)
+        {
+            _logger.LogWarning("[{Id}] Chunk dropped — session status is {Status}", translationSessionId, state.Status);
             return Task.CompletedTask;
+        }
 
         try
         {
             if (chunk.Pipeline == AudioPipelineDirection.Outgoing && !state.IsMicrophoneMuted)
+            {
                 state.OutgoingPushStream!.Write(chunk.Data, chunk.Data.Length);
+                if (chunk.SequenceNumber % 50 == 1)
+                    _logger.LogDebug("[{Id}] OUT audio write — seq {Seq}, {Bytes}B", translationSessionId, chunk.SequenceNumber, chunk.Data.Length);
+            }
             else if (chunk.Pipeline == AudioPipelineDirection.Incoming && !state.IsSpeakerMuted)
+            {
                 state.IncomingPushStream!.Write(chunk.Data, chunk.Data.Length);
+                if (chunk.SequenceNumber % 50 == 1)
+                    _logger.LogDebug("[{Id}] IN  audio write — seq {Seq}, {Bytes}B", translationSessionId, chunk.SequenceNumber, chunk.Data.Length);
+            }
         }
         catch (Exception ex)
         {
@@ -205,6 +287,17 @@ public class TranslationService : ITranslationService, IDisposable
         if (_sessions.TryGetValue(translationSessionId, out var state))
             state.IsSpeakerMuted = muted;
         return Task.CompletedTask;
+    }
+
+    public IReadOnlyList<string> GetStaleSessionIds()
+    {
+        var now = DateTime.UtcNow;
+        return _sessions.Values
+            .Where(s => s.Status == TranslationSessionStatus.Running &&
+                        s.MeetingValidUntil != default &&
+                        now > s.MeetingValidUntil.AddMinutes(15))
+            .Select(s => s.TranslationSessionId)
+            .ToList();
     }
 
     public async Task CleanupConnectionAsync(string connectionId)
@@ -234,8 +327,10 @@ public class TranslationService : ITranslationService, IDisposable
         var bufferMs = _configuration.GetValue<int>("Translation:AudioBufferSizeMs", 100);
         var endpoint = $"wss://{state.AzureRegion}.stt.speech.microsoft.com/speech/universal/v2";
 
-        // ── OUTGOING: user mic → translate → synthesize ──────────────────────
-        if (state.Direction == TranslationDirection.Outgoing || state.Direction == TranslationDirection.Both)
+        // ── OUTGOING: user mic → recognise (→ translate in full mode) ──────────
+        if (state.Direction == TranslationDirection.Outgoing ||
+            state.Direction == TranslationDirection.Both ||
+            state.Direction == TranslationDirection.TranscribeBoth)
         {
             var outConfig = SpeechTranslationConfig.FromEndpoint(new Uri(endpoint), state.AzureKey);
             outConfig.SpeechRecognitionLanguage = state.SourceLanguage;
@@ -257,8 +352,10 @@ public class TranslationService : ITranslationService, IDisposable
                 state.TranslationSessionId, state.SourceLanguage, state.TargetLanguage);
         }
 
-        // ── INCOMING: meeting audio → translate → synthesize ─────────────────
-        if (state.Direction == TranslationDirection.Incoming || state.Direction == TranslationDirection.Both)
+        // ── INCOMING: meeting audio → recognise (→ translate in full mode) ──────
+        if (state.Direction == TranslationDirection.Incoming ||
+            state.Direction == TranslationDirection.Both ||
+            state.Direction == TranslationDirection.TranscribeBoth)
         {
             var inConfig = SpeechTranslationConfig.FromEndpoint(new Uri(endpoint), state.AzureKey);
             inConfig.SpeechRecognitionLanguage = state.TargetLanguage;
@@ -280,7 +377,7 @@ public class TranslationService : ITranslationService, IDisposable
                 state.TranslationSessionId, state.TargetLanguage, state.SourceLanguage);
         }
 
-        // ── Synthesizer for outgoing TTS ──────────────────────────────────────
+        // ── Synthesizer for outgoing TTS (skipped in TranscribeBoth / bypass mode) ──
         if (state.Direction == TranslationDirection.Outgoing || state.Direction == TranslationDirection.Both)
         {
             var synthConfig = SpeechConfig.FromSubscription(state.AzureKey, state.AzureRegion);
@@ -290,7 +387,7 @@ public class TranslationService : ITranslationService, IDisposable
             state.OutgoingSynthesizer = new SpeechSynthesizer(synthConfig, null);
         }
 
-        // ── Synthesizer for incoming TTS ──────────────────────────────────────
+        // ── Synthesizer for incoming TTS (skipped in TranscribeBoth / bypass mode) ──
         if (state.Direction == TranslationDirection.Incoming || state.Direction == TranslationDirection.Both)
         {
             var synthConfig = SpeechConfig.FromSubscription(state.AzureKey, state.AzureRegion);
@@ -299,6 +396,17 @@ public class TranslationService : ITranslationService, IDisposable
             synthConfig.SetSpeechSynthesisOutputFormat(SpeechSynthesisOutputFormat.Raw16Khz16BitMonoPcm);
             state.IncomingSynthesizer = new SpeechSynthesizer(synthConfig, null);
         }
+
+        // ── Start per-pipeline synthesis queue consumers ──────────────────────
+        // Each consumer serialises synthesis for its pipeline so sentences never overlap.
+        if (state.OutgoingSynthesizer != null)
+            _ = Task.Run(() => RunSynthesisQueueAsync(
+                state, state.OutgoingSynthesisQueue, state.OutgoingSynthesizer,
+                AudioPipelineDirection.Outgoing, state.Cts.Token));
+        if (state.IncomingSynthesizer != null)
+            _ = Task.Run(() => RunSynthesisQueueAsync(
+                state, state.IncomingSynthesisQueue, state.IncomingSynthesizer,
+                AudioPipelineDirection.Incoming, state.Cts.Token));
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -310,38 +418,80 @@ public class TranslationService : ITranslationService, IDisposable
         recognizer.Recognizing += (_, e) =>
         {
             if (state.IsMicrophoneMuted || e.Result.Reason != ResultReason.TranslatingSpeech) return;
+
+            var moderated = ModerateText(e.Result.Text ?? string.Empty);
+            if (moderated.Blocked) return; // suppress blocked partials
+
+            if (!string.IsNullOrEmpty(moderated.Text))
+                _logger.LogDebug("[{Id}] OUT Recognizing (moderated): {Len} chars", state.TranslationSessionId, moderated.Text.Length);
+
             state.FireEvent(new TranslationEventDto
             {
                 TranslationSessionId = state.TranslationSessionId,
                 EventType = TranslationEventType.Recognizing,
                 Pipeline = AudioPipelineDirection.Outgoing,
-                OriginalText = e.Result.Text
+                OriginalText = moderated.Text
             });
         };
 
         recognizer.Recognized += async (_, e) =>
         {
-            if (state.IsMicrophoneMuted) return;
-            if (e.Result.Reason != ResultReason.TranslatedSpeech || string.IsNullOrWhiteSpace(e.Result.Text)) return;
-
-            var original = e.Result.Text.Trim();
-            var targetLang = state.TargetLanguage.Split('-')[0];
-            var translated = e.Result.Translations.TryGetValue(targetLang, out var t) ? t.Trim() : string.Empty;
-
-            Interlocked.Increment(ref state._totalRecognitions);
-
-            state.FireEvent(new TranslationEventDto
+            try
             {
-                TranslationSessionId = state.TranslationSessionId,
-                EventType = TranslationEventType.Recognized,
-                Pipeline = AudioPipelineDirection.Outgoing,
-                OriginalText = original,
-                TranslatedText = translated
-            });
+                var outTrans = e.Result.Translations != null
+                    ? string.Join("; ", e.Result.Translations.Select(kv => $"{kv.Key}='{kv.Value}'"))
+                    : "none";
+                _logger.LogDebug("[{Id}] OUT Recognized event — Reason: {Reason}, Text: '{Text}', Translations: [{Trans}]",
+                    state.TranslationSessionId, e.Result.Reason, e.Result.Text, outTrans);
 
-            if (!string.IsNullOrWhiteSpace(translated) && state.OutgoingSynthesizer != null)
-                await SynthesizeAndFireAsync(state, state.OutgoingSynthesizer, translated,
-                    original, AudioPipelineDirection.Outgoing);
+                if (state.IsMicrophoneMuted) return;
+                if (e.Result.Reason != ResultReason.TranslatedSpeech || string.IsNullOrWhiteSpace(e.Result.Text)) return;
+
+                var original = e.Result.Text.Trim();
+                var targetLang = state.TargetLanguage.Split('-')[0];
+                var translated = e.Result.Translations.TryGetValue(targetLang, out var t) ? t.Trim() : string.Empty;
+
+                var moderatedOriginal = ModerateText(original);
+                var moderatedTranslated = ModerateText(translated);
+
+                // Block entire utterance if policy says so
+                if (moderatedOriginal.Blocked || moderatedTranslated.Blocked)
+                {
+                    _logger.LogWarning("[{Id}] OUT utterance blocked by content policy", state.TranslationSessionId);
+                    state.FireEvent(new TranslationEventDto
+                    {
+                        TranslationSessionId = state.TranslationSessionId,
+                        EventType = TranslationEventType.Error,
+                        Pipeline = AudioPipelineDirection.Outgoing,
+                        SystemMessage = "A phrase was filtered due to meeting content policy."
+                    });
+                    return;
+                }
+
+                original = moderatedOriginal.Text;
+                translated = moderatedTranslated.Text;
+
+                Interlocked.Increment(ref state._totalRecognitions);
+                _logger.LogInformation("[{Id}] OUT recognized (moderated): {OrigLen} chars → {TransLen} chars",
+                    state.TranslationSessionId, original.Length, translated.Length);
+
+                state.FireEvent(new TranslationEventDto
+                {
+                    TranslationSessionId = state.TranslationSessionId,
+                    EventType = TranslationEventType.Recognized,
+                    Pipeline = AudioPipelineDirection.Outgoing,
+                    OriginalText = original,
+                    TranslatedText = translated
+                });
+
+                if (!string.IsNullOrWhiteSpace(translated) &&
+                    state.Direction != TranslationDirection.TranscribeBoth)
+                    state.OutgoingSynthesisQueue.Writer.TryWrite((translated, original));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[{Id}] Outgoing recognition handler error", state.TranslationSessionId);
+            }
         };
 
         recognizer.Canceled += (_, e) =>
@@ -368,38 +518,80 @@ public class TranslationService : ITranslationService, IDisposable
         recognizer.Recognizing += (_, e) =>
         {
             if (state.IsSpeakerMuted || e.Result.Reason != ResultReason.TranslatingSpeech) return;
+
+            var moderated = ModerateText(e.Result.Text ?? string.Empty);
+            if (moderated.Blocked) return; // suppress blocked partials
+
+            if (!string.IsNullOrEmpty(moderated.Text))
+                _logger.LogDebug("[{Id}] IN  Recognizing (moderated): {Len} chars", state.TranslationSessionId, moderated.Text.Length);
+
             state.FireEvent(new TranslationEventDto
             {
                 TranslationSessionId = state.TranslationSessionId,
                 EventType = TranslationEventType.Recognizing,
                 Pipeline = AudioPipelineDirection.Incoming,
-                OriginalText = e.Result.Text
+                OriginalText = moderated.Text
             });
         };
 
         recognizer.Recognized += async (_, e) =>
         {
-            if (state.IsSpeakerMuted) return;
-            if (e.Result.Reason != ResultReason.TranslatedSpeech || string.IsNullOrWhiteSpace(e.Result.Text)) return;
-
-            var original = e.Result.Text.Trim();
-            var sourceLang = state.SourceLanguage.Split('-')[0];
-            var translated = e.Result.Translations.TryGetValue(sourceLang, out var t) ? t.Trim() : string.Empty;
-
-            Interlocked.Increment(ref state._totalRecognitions);
-
-            state.FireEvent(new TranslationEventDto
+            try
             {
-                TranslationSessionId = state.TranslationSessionId,
-                EventType = TranslationEventType.Recognized,
-                Pipeline = AudioPipelineDirection.Incoming,
-                OriginalText = original,
-                TranslatedText = translated
-            });
+                var inTrans = e.Result.Translations != null
+                    ? string.Join("; ", e.Result.Translations.Select(kv => $"{kv.Key}='{kv.Value}'"))
+                    : "none";
+                _logger.LogDebug("[{Id}] IN  Recognized event — Reason: {Reason}, Text: '{Text}', Translations: [{Trans}]",
+                    state.TranslationSessionId, e.Result.Reason, e.Result.Text, inTrans);
 
-            if (!string.IsNullOrWhiteSpace(translated) && state.IncomingSynthesizer != null)
-                await SynthesizeAndFireAsync(state, state.IncomingSynthesizer, translated,
-                    original, AudioPipelineDirection.Incoming);
+                if (state.IsSpeakerMuted) return;
+                if (e.Result.Reason != ResultReason.TranslatedSpeech || string.IsNullOrWhiteSpace(e.Result.Text)) return;
+
+                var original = e.Result.Text.Trim();
+                var sourceLang = state.SourceLanguage.Split('-')[0];
+                var translated = e.Result.Translations.TryGetValue(sourceLang, out var t) ? t.Trim() : string.Empty;
+
+                var moderatedOriginal = ModerateText(original);
+                var moderatedTranslated = ModerateText(translated);
+
+                // Block entire utterance if policy says so
+                if (moderatedOriginal.Blocked || moderatedTranslated.Blocked)
+                {
+                    _logger.LogWarning("[{Id}] IN utterance blocked by content policy", state.TranslationSessionId);
+                    state.FireEvent(new TranslationEventDto
+                    {
+                        TranslationSessionId = state.TranslationSessionId,
+                        EventType = TranslationEventType.Error,
+                        Pipeline = AudioPipelineDirection.Incoming,
+                        SystemMessage = "A phrase was filtered due to meeting content policy."
+                    });
+                    return;
+                }
+
+                original = moderatedOriginal.Text;
+                translated = moderatedTranslated.Text;
+
+                Interlocked.Increment(ref state._totalRecognitions);
+                _logger.LogInformation("[{Id}] IN recognized (moderated): {OrigLen} chars → {TransLen} chars",
+                    state.TranslationSessionId, original.Length, translated.Length);
+
+                state.FireEvent(new TranslationEventDto
+                {
+                    TranslationSessionId = state.TranslationSessionId,
+                    EventType = TranslationEventType.Recognized,
+                    Pipeline = AudioPipelineDirection.Incoming,
+                    OriginalText = original,
+                    TranslatedText = translated
+                });
+
+                if (!string.IsNullOrWhiteSpace(translated) &&
+                    state.Direction != TranslationDirection.TranscribeBoth)
+                    state.IncomingSynthesisQueue.Writer.TryWrite((translated, original));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[{Id}] Incoming recognition handler error", state.TranslationSessionId);
+            }
         };
 
         recognizer.Canceled += (_, e) =>
@@ -428,15 +620,17 @@ public class TranslationService : ITranslationService, IDisposable
         string originalText,
         AudioPipelineDirection pipeline)
     {
+        state.FireEvent(new TranslationEventDto
+        {
+            TranslationSessionId = state.TranslationSessionId,
+            EventType = TranslationEventType.SynthesizingStarted,
+            Pipeline = pipeline,
+            OriginalText = originalText,
+            TranslatedText = text
+        });
+
         try
         {
-            state.FireEvent(new TranslationEventDto
-            {
-                TranslationSessionId = state.TranslationSessionId,
-                EventType = TranslationEventType.SynthesizingStarted,
-                Pipeline = pipeline
-            });
-
             using var result = await synthesizer.SpeakTextAsync(text);
 
             if (result.Reason == ResultReason.SynthesizingAudioCompleted)
@@ -451,13 +645,6 @@ public class TranslationService : ITranslationService, IDisposable
                     TranslatedText = text,
                     AudioData = result.AudioData
                 });
-
-                state.FireEvent(new TranslationEventDto
-                {
-                    TranslationSessionId = state.TranslationSessionId,
-                    EventType = TranslationEventType.SynthesizingCompleted,
-                    Pipeline = pipeline
-                });
             }
             else
             {
@@ -468,6 +655,41 @@ public class TranslationService : ITranslationService, IDisposable
         catch (Exception ex)
         {
             _logger.LogError(ex, "[{Id}] SpeakText error", state.TranslationSessionId);
+        }
+        finally
+        {
+            // Always fire SynthesizingCompleted so the client UI is never left stuck.
+            state.FireEvent(new TranslationEventDto
+            {
+                TranslationSessionId = state.TranslationSessionId,
+                EventType = TranslationEventType.SynthesizingCompleted,
+                Pipeline = pipeline,
+                OriginalText = originalText,
+                TranslatedText = text
+            });
+        }
+    }
+
+    /// <summary>
+    /// Reads from a per-pipeline synthesis channel and processes each sentence sequentially,
+    /// ensuring translated audio is never overlapped on the same output device.
+    /// </summary>
+    private async Task RunSynthesisQueueAsync(
+        TranslationSessionState state,
+        Channel<(string Text, string OriginalText)> queue,
+        SpeechSynthesizer synthesizer,
+        AudioPipelineDirection pipeline,
+        CancellationToken ct)
+    {
+        try
+        {
+            await foreach (var (text, originalText) in queue.Reader.ReadAllAsync(ct))
+                await SynthesizeAndFireAsync(state, synthesizer, text, originalText, pipeline);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[{Id}] Synthesis queue consumer error", state.TranslationSessionId);
         }
     }
 
@@ -481,6 +703,10 @@ public class TranslationService : ITranslationService, IDisposable
         _logger.LogInformation("[{Id}] Tearing down session ({Reason})", state.TranslationSessionId, reason);
 
         try { state.Cts.Cancel(); } catch { /* ignore */ }
+
+        // Signal synthesis queue consumers to stop
+        state.OutgoingSynthesisQueue.Writer.TryComplete();
+        state.IncomingSynthesisQueue.Writer.TryComplete();
 
         var stopTasks = new List<Task>();
         if (state.OutgoingRecognizer != null)
@@ -564,7 +790,105 @@ public class TranslationService : ITranslationService, IDisposable
     private static void ApplyCommonProperties(SpeechTranslationConfig config)
     {
         config.SetProperty(PropertyId.SpeechServiceResponse_ProfanityOption, "Masked");
-        config.SetProperty(PropertyId.SpeechServiceResponse_PostProcessingOption, "TrueText");
+        // TrueText post-processing suppresses low-confidence results and returns
+        // TranslatedSpeech with empty Text, which breaks the recognition pipeline.
+    }
+
+    private (string Text, bool Flagged, bool Blocked) ModerateText(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return (text, false, false);
+
+        var output = text;
+        var flagged = false;
+
+        foreach (var regex in _blockedPatterns)
+        {
+            if (!regex.IsMatch(output))
+                continue;
+
+            flagged = true;
+
+            if (_contentModerationMode.Equals("Block", StringComparison.OrdinalIgnoreCase))
+                return (string.Empty, true, true);
+
+            if (_contentModerationMode.Equals("Remove", StringComparison.OrdinalIgnoreCase))
+            {
+                output = regex.Replace(output, string.Empty);
+            }
+            else // default: Mask
+            {
+                output = regex.Replace(output, "***");
+            }
+        }
+
+        // normalize spaces after removals
+        output = Regex.Replace(output, "\\s+", " ").Trim();
+        return (output, flagged, false);
+    }
+
+    private static Regex? BuildBlockedRegex(string term)
+    {
+        // Keep alphanumeric only; supports terms with punctuation/spaces in source list.
+        var canonical = new string(term
+            .Where(char.IsLetterOrDigit)
+            .Select(char.ToLowerInvariant)
+            .ToArray());
+
+        if (string.IsNullOrWhiteSpace(canonical))
+            return null;
+
+        // Build pattern that tolerates separators between letters:
+        // e.g. "f*u-c_k", "s e x", "madar-chod".
+        var letters = canonical
+            .Select(c => Regex.Escape(c.ToString()));
+        var fuzzyCore = string.Join("[\\W_]*", letters);
+
+        // allow suffix letters for inflections: sexuality, masturbating, etc.
+        var pattern = $@"\b{fuzzyCore}[a-z]*\b";
+        return new Regex(pattern, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+    }
+
+    private IEnumerable<string> LoadLocalBlockedTerms()
+    {
+        try
+        {
+            var folder = (_configuration.GetValue<string>("Translation:BlockedTermsDirectory", "Moderation/BlockedTerms")
+                ?? "Moderation/BlockedTerms")
+                .Replace('\\', Path.DirectorySeparatorChar)
+                .Replace('/', Path.DirectorySeparatorChar);
+
+            var basePath = AppContext.BaseDirectory;
+            var fullPath = Path.GetFullPath(Path.Combine(basePath, folder));
+
+            if (!Directory.Exists(fullPath))
+            {
+                _logger.LogWarning("Blocked terms directory not found: {Path}", fullPath);
+                return [];
+            }
+
+            var files = Directory.GetFiles(fullPath, "*.txt", SearchOption.TopDirectoryOnly);
+            var terms = new List<string>();
+
+            foreach (var file in files)
+            {
+                foreach (var line in File.ReadLines(file))
+                {
+                    var value = line.Trim();
+                    if (string.IsNullOrWhiteSpace(value)) continue;
+                    if (value.StartsWith("#", StringComparison.Ordinal)) continue;
+                    terms.Add(value);
+                }
+            }
+
+            _logger.LogInformation("Loaded {Count} local blocked terms from {Files} files", terms.Count, files.Length);
+            return terms;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to load local blocked terms");
+            return [];
+        }
     }
 
     private static TranslationStartResponse Fail(string code, string msg) =>
@@ -598,10 +922,20 @@ internal class TranslationSessionState
     public SpeechSynthesizer? OutgoingSynthesizer { get; set; }
     public SpeechSynthesizer? IncomingSynthesizer { get; set; }
 
+    // Per-pipeline synthesis queues — ensures sentences are spoken sequentially.
+    // Bounded with DropOldest so a fast speaker never causes unbounded memory growth.
+    public Channel<(string Text, string OriginalText)> OutgoingSynthesisQueue { get; } =
+        Channel.CreateBounded<(string, string)>(new BoundedChannelOptions(10)
+        { FullMode = BoundedChannelFullMode.DropOldest, SingleReader = true });
+    public Channel<(string Text, string OriginalText)> IncomingSynthesisQueue { get; } =
+        Channel.CreateBounded<(string, string)>(new BoundedChannelOptions(10)
+        { FullMode = BoundedChannelFullMode.DropOldest, SingleReader = true });
+
     // Lifecycle
     public CancellationTokenSource Cts { get; set; } = new();
     public TranslationSessionStatus Status { get; set; }
     public DateTime StartedAt { get; set; }
+    public DateTime MeetingValidUntil { get; set; }
 
     // Mute flags
     public volatile bool IsMicrophoneMuted;
@@ -622,6 +956,10 @@ internal class TranslationSessionState
 
     public void FireEvent(TranslationEventDto evt)
     {
-        _ = OnEvent?.Invoke(evt);
+        var cb = OnEvent;
+        if (cb == null) return;
+        _ = cb(evt).ContinueWith(
+            t => { /* exception logged by caller or swallowed on disconnect */ },
+            TaskContinuationOptions.OnlyOnFaulted);
     }
 }

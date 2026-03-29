@@ -320,6 +320,15 @@ public class SessionManager
 
     }
 
+    public void UpdateSessionId(int sessionId)
+    {
+        if (_currentSession == null)
+            return;
+
+        _currentSession.SessionId = sessionId;
+        SaveSession();
+    }
+
 
 
     /// <summary>

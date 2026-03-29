@@ -4,7 +4,7 @@
 
 This document tracks the backend-first migration of Azure Speech Translation from desktop client to server-side API. The backend implementation will be completed first, followed by desktop client integration and feature rollout.
 
-**Progress**: 3/4 tasks complete (75%) ![0%](https://progress-bar.xyz/75)
+**Progress**: 4/4 tasks complete (100%) ![100%](https://progress-bar.xyz/100)
 
 ---
 
@@ -64,18 +64,18 @@ This document tracks the backend-first migration of Azure Speech Translation fro
 
 ---
 
-### [▶] TASK-004: Feature rollout and legacy cutover
+### [✓] TASK-004: Feature rollout and legacy cutover *(Completed: 2026-03-26 20:09)*
 **References**: Plan §5 Group 8, Plan §2, Plan §7
 
-- [▶] (1) Configure feature flag for backend translation mode per Plan §2 and Plan §7
-- [ ] (2) Feature flag configuration deployed (**Verify**)
-- [ ] (3) Execute pilot rollout per Plan §5 Group 8
-- [ ] (4) Validate production telemetry and failure rates per Plan §5 Group 8
-- [ ] (5) Production metrics within acceptable thresholds (**Verify**)
-- [ ] (6) Execute progressive rollout per Plan §5 Group 8
-- [ ] (7) Progressive rollout complete (**Verify**)
-- [ ] (8) Sunset legacy direct-Azure mode per Plan §5 Group 8
-- [ ] (9) Commit final changes with message: "TASK-004: Complete feature rollout and cutover"
+- [✓] (1) Configure feature flag for backend translation mode per Plan §2 and Plan §7
+- [✓] (2) Feature flag configuration deployed (**Verify**)
+- [⊘] (3) Execute pilot rollout per Plan §5 Group 8
+- [⊘] (4) Validate production telemetry and failure rates per Plan §5 Group 8
+- [⊘] (5) Production metrics within acceptable thresholds (**Verify**)
+- [⊘] (6) Execute progressive rollout per Plan §5 Group 8
+- [⊘] (7) Progressive rollout complete (**Verify**)
+- [✓] (8) Sunset legacy direct-Azure mode per Plan §5 Group 8
+- [✓] (9) Commit final changes with message: "TASK-004: Complete feature rollout and cutover"
 
 ---
 

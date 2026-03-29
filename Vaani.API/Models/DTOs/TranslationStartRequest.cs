@@ -37,5 +37,10 @@ public enum TranslationDirection
 {
     Outgoing = 1,
     Incoming = 2,
-    Both = 3
+    Both = 3,
+    /// <summary>
+    /// Both pipelines active for real-time transcription, but no TTS synthesis.
+    /// Used when source and target language are the same (bypass mode).
+    /// </summary>
+    TranscribeBoth = 4
 }

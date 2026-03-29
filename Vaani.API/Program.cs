@@ -1,5 +1,7 @@
 using System.Text;
+using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -22,7 +24,7 @@ builder.Services.AddHttpContextAccessor();
 
 // Configure PostgreSQL Database with retry logic
 var connectionString = builder.Configuration.GetConnectionString("PostgreSQL");
-builder.Services.AddDbContext<VaaniDbContext>(options =>
+Action<DbContextOptionsBuilder> configureDb = options =>
 {
     options.UseNpgsql(connectionString, npgsqlOptions =>
     {
@@ -38,13 +40,15 @@ builder.Services.AddDbContext<VaaniDbContext>(options =>
         options.EnableSensitiveDataLogging();
         options.EnableDetailedErrors();
     }
-});
+};
+
+builder.Services.AddDbContext<VaaniDbContext>(configureDb);
 
 // Register application services
 builder.Services.AddScoped<IVaaniRepository, VaaniRepository>();
 builder.Services.AddScoped<IMeetingService, MeetingService>();
 builder.Services.AddScoped<ISessionService, SessionService>();
-builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
+builder.Services.AddSingleton<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<IEncryptionService, EncryptionService>();
 builder.Services.AddScoped<IAdminService, AdminService>();
 builder.Services.AddScoped<IAzureSubscriptionService, AzureSubscriptionService>();
@@ -52,6 +56,8 @@ builder.Services.AddScoped<IAzureSubscriptionService, AzureSubscriptionService>(
 builder.Services.AddScoped<ILanguageService, LanguageService>();
 // Register translation service (singleton - manages long-lived per-session Azure SDK instances)
 builder.Services.AddSingleton<ITranslationService, TranslationService>();
+// Background service: tears down sessions whose meetings have expired or that have gone silent
+builder.Services.AddHostedService<StaleSessionCleanupService>();
 // Add SignalR for real-time translation hub
 builder.Services.AddSignalR(options =>
 {
@@ -59,10 +65,33 @@ builder.Services.AddSignalR(options =>
     options.EnableDetailedErrors = builder.Environment.IsDevelopment();
 });
 
+// Rate limiting — protect meeting validation endpoint from brute-force
+builder.Services.AddRateLimiter(options =>
+{
+    // 10 requests per minute per IP for meeting-join operations
+    options.AddSlidingWindowLimiter("meeting-join", opt =>
+    {
+        opt.PermitLimit = 10;
+        opt.Window = TimeSpan.FromMinutes(1);
+        opt.SegmentsPerWindow = 4;
+        opt.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+        opt.QueueLimit = 0;
+    });
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+});
+
 // Configure JWT Authentication
 var jwtSecret = builder.Configuration["Jwt:Secret"] ?? throw new InvalidOperationException("JWT Secret not configured");
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "VaaniAPI";
 var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "VaaniDesktopApp";
+
+// Warn when obvious placeholder secrets are used.
+if (jwtSecret.Contains("YourSuperSecretKey", StringComparison.OrdinalIgnoreCase))
+{
+    builder.Logging.AddConsole();
+    var startupLogger = LoggerFactory.Create(lb => lb.AddConsole()).CreateLogger("Startup");
+    startupLogger.LogWarning("JWT secret appears to be a placeholder. Configure a real secret via secure configuration before production use.");
+}
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -250,14 +279,17 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
-// Add CORS policy
+// Add CORS policy — origins are environment-specific (appsettings.json / appsettings.Production.json)
+var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
+    ?? ["https://localhost:7020"];
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("VaaniPolicy", policy =>
     {
-        policy.AllowAnyOrigin()
+        policy.WithOrigins(allowedOrigins)
               .AllowAnyMethod()
-              .AllowAnyHeader();
+              .AllowAnyHeader()
+              .AllowCredentials(); // required for SignalR WebSocket upgrade
     });
 });
 
@@ -303,31 +335,40 @@ catch (Exception ex)
 
 // Configure the HTTP request pipeline
 
+// HSTS — tell browsers to always use HTTPS (production only; dev certs are not trusted)
+if (!app.Environment.IsDevelopment())
+    app.UseHsts();
+
 // HTTPS Redirection should come first
 app.UseHttpsRedirection();
 
 // Enable CORS
 app.UseCors("VaaniPolicy");
 
-// Swagger middleware
-app.UseSwagger();
-app.UseSwaggerUI(c =>
-{
-    c.SwaggerEndpoint("/swagger/v1/swagger.json", "Vaani API V1");
-    c.RoutePrefix = "swagger"; // Change from empty to "swagger"
-});
+// Apply rate limiting middleware
+app.UseRateLimiter();
 
-logger.LogInformation("?? Swagger UI available at: https://localhost:7020/swagger");
-logger.LogInformation("?? API Health check at: https://localhost:7020/health");
+// Swagger — development only; do not expose API schema in production
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI(c =>
+    {
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "Vaani API V1");
+        c.RoutePrefix = "swagger";
+    });
+}
 
 if (app.Environment.IsDevelopment())
 {
-    logger.LogInformation("?? Swagger UI available at: https://localhost:7020");
+    logger.LogInformation("Swagger UI available at /swagger");
 }
 else
 {
-    logger.LogInformation("?? Swagger UI enabled");
+    logger.LogInformation("Swagger UI disabled outside development.");
 }
+
+logger.LogInformation("Health check endpoint available at /health");
 
 // Authentication & Authorization
 app.UseAuthentication();
@@ -360,6 +401,6 @@ app.MapGet("/health", async (VaaniDbContext dbContext) =>
 .WithName("HealthCheck")
 .WithTags("Health");
 
-logger.LogInformation("? Vaani API started successfully");
+logger.LogInformation("Vaani API started successfully");
 
 app.Run();

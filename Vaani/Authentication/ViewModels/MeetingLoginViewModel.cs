@@ -2,25 +2,27 @@
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using ReactiveUI;
+using Avalonia.Threading;
 using System;
 using System.Linq;
-using System.Reactive;
-using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using Vaani.Authentication.Models;
 using Vaani.Authentication.Services;
 using Vaani.Authentication.Views;
+using Vaani.Common;
 using Vaani.DriverInstallation.Services;
 using Vaani.Services;
 using Vaani.TestAudio.Views;
 using Vaani.ViewModels;
 using Vaani.Views;
+using static Vaani.Common.ErrorMessages;
 
 
 namespace Vaani.Authentication.ViewModels;
 
-public class MeetingLoginViewModel : ReactiveObject
+public class MeetingLoginViewModel : ReactiveObject, IDisposable
 {
     private readonly MeetingAuthenticationService _authService;
     private readonly SessionManager _sessionManager;
@@ -36,6 +38,9 @@ public class MeetingLoginViewModel : ReactiveObject
     private string _errorMessage = string.Empty;
     private string _statusMessage = string.Empty;
     public string _appVersion = "";
+    // Tracks and can cancel the in-flight login attempt (slow-network guard)
+    private CancellationTokenSource? _loginCts;
+    private bool _disposed;
 
     public MeetingLoginViewModel()
     {
@@ -52,10 +57,8 @@ public class MeetingLoginViewModel : ReactiveObject
 
         AppVersion = $"Version {AppVersionHelper.GetAppVersion()}";
 
-        if (!string.IsNullOrWhiteSpace(Program.MeetingId))
-        {
-            MeetingId = Program.MeetingId;
-        }
+        ApplyMeetingIdFromProgram();
+        Program.MeetingIdUpdated += OnProgramMeetingIdUpdated;
 
     }
    
@@ -137,10 +140,17 @@ public class MeetingLoginViewModel : ReactiveObject
             return;
         }
 
+        // Prevent concurrent submissions on slow network (double-click guard)
+        if (_isValidating) return;
+
         // Reset state
         HasError = false;
         IsValidating = true;
         StatusMessage = "Verifying audio source...";
+
+        // 60-second overall flow timeout — surfaces as a clean message, not a raw exception
+        _loginCts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+        var ct = _loginCts.Token;
 
         try
         {
@@ -150,7 +160,9 @@ public class MeetingLoginViewModel : ReactiveObject
             _ = Task.Run(() => _deviceService.GetAllDevices());
 
             // ✅ STEP 1: Verify audio source FIRST
-            var audioSourceResult = await _audioVerificationService.VerifyAudioSourceAsync();
+            var audioSourceResult = await _audioVerificationService
+                .VerifyAudioSourceAsync()
+                .WaitAsync(ct);
 
             if (!audioSourceResult.IsValid)
             {
@@ -171,7 +183,7 @@ public class MeetingLoginViewModel : ReactiveObject
                 deviceName,
                 UserName,
                 MeetingPassword
-            );
+            ).WaitAsync(ct);
 
             if (!response.IsValid)
             {
@@ -185,8 +197,11 @@ public class MeetingLoginViewModel : ReactiveObject
                     "MEETING_REVOKED" => "This meeting has been cancelled by the organizer.",
                     "PASSWORD_REQUIRED" => "This meeting requires a password. Please enter the password.",
                     "PASSWORD_INCORRECT" => "Incorrect meeting password. Please try again.",
-                    "NETWORK_ERROR" => "Network error. Please check your internet connection.",
-                    "TIMEOUT" => "Request timed out. Please try again.",
+                    // Network / slow-connection errors
+                    "TIMEOUT" => "The server took too long to respond. Please check your internet connection and try again.",
+                    "NETWORK_ERROR" => "Cannot reach the server. Please check your internet connection and try again.",
+                    "HTTP_408" or "HTTP_503" or "HTTP_504" => "The server is temporarily unavailable. Please try again in a moment.",
+                    "UNKNOWN_ERROR" => "Something went wrong while contacting the server. Please try again.",
                     _ => response.Message ?? "Unable to validate meeting. Please try again."
                 };
 
@@ -211,7 +226,7 @@ public class MeetingLoginViewModel : ReactiveObject
             }
             catch (Exception ex)
             {
-                ShowError($"Failed to decrypt configuration: {ex.Message}");
+                ShowError($"Failed to decrypt configuration: {Classify(ex)}");
                 return;
             }
 
@@ -222,17 +237,25 @@ public class MeetingLoginViewModel : ReactiveObject
             }
 
             StatusMessage = "Starting session...";
-            await Task.Delay(300);
+            await Task.Delay(300, ct);
 
-            // Start session
-            _sessionManager.StartSession(
-                config,
-                response.SessionToken,
-                response.ValidUntil
-            );
+            // Start session — guard against unexpected threading errors
+            try
+            {
+                _sessionManager.StartSession(
+                    config,
+                    response.SessionToken,
+                    response.ValidUntil
+                );
+            }
+            catch (Exception sessionEx)
+            {
+                ShowError($"Failed to initialise session: {Classify(sessionEx)}");
+                return;
+            }
 
             StatusMessage = "Success! Verifying audio setup...";
-            await Task.Delay(500);
+            await Task.Delay(500, ct);
 
             // ✅ STEP 3: Launch Audio Test BEFORE opening main window
             // Device cache is now pre-warmed from background task!
@@ -250,17 +273,31 @@ public class MeetingLoginViewModel : ReactiveObject
 
             // ✅ STEP 4: Open main window only after audio test passes
             StatusMessage = "Audio verified! Launching Vaani...";
-            //await Task.Delay(500);
 
-            await OpenMainWindowAsync(config);
+            try
+            {
+                await OpenMainWindowAsync(config);
+            }
+            catch (Exception windowEx)
+            {
+                ShowError($"Failed to open the application: {Classify(windowEx)}");
+            }
+        }
+        catch (OperationCanceledException) when (_loginCts?.IsCancellationRequested == true)
+        {
+            // Overall 60-second timeout expired — give a clean network message
+            ShowError("The request timed out due to a slow network. Please check your internet connection and try again.");
         }
         catch (Exception ex)
         {
-            ShowError($"Unexpected error: {ex.Message}");
+            // All other unexpected errors — never surface raw system messages
+            ShowError(Classify(ex));
         }
         finally
         {
             IsValidating = false;
+            _loginCts?.Dispose();
+            _loginCts = null;
         }
     }
 
@@ -300,6 +337,8 @@ public class MeetingLoginViewModel : ReactiveObject
     /// </summary>
     private void ResetState()
     {
+        // Cancel any in-flight login attempt first
+        try { _loginCts?.Cancel(); } catch { }
         HasError = false;
         IsValidating = false;
         ErrorMessage = string.Empty;
@@ -405,6 +444,8 @@ public class MeetingLoginViewModel : ReactiveObject
     /// </summary>
     public async Task OnWindowLoadedAsync()
     {
+        ApplyMeetingIdFromProgram();
+
         // 🚀 OPTIMIZATION: Pre-warm device cache immediately on window load
         // This runs in background while user types Meeting ID
         _ = Task.Run(() => _deviceService.GetAllDevices());
@@ -412,7 +453,7 @@ public class MeetingLoginViewModel : ReactiveObject
         // Check if driver is installed, if not show installation window
         if (!_driverService.IsVBCableInstalled())
         {
-            //await ShowDriverInstallationWindowAsync();
+            await ShowDriverInstallationWindowAsync();
         }
     }
 
@@ -442,13 +483,67 @@ public class MeetingLoginViewModel : ReactiveObject
                 // When driver window closes, show login window again
                 driverWindow.Closed += (s, e) =>
                 {
+                    // If driver is still not installed, treat close as app exit intent
+                    if (!_driverService.IsVBCableInstalled())
+                    {
+                        desktop.Shutdown();
+                        return;
+                    }
+
                     if (loginWindow != null && !loginWindow.IsVisible)
                     {
-                        loginWindow.Show();
+                        try
+                        {
+                            loginWindow.Show();
+                            desktop.MainWindow = loginWindow;
+                        }
+                        catch (InvalidOperationException)
+                        {
+                            // Hidden login window may have already been closed; recreate it
+                            var newLoginWindow = new MeetingLoginWindow();
+                            desktop.MainWindow = newLoginWindow;
+                            newLoginWindow.Show();
+                        }
                     }
                 };
             }
         });
+    }
+
+    private void OnProgramMeetingIdUpdated(string meetingId)
+    {
+        if (_disposed)
+            return;
+
+        if (string.IsNullOrWhiteSpace(meetingId))
+            return;
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            MeetingId = meetingId.Trim();
+        });
+    }
+
+    private void ApplyMeetingIdFromProgram()
+    {
+        if (!string.IsNullOrWhiteSpace(Program.MeetingId))
+        {
+            MeetingId = Program.MeetingId!;
+        }
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+            return;
+
+        _disposed = true;
+
+        Program.MeetingIdUpdated -= OnProgramMeetingIdUpdated;
+
+        try { _loginCts?.Cancel(); } catch { }
+        _loginCts?.Dispose();
+        _loginCts = null;
     }
 
     #endregion

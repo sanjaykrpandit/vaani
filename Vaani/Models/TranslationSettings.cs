@@ -17,6 +17,13 @@ public class TranslationSettings
     /// <summary>When true the desktop uses BackendTranslationService instead of local TranslationService</summary>
     public bool UseBackendTranslation { get; set; } = true;
 
+    /// <summary>
+    /// When true, source and target language are the same — both pipelines transcribe in
+    /// real-time but no TTS synthesis or audio injection takes place (bypass mode).
+    /// Set automatically by MainViewModel when SourceLanguage == TargetLanguage.
+    /// </summary>
+    public bool IsBypassMode { get; set; } = false;
+
     // ── Language / voice config ──────────────────────────────────────────────
     public string SourceLanguage { get; set; } = string.Empty;
     public string TargetLanguage { get; set; } = string.Empty;

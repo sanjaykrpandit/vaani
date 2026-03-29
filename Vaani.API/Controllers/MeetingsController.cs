@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Vaani.API.Interfaces;
 using Vaani.API.Models.DTOs;
 
@@ -31,8 +32,10 @@ public class MeetingsController : ControllerBase
     /// <param name="request">Meeting validation request</param>
     /// <returns>Meeting validation response with encrypted configuration</returns>
     [HttpPost("validate")]
+    [EnableRateLimiting("meeting-join")]
     [ProducesResponseType(typeof(MeetingValidationResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult<MeetingValidationResponse>> ValidateMeeting([FromBody] MeetingValidationRequest request)
     {

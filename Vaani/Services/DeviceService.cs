@@ -1,5 +1,6 @@
 ﻿using NAudio.CoreAudioApi;
 using NAudio.Wave;
+using System.Runtime.InteropServices;
 using Vaani.Models;
 using Avalonia.Threading;
 
@@ -21,6 +22,9 @@ public class DeviceService
     public event EventHandler<string>? LogMessage;
     public event EventHandler<TranslationEventArgs>? TranslationReceived;
     public event EventHandler<MessageEventArgs>? MessageReceived;
+    // Optional topology-change hook (kept for ViewModel compatibility).
+    // Real-time notifications are intentionally not wired here to avoid unstable driver callbacks.
+    public event EventHandler? DeviceTopologyChanged;
 
     public bool IsRunning => _cts != null && !_cts.Token.IsCancellationRequested;
 
@@ -56,13 +60,9 @@ public class DeviceService
         {
             _cachedInputs = null;
             _cachedOutputs = null;
-            _cachedOutgoingCable?.Dispose();
             _cachedOutgoingCable = null;
-            _cachedIncomingCable?.Dispose();
             _cachedIncomingCable = null;
-            _cachedPhysicalMic?.Dispose();
             _cachedPhysicalMic = null;
-            _cachedPhysicalSpeaker?.Dispose();
             _cachedPhysicalSpeaker = null;
             _lastCacheTime = DateTime.MinValue;
             Log("[CACHE] Device cache cleared");
@@ -622,6 +622,107 @@ public class DeviceService
         }
 
         return device;
+    }
+
+    /// <summary>
+    /// Restores Windows default audio devices to physical endpoints (laptop/headset).
+    /// </summary>
+    public bool TryRestorePhysicalDefaults()
+    {
+        try
+        {
+            var physicalMic = FindPhysicalMicrophone();
+            var physicalSpeaker = FindPhysicalSpeaker();
+
+            if (physicalMic == null || physicalSpeaker == null)
+            {
+                Log("[DEFAULT DEVICE] Skipped restoring physical defaults (physical mic/speaker not fully available).");
+                return false;
+            }
+
+            var result = TrySetDefaultEndpoints(physicalMic.ID, physicalSpeaker.ID);
+            Log(result
+                ? $"[DEFAULT DEVICE] Restored physical defaults (Mic={physicalMic.FriendlyName}, Speaker={physicalSpeaker.FriendlyName})."
+                : "[DEFAULT DEVICE] Failed to restore physical defaults.");
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            Log($"[DEFAULT DEVICE] Error restoring physical defaults: {ex.Message}");
+            return false;
+        }
+    }
+
+    private bool TrySetDefaultEndpoints(string captureDeviceId, string renderDeviceId)
+    {
+        object? comObject = null;
+        try
+        {
+            comObject = new PolicyConfigClient();
+            var policyConfig = (IPolicyConfig)comObject;
+
+            var hrMicConsole = policyConfig.SetDefaultEndpoint(captureDeviceId, ERole.Console);
+            var hrMicMultimedia = policyConfig.SetDefaultEndpoint(captureDeviceId, ERole.Multimedia);
+            var hrMicCommunications = policyConfig.SetDefaultEndpoint(captureDeviceId, ERole.Communications);
+
+            var hrSpkConsole = policyConfig.SetDefaultEndpoint(renderDeviceId, ERole.Console);
+            var hrSpkMultimedia = policyConfig.SetDefaultEndpoint(renderDeviceId, ERole.Multimedia);
+            var hrSpkCommunications = policyConfig.SetDefaultEndpoint(renderDeviceId, ERole.Communications);
+
+            var ok = hrMicConsole == 0 && hrMicMultimedia == 0 && hrMicCommunications == 0 &&
+                     hrSpkConsole == 0 && hrSpkMultimedia == 0 && hrSpkCommunications == 0;
+
+            if (!ok)
+            {
+                Log($"[DEFAULT DEVICE] SetDefaultEndpoint HRESULTs - Mic(C/M/C): {hrMicConsole}/{hrMicMultimedia}/{hrMicCommunications}, " +
+                    $"Speaker(C/M/C): {hrSpkConsole}/{hrSpkMultimedia}/{hrSpkCommunications}");
+            }
+
+            return ok;
+        }
+        catch (Exception ex)
+        {
+            Log($"[DEFAULT DEVICE] COM error while setting defaults: {ex.Message}");
+            return false;
+        }
+        finally
+        {
+            if (comObject != null && Marshal.IsComObject(comObject))
+                Marshal.ReleaseComObject(comObject);
+        }
+    }
+
+    [ComImport]
+    [Guid("870af99c-171d-4f9e-af0d-e63df40c2bc9")]
+    private class PolicyConfigClient
+    {
+    }
+
+    [ComImport]
+    [Guid("f8679f50-850a-41cf-9c72-430f290290c8")]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IPolicyConfig
+    {
+        int GetMixFormat([MarshalAs(UnmanagedType.LPWStr)] string wszDeviceId, IntPtr ppFormat);
+        int GetDeviceFormat([MarshalAs(UnmanagedType.LPWStr)] string wszDeviceId, int bDefault, IntPtr ppFormat);
+        int ResetDeviceFormat([MarshalAs(UnmanagedType.LPWStr)] string wszDeviceId);
+        int SetDeviceFormat([MarshalAs(UnmanagedType.LPWStr)] string wszDeviceId, IntPtr endpointFormat, IntPtr mixFormat);
+        int GetProcessingPeriod([MarshalAs(UnmanagedType.LPWStr)] string wszDeviceId, int bDefault, IntPtr pmftDefaultPeriod, IntPtr pmftMinimumPeriod);
+        int SetProcessingPeriod([MarshalAs(UnmanagedType.LPWStr)] string wszDeviceId, IntPtr pmftPeriod);
+        int GetShareMode([MarshalAs(UnmanagedType.LPWStr)] string wszDeviceId, IntPtr pMode);
+        int SetShareMode([MarshalAs(UnmanagedType.LPWStr)] string wszDeviceId, IntPtr mode);
+        int GetPropertyValue([MarshalAs(UnmanagedType.LPWStr)] string wszDeviceId, ref PropertyKey key, IntPtr pv);
+        int SetPropertyValue([MarshalAs(UnmanagedType.LPWStr)] string wszDeviceId, ref PropertyKey key, IntPtr pv);
+        int SetDefaultEndpoint([MarshalAs(UnmanagedType.LPWStr)] string wszDeviceId, ERole eRole);
+        int SetEndpointVisibility([MarshalAs(UnmanagedType.LPWStr)] string wszDeviceId, int bVisible);
+    }
+
+    private enum ERole
+    {
+        Console = 0,
+        Multimedia = 1,
+        Communications = 2
     }
 
 }

@@ -26,7 +26,7 @@ function PublicMeetingAccess() {
 
   const handleValidate = async () => {
     if (!meetingId) {
-      setError('Please enter your Teams Meeting ID')
+      setError('Please enter your Meeting ID')
       return
     }
 
@@ -82,12 +82,12 @@ function PublicMeetingAccess() {
       <div className="public-access-card">
         <div className="card-header">
           <h1>Join Vaani a Realtime voice translator</h1>
-          <p>Enter your teams meeting details to join</p>
+          <p>Enter your vaani meeting details to join</p>
         </div>
 
         <div className="card-body">
           <div className="form-group">
-            <label htmlFor="meetingId">Teams Meeting ID</label>
+            <label htmlFor="meetingId">Vaani Meeting ID</label>
             <input
               id="meetingId"
               type="text"
@@ -95,7 +95,7 @@ function PublicMeetingAccess() {
               value={meetingId}
               onChange={(e) => setMeetingId(e.target.value)}
               onKeyPress={handleKeyPress}
-              placeholder="Enter your Teams Meeting ID"
+              placeholder="Enter your Vaani Meeting ID"
               disabled={loading}
               autoFocus
             />
