@@ -190,23 +190,40 @@ public class AdminService : IAdminService
             if (request.IsActive.HasValue) meeting.IsActive = request.IsActive.Value;
             if (request.MeetingLanguage != null) meeting.MeetingLanguage = request.MeetingLanguage;
 
-            // Handle password update
-            if (request.ClearPassword == true)
+            // Handle password fields
+            if (request.RequiresPassword.HasValue)
             {
-                // Remove password protection
-                meeting.RequiresPassword = false;
-                meeting.PasswordHash = null;
-                meeting.PasswordSalt = null;
-                _logger.LogInformation("Password protection removed from meeting: {MeetingId}", meetingId);
+                // If requiresPassword set to false, clear password fields
+                if (!request.RequiresPassword.Value)
+                {
+                    meeting.RequiresPassword = false;
+                    meeting.PasswordHash = null;
+                    meeting.PasswordSalt = null;
+                }
+                else
+                {
+                    // If requiresPassword is true and a password is provided, hash and store it
+                    if (!string.IsNullOrWhiteSpace(request.Password))
+                    {
+                        var (hash, salt) = _passwordHashingService.HashPassword(request.Password);
+                        meeting.PasswordHash = hash;
+                        meeting.PasswordSalt = salt;
+                        meeting.RequiresPassword = true;
+                    }
+                    else
+                    {
+                        // If requiresPassword true but no password provided, keep existing password (no-op)
+                        meeting.RequiresPassword = true;
+                    }
+                }
             }
             else if (!string.IsNullOrWhiteSpace(request.Password))
             {
-                // Set or update password
+                // If RequiresPassword not specified but password provided, set/replace password and enable requirement
                 var (hash, salt) = _passwordHashingService.HashPassword(request.Password);
                 meeting.PasswordHash = hash;
                 meeting.PasswordSalt = salt;
                 meeting.RequiresPassword = true;
-                _logger.LogInformation("Password updated for meeting: {MeetingId}", meetingId);
             }
 
             meeting.UpdatedAt = DateTime.UtcNow;

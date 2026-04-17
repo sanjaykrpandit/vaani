@@ -20,11 +20,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="Moderation\BlockedTerms\*.txt" CopyToOutputDirectory="PreserveNewest" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Folder Include="wwwroot\launcher\" />
+    <Folder Include="DOCUMENTATION\" />
   </ItemGroup>
 
 </Project>

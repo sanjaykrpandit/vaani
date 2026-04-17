@@ -5,7 +5,7 @@ using ReactiveUI;
 using Avalonia.Threading;
 using System;
 using System.Linq;
-using System.Threading;
+using System.Reactive;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using Vaani.Authentication.Models;
@@ -19,7 +19,6 @@ using Vaani.ViewModels;
 using Vaani.Views;
 using static Vaani.Common.ErrorMessages;
 
-
 namespace Vaani.Authentication.ViewModels;
 
 public class MeetingLoginViewModel : ReactiveObject, IDisposable
@@ -30,39 +29,40 @@ public class MeetingLoginViewModel : ReactiveObject, IDisposable
     private readonly AudioSourceVerificationService _audioVerificationService;
     private readonly DeviceService _deviceService; // Singleton instance for cache pre-warming
 
-    private string _meetingId = "";
-    private string _userName = "";
-    private string _meetingPassword = "";
+    private string _meetingId = string.Empty;
+    private string _userName = string.Empty;
+    private string _meetingPassword = string.Empty;
     private bool _isValidating;
     private bool _hasError;
     private string _errorMessage = string.Empty;
     private string _statusMessage = string.Empty;
-    public string _appVersion = "";
-    // Tracks and can cancel the in-flight login attempt (slow-network guard)
-    private CancellationTokenSource? _loginCts;
-    private bool _disposed;
+    private string _appVersion = string.Empty;
+
+    private bool _isMeetingIdEditable = true;
 
     public MeetingLoginViewModel()
     {
+        // Initialize readonly services directly in constructor
         _authService = new MeetingAuthenticationService();
         _sessionManager = new SessionManager();
         _driverService = new DriverInstallationService();
         _audioVerificationService = new AudioSourceVerificationService();
-        _deviceService = DeviceService.Instance; // Use singleton for cache sharing
+        _deviceService = DeviceService.Instance;
 
-        // Initialize commands
+        // Commands
         ValidateCommand = ReactiveCommand.CreateFromTask(ValidateMeetingAsync);
         PasteCommand = ReactiveCommand.CreateFromTask(PasteMeetingIdAsync);
         RetryCommand = ReactiveCommand.Create(ResetState);
 
         AppVersion = $"Version {AppVersionHelper.GetAppVersion()}";
 
-        ApplyMeetingIdFromProgram();
-        Program.MeetingIdUpdated += OnProgramMeetingIdUpdated;
-
+        // If Program.MeetingId was provided (from args or ClickOnce), pre-fill and lock the field
+        if (!string.IsNullOrWhiteSpace(Program.MeetingId))
+        {
+            //MeetingId = Program.MeetingId;
+            //IsMeetingIdEditable = false;
+        }
     }
-   
-   
 
     #region Properties
 
@@ -114,6 +114,12 @@ public class MeetingLoginViewModel : ReactiveObject, IDisposable
         set => this.RaiseAndSetIfChanged(ref _statusMessage, value);
     }
 
+    public bool IsMeetingIdEditable
+    {
+        get => _isMeetingIdEditable;
+        set => this.RaiseAndSetIfChanged(ref _isMeetingIdEditable, value);
+    }
+
     #endregion
 
     #region Commands
@@ -136,14 +142,10 @@ public class MeetingLoginViewModel : ReactiveObject, IDisposable
 
         if (string.IsNullOrWhiteSpace(UserName))
         {
-            ShowError("Please enter a your name");
+            ShowError("Please enter your name");
             return;
         }
 
-        // Prevent concurrent submissions on slow network (double-click guard)
-        if (_isValidating) return;
-
-        // Reset state
         HasError = false;
         IsValidating = true;
         StatusMessage = "Verifying audio source...";
@@ -154,40 +156,29 @@ public class MeetingLoginViewModel : ReactiveObject, IDisposable
 
         try
         {
-            // 🚀 OPTIMIZATION: Pre-warm device cache in background EARLY
-            // This runs in parallel with audio verification and API calls
-            // By the time we reach TestAudio, cache will be hot!
             _ = Task.Run(() => _deviceService.GetAllDevices());
 
-            // ✅ STEP 1: Verify audio source FIRST
-            var audioSourceResult = await _audioVerificationService
-                .VerifyAudioSourceAsync()
-                .WaitAsync(ct);
-
-            if (!audioSourceResult.IsValid)
+            var audioResult = await _audioVerificationService.VerifyAudioSourceAsync();
+            if (!audioResult.IsValid)
             {
-                ShowError(audioSourceResult.ErrorMessage ?? "Audio source verification failed");
+                ShowError(audioResult.ErrorMessage ?? "Audio source verification failed");
                 return;
-            }          
+            }
 
-            // ✅ STEP 2: Proceed with meeting authentication
             StatusMessage = "Validating meeting ID...";
 
             var deviceId = MeetingAuthenticationService.GetDeviceId();
             var deviceName = MeetingAuthenticationService.GetDeviceName();
 
-            // Call API to validate (device cache is warming in background)
             var response = await _authService.ValidateMeetingAsync(
                 MeetingId.Trim(),
                 deviceId,
                 deviceName,
                 UserName,
-                MeetingPassword
-            ).WaitAsync(ct);
+                MeetingPassword);
 
             if (!response.IsValid)
             {
-                // Show appropriate error message
                 var errorMsg = response.ErrorCode switch
                 {
                     "MEETING_NOT_FOUND" => "Meeting ID not found. Please check and try again.",
@@ -210,19 +201,14 @@ public class MeetingLoginViewModel : ReactiveObject, IDisposable
             }
 
             StatusMessage = "Decrypting configuration...";
-            await Task.Delay(100); // Small delay for UX
+            await Task.Delay(100);
 
             MeetingConfiguration? config = null;
             try
             {
-                // Placeholder: In production, get the key from the API response or derive it
-                EncryptionService es = new EncryptionService();
+                var es = new EncryptionService();
                 config = es.DecryptConfig(response.EncryptedConfig, deviceId);
                 config.SessionToken = response.SessionToken;
-                // ✅ Store backend hub URL so TranslationSettings can use it without Azure credentials
-                if (!string.IsNullOrWhiteSpace(response.BackendTranslationHubUrl))
-                    config.BackendTranslationHubUrl = response.BackendTranslationHubUrl;
-
             }
             catch (Exception ex)
             {
@@ -239,54 +225,21 @@ public class MeetingLoginViewModel : ReactiveObject, IDisposable
             StatusMessage = "Starting session...";
             await Task.Delay(300, ct);
 
-            // Start session — guard against unexpected threading errors
-            try
-            {
-                _sessionManager.StartSession(
-                    config,
-                    response.SessionToken,
-                    response.ValidUntil
-                );
-            }
-            catch (Exception sessionEx)
-            {
-                ShowError($"Failed to initialise session: {Classify(sessionEx)}");
-                return;
-            }
+            _sessionManager.StartSession(config, response.SessionToken, response.ValidUntil);
 
             StatusMessage = "Success! Verifying audio setup...";
             await Task.Delay(500, ct);
 
-            // ✅ STEP 3: Launch Audio Test BEFORE opening main window
-            // Device cache is now pre-warmed from background task!
             var audioTestPassed = await LaunchAudioTestAsync();
-
             if (!audioTestPassed)
             {
-                // User cancelled or test failed
                 ShowError("Audio test was not completed. Please retry or check your audio setup.");
-
-                // Clear session since we won't proceed
                 _sessionManager.ClearSession();
                 return;
             }
 
-            // ✅ STEP 4: Open main window only after audio test passes
             StatusMessage = "Audio verified! Launching Vaani...";
-
-            try
-            {
-                await OpenMainWindowAsync(config);
-            }
-            catch (Exception windowEx)
-            {
-                ShowError($"Failed to open the application: {Classify(windowEx)}");
-            }
-        }
-        catch (OperationCanceledException) when (_loginCts?.IsCancellationRequested == true)
-        {
-            // Overall 60-second timeout expired — give a clean network message
-            ShowError("The request timed out due to a slow network. Please check your internet connection and try again.");
+            await OpenMainWindowAsync(config);
         }
         catch (Exception ex)
         {
@@ -301,14 +254,10 @@ public class MeetingLoginViewModel : ReactiveObject, IDisposable
         }
     }
 
-    /// <summary>
-    /// Paste meeting ID from clipboard
-    /// </summary>
     private async Task PasteMeetingIdAsync()
     {
         try
         {
-            // Get clipboard from TopLevel
             if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
             {
                 var mainWindow = desktop.MainWindow;
@@ -319,22 +268,17 @@ public class MeetingLoginViewModel : ReactiveObject, IDisposable
                     {
                         var text = await clipboard.GetTextAsync();
                         if (!string.IsNullOrWhiteSpace(text))
-                        {
                             MeetingId = text.Trim();
-                        }
                     }
                 }
             }
         }
         catch
         {
-            // Clipboard access failed, ignore
+            // ignore
         }
     }
 
-    /// <summary>
-    /// Reset to initial state
-    /// </summary>
     private void ResetState()
     {
         // Cancel any in-flight login attempt first
@@ -345,9 +289,6 @@ public class MeetingLoginViewModel : ReactiveObject, IDisposable
         StatusMessage = string.Empty;
     }
 
-    /// <summary>
-    /// Show error message
-    /// </summary>
     private void ShowError(string message)
     {
         ErrorMessage = message;
@@ -355,13 +296,8 @@ public class MeetingLoginViewModel : ReactiveObject, IDisposable
         IsValidating = false;
     }
 
-    /// <summary>
-    /// Launches the audio test window after successful login.
-    /// Returns true if test passed, false if user cancelled or test failed.
-    /// </summary>
     private async Task<bool> LaunchAudioTestAsync()
     {
-        bool testPassed = false;
         var tcs = new TaskCompletionSource<bool>();
 
         await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
@@ -372,28 +308,17 @@ public class MeetingLoginViewModel : ReactiveObject, IDisposable
                 {
                     var testWindow = new TestAudioWindow(isFromLogin: true);
                     var loginWindow = desktop.Windows?.FirstOrDefault(w => w is MeetingLoginWindow);
-                    
-                    if (loginWindow != null)
-                    {
-                        // Hide login window
-                        loginWindow.Hide();
-                    }
-                    
-                    // Show test window as main window
+
+                    loginWindow?.Hide();
+
                     testWindow.Show();
-                    
-                    // Handle test window closing
                     testWindow.Closed += (s, e) =>
                     {
-                        testPassed = testWindow.TestPassed;
-                        
-                        // Show login window again if test didn't pass
-                        if (!testPassed && loginWindow != null && !loginWindow.IsVisible)
-                        {
+                        var passed = testWindow.TestPassed;
+                        if (!passed && loginWindow != null && !loginWindow.IsVisible)
                             loginWindow.Show();
-                        }
-                        
-                        tcs.TrySetResult(testPassed);
+
+                        tcs.TrySetResult(passed);
                     };
                 }
                 else
@@ -403,10 +328,7 @@ public class MeetingLoginViewModel : ReactiveObject, IDisposable
             }
             catch (Exception ex)
             {
-                // Log error but don't crash
                 StatusMessage = $"Warning: Could not launch audio test - {ex.Message}";
-                
-                // In case of error, allow user to proceed (fail-safe)
                 tcs.TrySetResult(true);
             }
         });
@@ -414,52 +336,35 @@ public class MeetingLoginViewModel : ReactiveObject, IDisposable
         return await tcs.Task;
     }
 
-   
-    /// <summary>
-    /// Open main window with configuration
-    /// </summary>
     private async Task OpenMainWindowAsync(MeetingConfiguration config)
     {
         await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
         {
             if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
             {
-                // Create main window with session configuration
                 var mainWindow = new MainWindow();
                 desktop.MainWindow = mainWindow;
                 mainWindow.Show();
 
-                // Close all other windows (login and test)
                 var loginWindow = desktop.Windows?.FirstOrDefault(w => w is MeetingLoginWindow);
                 loginWindow?.Close();
-                
+
                 var testWindow = desktop.Windows?.FirstOrDefault(w => w is TestAudioWindow);
                 testWindow?.Close();
             }
         });
     }
 
-    /// <summary>
-    /// Check driver on window load and pre-warm device cache
-    /// </summary>
     public async Task OnWindowLoadedAsync()
     {
-        ApplyMeetingIdFromProgram();
-
-        // 🚀 OPTIMIZATION: Pre-warm device cache immediately on window load
-        // This runs in background while user types Meeting ID
         _ = Task.Run(() => _deviceService.GetAllDevices());
 
-        // Check if driver is installed, if not show installation window
         if (!_driverService.IsVBCableInstalled())
         {
             await ShowDriverInstallationWindowAsync();
         }
     }
 
-    /// <summary>
-    /// Shows the driver installation window if driver is not installed.
-    /// </summary>
     private async Task ShowDriverInstallationWindowAsync()
     {
         await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
@@ -467,20 +372,11 @@ public class MeetingLoginViewModel : ReactiveObject, IDisposable
             if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
             {
                 var driverWindow = new Vaani.DriverInstallation.Views.DriverInstallationWindow();
-                
-                // Get the login window
+
                 var loginWindow = desktop.Windows?.FirstOrDefault(w => w is MeetingLoginWindow);
-                
-                // Hide login window
-                if (loginWindow != null)
-                {
-                    loginWindow.Hide();
-                }
-                
-                // Show driver window as main window
+                loginWindow?.Hide();
+
                 driverWindow.Show();
-                
-                // When driver window closes, show login window again
                 driverWindow.Closed += (s, e) =>
                 {
                     // If driver is still not installed, treat close as app exit intent
@@ -510,40 +406,22 @@ public class MeetingLoginViewModel : ReactiveObject, IDisposable
         });
     }
 
-    private void OnProgramMeetingIdUpdated(string meetingId)
+    private void ShowError(string title, string message)
     {
-        if (_disposed)
-            return;
-
-        if (string.IsNullOrWhiteSpace(meetingId))
-            return;
-
-        Dispatcher.UIThread.Post(() =>
-        {
-            MeetingId = meetingId.Trim();
-        });
+        HasError = true;
+        StatusMessage = title;
+        ErrorMessage = message;
+        IsValidating = false;
     }
 
-    private void ApplyMeetingIdFromProgram()
+    private void Cancel()
     {
-        if (!string.IsNullOrWhiteSpace(Program.MeetingId))
-        {
-            MeetingId = Program.MeetingId!;
-        }
+        if (IsValidating) return;
     }
 
-    public void Dispose()
+    private void Close()
     {
-        if (_disposed)
-            return;
-
-        _disposed = true;
-
-        Program.MeetingIdUpdated -= OnProgramMeetingIdUpdated;
-
-        try { _loginCts?.Cancel(); } catch { }
-        _loginCts?.Dispose();
-        _loginCts = null;
+        // closing logic
     }
 
     #endregion

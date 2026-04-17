@@ -20,9 +20,7 @@ function EditMeeting() {
     isActive: true,
     meetingLanguage: 'en-US',
     requiresPassword: false,
-    password: '',
-    confirmPassword: '',
-    clearPassword: false
+    password: ''
   })
 
   useEffect(() => {
@@ -63,9 +61,7 @@ function EditMeeting() {
         isActive: meeting.isActive,
         meetingLanguage: meeting.meetingLanguage || 'en-US',
         requiresPassword: meeting.requiresPassword || false,
-        password: '',
-        confirmPassword: '',
-        clearPassword: false
+        password: ''
       })
     } catch (err) {
       setError('Failed to load meeting')
@@ -107,26 +103,17 @@ function EditMeeting() {
         return
       }
 
-      // Validate password if being set/updated
-      if (formData.password) {
-        if (formData.password.length < 6) {
-          setError('Password must be at least 6 characters long')
-          setSaving(false)
-          return
-        }
-        if (formData.password !== formData.confirmPassword) {
-          setError('Passwords do not match')
-          setSaving(false)
-          return
-        }
-      }
+      // If enabling requiresPassword and password provided, it's used to set/replace password on server
+      // Leaving password blank will keep existing password when requiresPassword is true
 
       const updateData = {
         meetingName: formData.meetingName,
         meetingLanguage: formData.meetingLanguage || 'en-US',
         validFrom: validFrom.toISOString(),
         validUntil: validUntil.toISOString(),
-        isActive: formData.isActive
+        isActive: formData.isActive,
+        requiresPassword: formData.requiresPassword,
+        ...(formData.password ? { password: formData.password } : {})
       }
 
       // Handle password changes
@@ -307,6 +294,36 @@ function EditMeeting() {
               <span>Active</span>
             </label>
           </div>
+
+          <div className="form-group">
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                name="requiresPassword"
+                checked={formData.requiresPassword}
+                onChange={handleChange}
+              />
+              <span>Require password</span>
+            </label>
+            <small>
+              Toggle to require a password to join this meeting. Leave password field empty to keep the existing password.
+            </small>
+          </div>
+
+          {formData.requiresPassword && (
+            <div className="form-group">
+              <label htmlFor="password">Set / Change Password</label>
+              <input
+                id="password"
+                name="password"
+                type="password"
+                value={formData.password}
+                onChange={handleChange}
+                placeholder="Enter new password (leave blank to keep existing)"
+              />
+            </div>
+          )}
+
           <div className="form-actions">
             <button
               type="button"

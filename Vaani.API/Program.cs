@@ -14,6 +14,11 @@ using Vaani.API.Data;
 using Vaani.API.Hubs;
 using Vaani.API.Interfaces;
 using Vaani.API.Services;
+using Microsoft.AspNetCore.StaticFiles;
+using System.Security.Claims;
+using System.IdentityModel.Tokens.Jwt;
+using System.Text.Json;
+using Microsoft.Extensions.FileProviders;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -313,9 +318,10 @@ logger.LogInformation("Environment: {Environment}", app.Environment.EnvironmentN
 
 
 // Serve static files
-app.UseStaticFiles();
 
-//for tz vaani
+
+
+app.UseStaticFiles();
 //var provider = new FileExtensionContentTypeProvider();
 //provider.Mappings[".application"] = "application/x-ms-application";
 //app.UseStaticFiles(new StaticFileOptions
@@ -324,23 +330,19 @@ app.UseStaticFiles();
 //});
 
 
-//for maruti
 // 1. Setup the MIME type provider
 var provider = new FileExtensionContentTypeProvider();
 provider.Mappings[".application"] = "application/x-ms-application";
 provider.Mappings[".manifest"] = "application/x-ms-manifest"; // ClickOnce often needs this too
 
 // 2. Map the physical 'launcher' folder to the '/api/launcher' URL
-//maruti conf
 app.UseStaticFiles(new StaticFileOptions
 {
-    FileProvider = new PhysicalFileProvider(Path.Combine(builder.Environment.ContentRootPath, "wwwroot", "launcher")),
+    FileProvider = new PhysicalFileProvider(
+        Path.Combine(builder.Environment.ContentRootPath, "wwwroot", "launcher")),
     RequestPath = "/api/launcher",
     ContentTypeProvider = provider
 });
-
-
-
 
 
 // Test database connection (optional - won't crash if DB is down)

@@ -13,7 +13,7 @@ namespace Vaani.Services
             //var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
             //return version != null ? version.ToString() : "Unknown";
 
-            return "1.0.0.54"; // Placeholder version
+            return "1.0.0.49"; // Placeholder version
         }
     }
 }

@@ -73,11 +73,12 @@
                          BorderBrush="#3E3E42"
                          BorderThickness="2"
                          CornerRadius="17"
-												 Width="250"
-											   Margin="30,10"
+                         Width="250"
+                         Margin="30,10"
                          HorizontalContentAlignment="Center"
                          TextAlignment="Center"
-                         FontFamily="Consolas,monospace">
+                         FontFamily="Consolas,monospace"
+                         IsEnabled="{Binding IsMeetingIdEditable}">
                     <TextBox.KeyBindings>
                         <KeyBinding Gesture="Enter" Command="{Binding ValidateCommand}"/>
                     </TextBox.KeyBindings>
@@ -104,7 +105,7 @@
               </TextBox>
 
               <TextBox Text="{Binding MeetingPassword, Mode=TwoWay}"
-                        Watermark="Password (if required)"
+                        Watermark="Password"
                         FontSize="16"
                         Height="34"
                         Padding="6"

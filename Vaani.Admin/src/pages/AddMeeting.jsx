@@ -1,4 +1,3 @@
-// ...existing code...
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Layout from '../components/Layout'
@@ -18,9 +17,8 @@ function AddMeeting() {
     meetingLanguage: 'en-US',
     validFrom: '',
     validUntil: '',
-    password: '',
-    confirmPassword: '',
-    requiresPassword: false
+    requiresPassword: false,
+    password: ''
   })
 
   useEffect(() => {
@@ -47,10 +45,10 @@ function AddMeeting() {
   }, [])
 
   const handleChange = (e) => {
-    const { name, value } = e.target
+    const { name, value, type, checked } = e.target
     setFormData(prev => ({
       ...prev,
-      [name]: value
+      [name]: type === 'checkbox' ? checked : value
     }))
   }
 
@@ -70,23 +68,11 @@ function AddMeeting() {
         return
       }
 
-      // Validate password if required
-      if (formData.requiresPassword) {
-        if (!formData.password) {
-          setError('Password is required when password protection is enabled')
-          setLoading(false)
-          return
-        }
-        if (formData.password.length < 6) {
-          setError('Password must be at least 6 characters long')
-          setLoading(false)
-          return
-        }
-        if (formData.password !== formData.confirmPassword) {
-          setError('Passwords do not match')
-          setLoading(false)
-          return
-        }
+      // If password is required ensure password is provided
+      if (formData.requiresPassword && !formData.password) {
+        setError('Password is required when "Require password" is enabled')
+        setLoading(false)
+        return
       }
 
       const meetingData = {
@@ -94,7 +80,9 @@ function AddMeeting() {
         meetingName: formData.meetingName,
         meetingLanguage: formData.meetingLanguage || 'en-US',
         validFrom: validFrom.toISOString(),
-        validUntil: validUntil.toISOString()
+        validUntil: validUntil.toISOString(),
+        requiresPassword: formData.requiresPassword,
+        ...(formData.password ? { password: formData.password } : {})
       }
 
       // Only include password if protection is enabled
@@ -240,6 +228,34 @@ function AddMeeting() {
               />
             </div>
           </div>
+
+          <div className="form-group">
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                name="requiresPassword"
+                checked={formData.requiresPassword}
+                onChange={handleChange}
+              />
+              <span>Require password</span>
+            </label>
+          </div>
+
+          {formData.requiresPassword && (
+            <div className="form-group">
+              <label htmlFor="password">Meeting Password *</label>
+              <input
+                id="password"
+                name="password"
+                type="password"
+                value={formData.password}
+                onChange={handleChange}
+                placeholder="Enter meeting password"
+                required={formData.requiresPassword}
+              />
+              <small>Participants will need this password to join the meeting.</small>
+            </div>
+          )}
 
           <div className="form-actions">
             <button

@@ -104,7 +104,7 @@
 						<Image Source="/Assets/console.png"
 							   Width="18" Height="18"
 							   Stretch="Uniform"/>
-					</Button>
+					</Button>-->
 					<Button Command="{Binding ShowMessageViewCommand}"
                             Width="24" Height="24"
 							Padding="4"

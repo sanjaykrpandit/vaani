@@ -180,27 +180,76 @@ class Program
         {
             Console.WriteLine("Checking ClickOnce activation data...");
 
-            // Method 1: Check AppContext for activation data
-            var activationData = AppContext.GetData("ActivationArguments.ActivationData") as string[];
-            Console.WriteLine($"AppContext ActivationData: {activationData?.Length ?? 0} items");
-            
+            // Try a few AppContext keys that have been observed in different runtimes
+            object? activationObj = null;
+
+            activationObj = AppContext.GetData("ActivationArguments.ActivationData");
+            Console.WriteLine($"AppContext['ActivationArguments.ActivationData'] = {activationObj?.GetType().Name ?? "(null)"}");
+
+            if (activationObj == null)
+            {
+                activationObj = AppContext.GetData("ActivationArguments");
+                Console.WriteLine($"AppContext['ActivationArguments'] = {activationObj?.GetType().Name ?? "(null)"}");
+            }
+
+            if (activationObj == null)
+            {
+                activationObj = AppContext.GetData("ActivationData");
+                Console.WriteLine($"AppContext['ActivationData'] = {activationObj?.GetType().Name ?? "(null)"}");
+            }
+
+            // If we have an object, try to extract string[] items from it
+            string[]? activationData = null;
+
+            if (activationObj is string[] sd)
+            {
+                activationData = sd;
+            }
+            else if (activationObj is string s)
+            {
+                activationData = new[] { s };
+            }
+            else if (activationObj != null)
+            {
+                // Try reflection to get ActivationData property (some runtimes expose an ActivationArguments object)
+                var prop = activationObj.GetType().GetProperty("ActivationData");
+                if (prop != null)
+                {
+                    var val = prop.GetValue(activationObj);
+                    if (val is string[] sd2)
+                    {
+                        activationData = sd2;
+                    }
+                    else if (val is System.Collections.IEnumerable ie)
+                    {
+                        var list = new System.Collections.Generic.List<string>();
+                        foreach (var item in ie)
+                        {
+                            if (item != null)
+                                list.Add(item.ToString()!);
+                        }
+                        activationData = list.ToArray();
+                    }
+                }
+            }
+
             if (activationData != null && activationData.Length > 0)
             {
-                // The activation URI is typically in the first element
+                Console.WriteLine($"AppContext ActivationData: {activationData.Length} items");
                 foreach (var data in activationData)
                 {
                     Console.WriteLine($"  Activation data item: {data}");
-                    
+
                     if (Uri.TryCreate(data, UriKind.Absolute, out var uri))
                     {
                         Console.WriteLine($"  Parsed URI: {uri}");
                         Console.WriteLine($"  Query: {uri.Query}");
-                        
+
                         if (!string.IsNullOrWhiteSpace(uri.Query))
                         {
                             var query = uri.Query.TrimStart('?');
                             var meetingId = ParseQueryParameter(query, "meetingId");
-                            
+
                             if (!string.IsNullOrWhiteSpace(meetingId))
                             {
                                 Console.WriteLine($"✓ ClickOnce meetingId detected from AppContext: {meetingId}");
@@ -208,41 +257,87 @@ class Program
                             }
                         }
                     }
+                    else
+                    {
+                        // If not a full URI, try to treat it as query string
+                        var trimmed = data.Trim();
+                        if (trimmed.StartsWith("?")) trimmed = trimmed.TrimStart('?');
+                        var meetingId = ParseQueryParameter(trimmed, "meetingId");
+                        if (!string.IsNullOrWhiteSpace(meetingId))
+                        {
+                            Console.WriteLine($"✓ ClickOnce meetingId detected in AppContext item: {meetingId}");
+                            return meetingId.Trim();
+                        }
+                    }
                 }
             }
 
-            // Method 2: Check known ClickOnce environment variables
+            // Method 2: Check environment variables with common ClickOnce keys
             Console.WriteLine("Checking environment variables...");
-            var knownVars = new[]
+            var envKeys = new[] { "ClickOnce_ActivationUrl", "CLICKONCE_ACTIVATIONURL", "ActivationUrl", "AppActivationArguments", "APPX_ACTIVATION_ARGS", "ActivationArguments" };
+            foreach (var key in envKeys)
             {
-                "ClickOnce_ActivationUri",
-                "ClickOnce_ActivationData_0",
-                "ClickOnce_UpdateLocation",
-                "ClickOnce_ActivationUrl"
-            };
-
-            foreach (var envVar in knownVars)
-            {
-                var value = Environment.GetEnvironmentVariable(envVar);
-                Console.WriteLine($"{envVar} env: {value ?? "(null)"}");
-
-                if (TryExtractMeetingIdFromUrl(value, out var meetingId))
+                var envActivationUrl = Environment.GetEnvironmentVariable(key);
+                Console.WriteLine($"{key} env: {envActivationUrl ?? "(null)"}");
+                if (!string.IsNullOrWhiteSpace(envActivationUrl))
                 {
-                    Console.WriteLine($"✓ ClickOnce meetingId from {envVar}: {meetingId}");
-                    return meetingId;
+                    if (Uri.TryCreate(envActivationUrl, UriKind.Absolute, out var uri))
+                    {
+                        Console.WriteLine($"  Parsed env URI: {uri}");
+                        Console.WriteLine($"  Query: {uri.Query}");
+
+                        if (!string.IsNullOrWhiteSpace(uri.Query))
+                        {
+                            var query = uri.Query.TrimStart('?');
+                            var meetingId = ParseQueryParameter(query, "meetingId");
+                            if (!string.IsNullOrWhiteSpace(meetingId))
+                            {
+                                Console.WriteLine($"✓ ClickOnce meetingId from env detected: {meetingId}");
+                                return meetingId.Trim();
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // Not a URI, try parse as query string
+                        var meetingId = ParseQueryParameter(envActivationUrl, "meetingId");
+                        if (!string.IsNullOrWhiteSpace(meetingId))
+                        {
+                            Console.WriteLine($"✓ ClickOnce meetingId from env detected (query): {meetingId}");
+                            return meetingId.Trim();
+                        }
+                    }
                 }
             }
 
-            // Method 3: Check all environment variables for anything related to activation
+            // Method 3: Scan all environment variables for anything related to activation
             Console.WriteLine("Checking all environment variables for activation info...");
             foreach (System.Collections.DictionaryEntry env in Environment.GetEnvironmentVariables())
             {
                 var key = env.Key?.ToString() ?? "";
                 if (key.Contains("Click", StringComparison.OrdinalIgnoreCase) ||
                     key.Contains("Activation", StringComparison.OrdinalIgnoreCase) ||
-                    key.Contains("Deploy", StringComparison.OrdinalIgnoreCase))
+                    key.Contains("Deploy", StringComparison.OrdinalIgnoreCase) ||
+                    key.Contains("APPX", StringComparison.OrdinalIgnoreCase))
                 {
                     Console.WriteLine($"  {key} = {env.Value}");
+
+                    var val = env.Value?.ToString() ?? string.Empty;
+                    if (!string.IsNullOrWhiteSpace(val))
+                    {
+                        // try parse uri
+                        if (Uri.TryCreate(val, UriKind.Absolute, out var uri2))
+                        {
+                            var meetingId = ParseQueryParameter(uri2.Query.TrimStart('?'), "meetingId");
+                            if (!string.IsNullOrWhiteSpace(meetingId))
+                                return meetingId.Trim();
+                        }
+
+                        // try parse raw string
+                        var meetingId2 = ParseQueryParameter(val, "meetingId");
+                        if (!string.IsNullOrWhiteSpace(meetingId2))
+                            return meetingId2.Trim();
+                    }
                 }
             }
 

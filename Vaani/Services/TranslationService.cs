@@ -592,6 +592,36 @@ public class TranslationService : ITranslationService
             string endpoint = $"wss://{settings.AzureRegion}.stt.speech.microsoft.com/speech/universal/v2";
             var config = SpeechTranslationConfig.FromEndpoint(new Uri(endpoint), settings.AzureSubscriptionKey);
 
+
+            //var endpoint = new Uri("wss://az-ci-speech-vaani-poc-01.cognitiveservices.azure.com/speech/universal/v2");
+            //var config = SpeechTranslationConfig.FromEndpoint(endpoint, settings.AzureSubscriptionKey);
+
+            //            var config = SpeechTranslationConfig.FromEndpoint(
+            //    new Uri("https://az-ci-speech-vaani-poc-01.cognitiveservices.azure.com/"),
+            //    settings.AzureSubscriptionKey
+            //);
+
+
+            //            var config = SpeechTranslationConfig.FromSubscription(
+            //    "6eYPCd1m96DyqcZApSLkHAOsvrlUdXhD3Wqxepu3txpkdUZLyEzWJQQJ99CBACGhslBXJ3w3AAAYACOG6iBH",
+            //    "centralindia"
+            //);
+            //var config = SpeechTranslationConfig.FromEndpoint(
+            //    new Uri("https://az-ci-speech-vaani-poc-01.cognitiveservices.azure.com/"),
+            //    settings.AzureSubscriptionKey
+            //);
+
+//            var config = SpeechTranslationConfig.FromSubscription(
+//    settings.AzureSubscriptionKey,
+//    "centralindia"
+//);
+
+//            config.SetProperty(
+//                PropertyId.SpeechServiceConnection_Endpoint,
+//                "https://az-ci-speech-vaani-poc-01.cognitiveservices.azure.com/"
+//            );
+
+
             config.SpeechRecognitionLanguage = settings.SourceLanguage;
 
             var targetLang = settings.TargetLanguage.Split('-')[0];
@@ -992,6 +1022,35 @@ public class TranslationService : ITranslationService
 
             string endpoint = $"wss://{settings.AzureRegion}.stt.speech.microsoft.com/speech/universal/v2";
             var config = SpeechTranslationConfig.FromEndpoint(new Uri(endpoint), settings.AzureSubscriptionKey);
+
+            //var endpoint = new Uri("wss://az-ci-speech-vaani-poc-01.cognitiveservices.azure.com/speech/universal/v2");
+            //var config = SpeechTranslationConfig.FromEndpoint(endpoint, settings.AzureSubscriptionKey);
+
+            //            var config = SpeechTranslationConfig.FromEndpoint(
+            //    new Uri("https://az-ci-speech-vaani-poc-01.cognitiveservices.azure.com/"),
+            //    settings.AzureSubscriptionKey
+            //);
+
+            //            var config = SpeechTranslationConfig.FromSubscription(
+            //"6eYPCd1m96DyqcZApSLkHAOsvrlUdXhD3Wqxepu3txpkdUZLyEzWJQQJ99CBACGhslBXJ3w3AAAYACOG6iBH",
+            //"centralindia"
+            //);
+
+            //            var config = SpeechTranslationConfig.FromEndpoint(
+            //    new Uri("https://az-ci-speech-vaani-poc-01.cognitiveservices.azure.com/"),
+            //    settings.AzureSubscriptionKey
+            //);
+
+
+//            var config = SpeechTranslationConfig.FromSubscription(
+//    settings.AzureSubscriptionKey,
+//    "centralindia"
+//);
+
+//            config.SetProperty(
+//                PropertyId.SpeechServiceConnection_Endpoint,
+//                "https://az-ci-speech-vaani-poc-01.cognitiveservices.azure.com/"
+//            );
 
             config.SpeechRecognitionLanguage = settings.TargetLanguage;
 
