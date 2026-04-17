@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Vaani.API.Interfaces;
 using Vaani.API.Models.DTOs;
 
@@ -12,11 +13,16 @@ namespace Vaani.API.Controllers;
 public class MeetingsController : ControllerBase
 {
     private readonly IMeetingService _meetingService;
+    private readonly IAdminService _adminService;
     private readonly ILogger<MeetingsController> _logger;
 
-    public MeetingsController(IMeetingService meetingService, ILogger<MeetingsController> logger)
+    public MeetingsController(
+        IMeetingService meetingService, 
+        IAdminService adminService,
+        ILogger<MeetingsController> logger)
     {
         _meetingService = meetingService;
+        _adminService = adminService;
         _logger = logger;
     }
 
@@ -26,8 +32,10 @@ public class MeetingsController : ControllerBase
     /// <param name="request">Meeting validation request</param>
     /// <returns>Meeting validation response with encrypted configuration</returns>
     [HttpPost("validate")]
+    [EnableRateLimiting("meeting-join")]
     [ProducesResponseType(typeof(MeetingValidationResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult<MeetingValidationResponse>> ValidateMeeting([FromBody] MeetingValidationRequest request)
     {
@@ -92,6 +100,53 @@ public class MeetingsController : ControllerBase
         {
             _logger.LogError(ex, "Error checking meeting validity: {MeetingId}", meetingId);
             return Ok(false);
+        }
+    }
+
+    /// <summary>
+    /// Validate meeting token and get meeting details (public endpoint - no authentication)
+    /// </summary>
+    /// <param name="request">Validation request containing meetingId and token</param>
+    /// <returns>Meeting details if token is valid</returns>
+    [HttpPost("validate-token")]
+    [ProducesResponseType(typeof(ValidateMeetingTokenResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ValidateMeetingTokenResponse>> ValidateMeetingToken([FromBody] ValidateMeetingTokenRequest request)
+    {
+        try
+        {
+            // Validation
+            if (string.IsNullOrWhiteSpace(request.MeetingId))
+            {
+                return BadRequest(new { error = "ValidationError", message = "Meeting ID is required" });
+            }
+
+            if (string.IsNullOrWhiteSpace(request.Token))
+            {
+                return BadRequest(new { error = "ValidationError", message = "Token is required" });
+            }
+
+            var response = await _adminService.ValidateMeetingTokenAsync(request);
+
+            if (!response.IsValid)
+            {
+                return BadRequest(new 
+                { 
+                    error = "InvalidToken", 
+                    message = "Invalid or expired token. Please check your meeting ID and token, or contact your meeting administrator." 
+                });
+            }
+
+            _logger.LogInformation("Token validated successfully for meeting: {MeetingId}", request.MeetingId);
+
+            return Ok(response);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error validating meeting token");
+            return StatusCode(StatusCodes.Status500InternalServerError, 
+                new { error = "ServerError", message = "An error occurred while validating the token" });
         }
     }
 }

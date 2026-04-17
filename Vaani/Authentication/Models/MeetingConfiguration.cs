@@ -44,6 +44,12 @@ public class MeetingConfiguration
     public string SessionToken { get; set; } = string.Empty;
 
     /// <summary>
+    /// SignalR hub URL for backend translation (replaces direct Azure credentials)
+    /// e.g. https://api.vaani.com/hubs/translation
+    /// </summary>
+    public string BackendTranslationHubUrl { get; set; } = string.Empty;
+
+    /// <summary>
     /// Metadata about the configuration
     /// </summary>
     public ConfigurationMetadata Metadata { get; set; } = new();
@@ -53,18 +59,18 @@ public class MeetingConfiguration
 }
 
 /// <summary>
-/// Azure Cognitive Services credentials and endpoint
+/// Azure Cognitive Services credentials and endpoint.
+/// DEPRECATED: No longer sent to client. Azure credentials are now stored on server only.
+/// Retained for backward-compatibility deserialization only; fields will be empty strings.
 /// </summary>
 public class AzureConfiguration
 {
-    /// <summary>
-    /// Azure subscription key for Cognitive Services
-    /// </summary>
+    /// <summary>Deprecated — always empty in backend-translation mode.</summary>
+    [Obsolete("Azure credentials are no longer sent to the client. Use BackendTranslationHubUrl instead.")]
     public string SubscriptionKey { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Azure region (e.g., eastus2, westeurope)
-    /// </summary>
+    /// <summary>Deprecated — always empty in backend-translation mode.</summary>
+    [Obsolete("Azure credentials are no longer sent to the client. Use BackendTranslationHubUrl instead.")]
     public string Region { get; set; } = string.Empty;
 }
 

@@ -3,37 +3,44 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Layout from '../components/Layout'
 import { meetingService } from '../services/meetingService'
+import languageService from '../services/languageService'
 
 function AddMeeting() {
   const navigate = useNavigate()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [subscriptions, setSubscriptions] = useState([])
-  const [subsLoading, setSubsLoading] = useState(true)
+  const [languages, setLanguages] = useState([])
+  const [langsLoading, setLangsLoading] = useState(true)
 
   const [formData, setFormData] = useState({
     meetingId: '',
     meetingName: '',
-    azureSubscriptionId: '',
+    meetingLanguage: 'en-US',
     validFrom: '',
-    validUntil: ''
+    validUntil: '',
+    password: '',
+    confirmPassword: '',
+    requiresPassword: false
   })
 
   useEffect(() => {
     let mounted = true
-    setSubsLoading(true)
-    meetingService.getAzureSubscriptions()
+    setLangsLoading(true)
+    languageService.getAllLanguages()
       .then(data => {
         if (!mounted) return
-        setSubscriptions(data || [])
+        setLanguages(data || [])
+        if (!formData.meetingLanguage) {
+          setFormData(prev => ({ ...prev, meetingLanguage: 'en-US' }))
+        }
       })
       .catch(() => {
         if (!mounted) return
-        setError('Failed to load subscriptions')
+        setError('Failed to load languages')
       })
       .finally(() => {
         if (!mounted) return
-        setSubsLoading(false)
+        setLangsLoading(false)
       })
 
     return () => { mounted = false }
@@ -56,19 +63,43 @@ function AddMeeting() {
       // Validate dates
       const validFrom = new Date(formData.validFrom)
       const validUntil = new Date(formData.validUntil)
-      
+
       if (validUntil <= validFrom) {
         setError('End date must be after start date')
         setLoading(false)
         return
       }
 
+      // Validate password if required
+      if (formData.requiresPassword) {
+        if (!formData.password) {
+          setError('Password is required when password protection is enabled')
+          setLoading(false)
+          return
+        }
+        if (formData.password.length < 6) {
+          setError('Password must be at least 6 characters long')
+          setLoading(false)
+          return
+        }
+        if (formData.password !== formData.confirmPassword) {
+          setError('Passwords do not match')
+          setLoading(false)
+          return
+        }
+      }
+
       const meetingData = {
         meetingId: formData.meetingId,
         meetingName: formData.meetingName,
-        azureSubscriptionId: parseInt(formData.azureSubscriptionId, 10),
+        meetingLanguage: formData.meetingLanguage || 'en-US',
         validFrom: validFrom.toISOString(),
         validUntil: validUntil.toISOString()
+      }
+
+      // Only include password if protection is enabled
+      if (formData.requiresPassword && formData.password) {
+        meetingData.password = formData.password
       }
 
       await meetingService.createMeeting(meetingData)
@@ -84,13 +115,7 @@ function AddMeeting() {
     <Layout>
       <div className="page-container">
         <div className="page-header">
-          <h1>Add New Meeting</h1>
-          <button 
-            className="btn btn-secondary"
-            onClick={() => navigate('/dashboard')}
-          >
-            Cancel
-          </button>
+          <h1 className="h1-header">Add New Meeting</h1>
         </div>
 
         <form onSubmit={handleSubmit} className="meeting-form">
@@ -127,26 +152,68 @@ function AddMeeting() {
           </div>
 
           <div className="form-group">
-            <label htmlFor="azureSubscriptionId">Azure Subscription *</label>
-            {subsLoading ? (
-              <div>Loading subscriptions...</div>
+            <label htmlFor="meetingLanguage">Meeting Language *</label>
+            {langsLoading ? (
+              <div>Loading languages...</div>
             ) : (
               <select
-                id="azureSubscriptionId"
-                name="azureSubscriptionId"
-                value={formData.azureSubscriptionId}
+                id="meetingLanguage"
+                name="meetingLanguage"
+                value={formData.meetingLanguage}
                 onChange={handleChange}
                 required
               >
-                <option value="">-- Select subscription --</option>
-                {subscriptions.map(s => (
-                  <option key={s.id} value={s.id}>
-                    {s.description}
-                  </option>
+                <option value="">-- Select language --</option>
+                {languages.map(l => (
+                  <option key={l.languageCode} value={l.languageCode}>{l.languageName}</option>
                 ))}
               </select>
             )}
           </div>
+
+          <div className="form-group">
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                name="requiresPassword"
+                checked={formData.requiresPassword}
+                onChange={handleChange}
+              />
+              <span>Require password to join meeting</span>
+            </label>
+          </div>
+
+          {formData.requiresPassword && (
+            <>
+              <div className="form-group">
+                <label htmlFor="password">Meeting Password *</label>
+                <input
+                  id="password"
+                  name="password"
+                  type="password"
+                  value={formData.password}
+                  onChange={handleChange}
+                  placeholder="Enter meeting password"
+                  required={formData.requiresPassword}
+                  minLength={6}
+                />
+                <small>Minimum 6 characters</small>
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="confirmPassword">Confirm Password *</label>
+                <input
+                  id="confirmPassword"
+                  name="confirmPassword"
+                  type="password"
+                  value={formData.confirmPassword}
+                  onChange={handleChange}
+                  placeholder="Confirm meeting password"
+                  required={formData.requiresPassword}
+                />
+              </div>
+            </>
+          )}
 
           <div className="form-row">
             <div className="form-group">
@@ -175,15 +242,15 @@ function AddMeeting() {
           </div>
 
           <div className="form-actions">
-            <button 
-              type="button" 
+            <button
+              type="button"
               className="btn btn-secondary"
               onClick={() => navigate('/dashboard')}
             >
               Cancel
             </button>
-            <button 
-              type="submit" 
+            <button
+              type="submit"
               className="btn btn-primary"
               disabled={loading}
             >

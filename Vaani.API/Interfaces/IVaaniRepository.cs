@@ -22,4 +22,11 @@ public interface IVaaniRepository
     // Session log operations
     Task CreateSessionLogAsync(SessionLog log);
     Task<IEnumerable<SessionLog>> GetSessionLogsAsync(int sessionId);
+
+
+    // Language operations
+    Task<IEnumerable<Language>> GetAllLanguagesAsync();
+    Task<Language> CreateLanguageAsync(Language language);
+    Task UpdateLanguageAsync(Language language);
+    Task DeleteLanguageAsync(int languageCode);   
 }

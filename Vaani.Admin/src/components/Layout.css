@@ -1,0 +1,19 @@
+.nav-content {
+    flex: 1;
+    max-width: 1200px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 10px 0px 0px 30px;
+    max-height: 50px;
+}
+
+.nav-menu {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  padding: 0;
+  margin: 0;
+}
+.h1-header {
+  color:#6e6e6e;
+}

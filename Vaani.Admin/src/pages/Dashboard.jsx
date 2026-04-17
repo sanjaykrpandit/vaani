@@ -4,6 +4,7 @@ import Layout from '../components/Layout'
 import MeetingList from '../components/MeetingList'
 import { meetingService } from '../services/meetingService'
 import logo from '../Assets/logo.png'
+import analysis from '../Assets/analysis.png'
 
 function Dashboard() {
   const [meetings, setMeetings] = useState([])
@@ -31,9 +32,7 @@ function Dashboard() {
   }
 
   const handleDelete = async (meetingId) => {
-    if (!window.confirm('Are you sure you want to delete this meeting?')) {
-      return
-    }
+    if (!window.confirm('Are you sure you want to delete this meeting?')) return
 
     try {
       await meetingService.deleteMeeting(meetingId)
@@ -48,62 +47,54 @@ function Dashboard() {
     navigate(`/meetings/edit/${meetingId}`)
   }
 
- 
-  
-const handleLaunch = (meetingId) => {
-
-// const popup = window.open(
-//     "/app/index.html",
-//     "vaani-launcher",
-//     "width=420,height=260,menubar=no,toolbar=no,status=no,resizable=no"
-//   );
-
-//   if (!popup || popup.closed || typeof popup.closed === "undefined") {
-//     alert("Popup blocked. Please allow popups to launch Vaani.");
-//   }
-
-  const origin = window.location.origin
-  const targetUrl = `https://vaani-rtt-api.tryzent.com/launcher/Vaani.application?meetingId=${meetingId}&origin=${encodeURIComponent(origin)}`
-  const isEdge = /Edg\//.test(navigator.userAgent)
-  let launchUrl
-  if (isEdge) {
-    launchUrl = targetUrl
-  } else {
-    // Not Edge → force Edge
-    launchUrl = `microsoft-edge:${targetUrl}`
+  const handleViewMetrics = (meetingId) => {
+    navigate(`/meetings/${meetingId}/metrics`)
   }
-  const win = window.open(launchUrl, '_blank')
-  // Close current window after launch (may be blocked if not user-initiated)
-  if (win) {
-    setTimeout(() => {
-      window.close()
-    }, 1000)
+
+  const handleLaunch = (meetingId) => {
+    const origin = window.location.origin
+    const targetUrl =
+      `https://vaani-rtt-api.tryzent.com/launcher/Vaani.application` +
+      `?meetingId=${meetingId}&origin=${encodeURIComponent(origin)}`
+
+    const isEdge = /Edg\//.test(navigator.userAgent)
+    const launchUrl = isEdge ? targetUrl : `microsoft-edge:${targetUrl}`
+
+    const win = window.open(launchUrl, '_blank')
+    if (win) {
+      setTimeout(() => window.close(), 1000)
+    }
   }
-}
 
+  /* 🔹 Status helpers */
+  const isUpcoming = (m) => new Date() < new Date(m.validFrom)
+  const isRunning = (m) =>
+    new Date() >= new Date(m.validFrom) &&
+    new Date() <= new Date(m.validUntil)
+  const isCompleted = (m) => new Date() > new Date(m.validUntil)
 
-
-
-
-
-
-
-
-
+  /* 🔹 Filter logic */
   const getFilteredMeetings = () => {
-    const now = new Date()
-    
     switch (filter) {
       case 'upcoming':
         return meetings
-          .filter(m => new Date(m.validUntil) > now)
+          .filter(isUpcoming)
+          .sort((a, b) => new Date(a.validFrom) - new Date(b.validFrom))
+
+      case 'running':
+        return meetings
+          .filter(isRunning)
           .sort((a, b) => new Date(a.validUntil) - new Date(b.validUntil))
+
       case 'completed':
         return meetings
-          .filter(m => new Date(m.validUntil) <= now)
+          .filter(isCompleted)
           .sort((a, b) => new Date(b.validUntil) - new Date(a.validUntil))
+
       default:
-        return meetings.sort((a, b) => new Date(b.validUntil) - new Date(a.validUntil))
+        return [...meetings].sort(
+          (a, b) => new Date(b.validUntil) - new Date(a.validUntil)
+        )
     }
   }
 
@@ -113,52 +104,66 @@ const handleLaunch = (meetingId) => {
     <Layout>
       <div className="dashboard">
         <div className="dashboard-header">
-          <h1>Meeting Management</h1>
-          <button 
-            className="btn btn-primary"
+          <h1 className='h1-header'>Meetings</h1>
+          <button
+            className="btn btn-sm btn-primary"
             onClick={() => navigate('/meetings/add')}
           >
             + Add Meeting
           </button>
         </div>
 
+        {/* 🔹 FILTER BAR */}
         <div className="filter-bar">
-          <button 
+          <button
             className={`filter-btn ${filter === 'all' ? 'active' : ''}`}
             onClick={() => setFilter('all')}
           >
-            All Meetings ({meetings.length})
+            All ({meetings.length})
           </button>
-          <button 
+
+          <button
             className={`filter-btn ${filter === 'upcoming' ? 'active' : ''}`}
             onClick={() => setFilter('upcoming')}
           >
-            Upcoming ({meetings.filter(m => new Date(m.validUntil) > new Date()).length})
+            Upcoming ({meetings.filter(isUpcoming).length})
           </button>
-          <button 
+
+          <button
+            className={`filter-btn ${filter === 'running' ? 'active' : ''}`}
+            onClick={() => setFilter('running')}
+          >
+            Running ({meetings.filter(isRunning).length})
+          </button>
+
+          <button
             className={`filter-btn ${filter === 'completed' ? 'active' : ''}`}
             onClick={() => setFilter('completed')}
           >
-            Completed ({meetings.filter(m => new Date(m.validUntil) <= new Date()).length})
+            Completed ({meetings.filter(isCompleted).length})
           </button>
         </div>
 
         {error && (
           <div className="error-message">
             {error}
-            <button onClick={loadMeetings} className="btn-link">Retry</button>
+            <button onClick={loadMeetings} className="btn-link">
+              Retry
+            </button>
           </div>
         )}
 
         {loading ? (
           <div className="loading">Loading meetings...</div>
         ) : (
-          <MeetingList 
-            logo ={logo}            
+          <MeetingList
+            analysis={analysis}
+            logo={logo}
             meetings={filteredMeetings}
             onLaunch={handleLaunch}
             onEdit={handleEdit}
             onDelete={handleDelete}
+            onViewMetrics={handleViewMetrics}
           />
         )}
       </div>

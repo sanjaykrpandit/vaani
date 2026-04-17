@@ -1,0 +1,332 @@
+﻿<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="clr-namespace:Vaani.TestAudio.ViewModels"
+        mc:Ignorable="d" d:DesignWidth="500" d:DesignHeight="400"
+        x:Class="Vaani.TestAudio.Views.TestAudioWindow"
+        x:DataType="vm:TestAudioViewModel"       
+		Icon="/Assets/icon.ico"
+        Title="Vaani - Audio System Check"
+        Width="400" Height="650"
+        MinWidth="400" MinHeight="600"
+        CanResize="False"
+        WindowStartupLocation="CenterScreen"
+        ShowInTaskbar="True"
+        Background="#1E1E1E">
+
+    <Window.Styles>
+        <Style Selector="TextBlock">
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+        
+        <Style Selector="TextBlock.Title">
+            <Setter Property="FontSize" Value="18"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Foreground" Value="#00D4FF"/>
+        </Style>
+
+        <Style Selector="TextBlock.ChecklistItem">
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Foreground" Value="#CCCCCC"/>
+        </Style>
+
+        <Style Selector="TextBlock.Status">
+            <Setter Property="FontSize" Value="18"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+        </Style>
+
+        <Style Selector="Button">
+            <Setter Property="Background" Value="#0078D4"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="CornerRadius" Value="3"/>
+            <Setter Property="Padding" Value="30,10"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontSize" Value="14"/>
+        </Style>
+
+        <Style Selector="Button:pointerover">
+            <Setter Property="Background" Value="#1084D8"/>
+        </Style>
+
+        <Style Selector="Button:disabled">
+            <Setter Property="Background" Value="#3D3D3D"/>
+            <Setter Property="Foreground" Value="#666666"/>
+            <Setter Property="Cursor" Value="Arrow"/>
+        </Style>
+
+        <Style Selector="ProgressBar">
+            <Setter Property="Foreground" Value="#00D4FF"/>
+            <Setter Property="Background" Value="#3D3D3D"/>
+            <Setter Property="Height" Value="3"/>
+        </Style>
+
+        <!-- Spinner Animation -->
+        <Style Selector="Border.Spinner">
+            <Setter Property="Width" Value="20"/>
+            <Setter Property="Height" Value="20"/>
+            <Setter Property="BorderBrush" Value="#00D4FF"/>
+            <Setter Property="BorderThickness" Value="3"/>
+            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="Opacity" Value="0.8"/>
+            <Style.Animations>
+                <Animation Duration="0:0:1" IterationCount="Infinite">
+                    <KeyFrame Cue="0%">
+                        <Setter Property="RotateTransform.Angle" Value="0"/>
+                    </KeyFrame>
+                    <KeyFrame Cue="100%">
+                        <Setter Property="RotateTransform.Angle" Value="360"/>
+                    </KeyFrame>
+                </Animation>
+            </Style.Animations>
+        </Style>
+
+        <Style Selector="Border.Spinner > Border">
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="3,0,0,0"/>
+        </Style>
+    </Window.Styles>
+
+    <Grid Margin="40,30" RowDefinitions="Auto,Auto,*,Auto,Auto">
+        
+        <!-- Header -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,30">
+            <TextBlock Classes="Title" Text="Audio System Check" HorizontalAlignment="Center"/>
+            <TextBlock Text="Verifying audio devices and routing" 
+                       Foreground="#AAAAAA" 
+                       FontSize="12" 
+                       HorizontalAlignment="Center"
+                       Margin="0,5,0,0"/>
+        </StackPanel>
+
+        <!-- Progress Bar -->
+        <ProgressBar Grid.Row="1" 
+                     Value="{Binding ProgressValue}" 
+                     Maximum="100"
+                     Margin="0,0,0,30"
+                     IsVisible="{Binding IsRunning}"/>
+
+        <!-- Checklist -->
+        <StackPanel Grid.Row="2" Spacing="20">            
+            <!-- 1. Device Detection -->
+            <Border Background="#252526" CornerRadius="5" Padding="20">
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Grid.Column="0" 
+                              Text="Detecting Audio Devices" 
+                              Classes="ChecklistItem"
+                              VerticalAlignment="Center"/>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="5">
+                        <!-- Animated Spinner -->
+                        <Border Classes="Spinner"
+                               IsVisible="{Binding IsDeviceDetectionRunning}">
+                            <Border.RenderTransform>
+                                <RotateTransform/>
+                            </Border.RenderTransform>
+                        </Border>
+                        <!-- Success -->
+                        <!--<TextBlock Text="✅" 
+                                  Classes="Status"
+                                  Foreground="#28A745"
+                                  IsVisible="{Binding IsDeviceDetectionPassed}"/>-->
+
+
+						<Border Width="20" Height="20"
+						  CornerRadius="10"
+						  HorizontalAlignment="Center"
+						  IsVisible="{Binding IsDeviceDetectionPassed}">
+							<Border.Background>
+								<SolidColorBrush Color="#32C832"/>
+							</Border.Background>
+							<TextBlock Text="✓"
+									  FontSize="12"
+									  HorizontalAlignment="Center"
+									  VerticalAlignment="Center"
+									  Foreground="White"/>
+						</Border>
+						
+                        <!-- Failed -->
+                        <!--<TextBlock Text="❌" 
+                                  Classes="Status"
+                                  Foreground="#DC3545"
+                                  IsVisible="{Binding IsDeviceDetectionFailed}"/>-->
+
+
+
+						<Border Width="20" Height="20"
+					  CornerRadius="10"
+						  HorizontalAlignment="Center"
+						  IsVisible="{Binding IsDeviceDetectionFailed}">
+							<Border.Background>
+								<SolidColorBrush Color="#DC3545"/>
+							</Border.Background>
+							<TextBlock Text="x"
+									  FontSize="12"
+									  HorizontalAlignment="Center"
+									  VerticalAlignment="Center"
+									  Foreground="White"/>
+						</Border>
+						
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- 2. Outgoing Audio -->
+            <Border Background="#252526" CornerRadius="5" Padding="20">
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Grid.Column="0" 
+                              Text="Outgoing Audio Device" 
+                              Classes="ChecklistItem"
+                              VerticalAlignment="Center"/>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="5">
+                        <!-- Animated Spinner -->
+                        <Border Classes="Spinner"
+                               IsVisible="{Binding IsCableATestRunning}">
+                            <Border.RenderTransform>
+                                <RotateTransform/>
+                            </Border.RenderTransform>
+                        </Border>
+                        <!-- Success -->
+                        <!--<TextBlock Text="✅" 
+                                  Classes="Status"
+                                  Foreground="#28A745"
+                                  IsVisible="{Binding IsCableATestPassed}"/>-->
+
+						<Border Width="20" Height="20"
+						  CornerRadius="10"
+						  HorizontalAlignment="Center"
+						  IsVisible="{Binding IsCableATestPassed}">
+							<Border.Background>
+								<SolidColorBrush Color="#32C832"/>
+							</Border.Background>
+							<TextBlock Text="✓"
+									  FontSize="12"
+									  HorizontalAlignment="Center"
+									  VerticalAlignment="Center"
+									  Foreground="White"/>
+						</Border>
+						
+                        <!-- Failed -->
+                        <!--<TextBlock Text="❌" 
+                                  Classes="Status"
+                                  Foreground="#DC3545"
+                                  IsVisible="{Binding IsCableATestFailed}"/>-->
+
+
+						<Border Width="20" Height="20"
+						  CornerRadius="10"
+						  HorizontalAlignment="Center"
+						  IsVisible="{Binding IsCableATestFailed}">
+							<Border.Background>
+								<SolidColorBrush Color="#DC3545"/>
+							</Border.Background>
+							<TextBlock Text="x"
+									  FontSize="12"
+									  HorizontalAlignment="Center"
+									  VerticalAlignment="Center"
+									  Foreground="White"/>
+						</Border>
+						
+						
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- 3. Incoming Audio -->
+            <Border Background="#252526" CornerRadius="5" Padding="20">
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Grid.Column="0" 
+                              Text="Incoming Audio Device" 
+                              Classes="ChecklistItem"
+                              VerticalAlignment="Center"/>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="5">
+                        <!-- Animated Spinner -->
+                        <Border Classes="Spinner"
+                               IsVisible="{Binding IsCableBTestRunning}">
+                            <Border.RenderTransform>
+                                <RotateTransform/>
+                            </Border.RenderTransform>
+                        </Border>
+                        <!-- Success -->
+                        <!--<TextBlock Text="✅" 
+                                  Classes="Status"
+                                  Foreground="#28A745"
+                                  IsVisible="{Binding IsCableBTestPassed}"/>-->
+
+						<Border Width="20" Height="20"
+						  CornerRadius="10"
+						  HorizontalAlignment="Center"
+						  IsVisible="{Binding IsCableBTestPassed}">
+							<Border.Background>
+								<SolidColorBrush Color="#32C832"/>
+							</Border.Background>
+							<TextBlock Text="✓"
+									  FontSize="12"
+									  HorizontalAlignment="Center"
+									  VerticalAlignment="Center"
+									  Foreground="White"/>
+						</Border>
+						
+                        <!-- Failed -->
+                        <!--<TextBlock Text="❌" 
+                                  Classes="Status"
+                                  Foreground="#DC3545"
+                                  IsVisible="{Binding IsCableBTestFailed}"/>-->
+
+						<Border Width="20" Height="20"
+						  CornerRadius="10"
+					  HorizontalAlignment="Center"
+					  IsVisible="{Binding IsCableBTestFailed}">
+							<Border.Background>
+								<SolidColorBrush Color="#DC3545"/>
+							</Border.Background>
+							<TextBlock Text="x"
+									  FontSize="12"
+									  HorizontalAlignment="Center"
+									  VerticalAlignment="Center"
+									  Foreground="White"/>
+						</Border>
+						
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+        </StackPanel>
+
+        <!-- Error Message -->
+        <Border Grid.Row="3" 
+                Background="#DC3545" 
+                CornerRadius="5" 
+                Padding="15"
+                Margin="0,20,0,0"
+                IsVisible="{Binding HasError}">
+            <StackPanel Spacing="8">
+                <TextBlock Text="⚠️ Test Audio Failed" 
+                          FontWeight="Bold" 
+                          FontSize="14"/>
+                <TextBlock Text="{Binding ErrorMessage}" 
+                          TextWrapping="Wrap"
+                          FontSize="12"/>
+                <TextBlock Text="Please restart your machine to refresh Audio driver. or click on retry buttion" 
+                          FontSize="11"
+                          Foreground="#FFE6E6"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Action Buttons -->
+        <Grid Grid.Row="4" 
+              ColumnDefinitions="*" 
+              Margin="0,30,0,0">
+            
+            <!-- Retry Button (shown on error) -->
+            <Button Grid.Column="0"
+                   Content="🔄 Retry"
+                   Command="{Binding StartTestCommand}"
+                   HorizontalAlignment="Center"
+                   IsVisible="{Binding HasError}"/>
+        </Grid>
+
+    </Grid>
+
+</Window>

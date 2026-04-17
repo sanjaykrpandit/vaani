@@ -16,6 +16,14 @@ public partial class MeetingLoginWindow : Window
         {
             await viewModel.OnWindowLoadedAsync();
         };
+
+        Closed += (s, e) =>
+        {
+            if (DataContext is IDisposable disposable)
+            {
+                disposable.Dispose();
+            }
+        };
     }
 
     public MeetingLoginWindow(MeetingLoginViewModel viewModel)
@@ -27,6 +35,14 @@ public partial class MeetingLoginWindow : Window
         Opened += async (s, e) =>
         {
             await viewModel.OnWindowLoadedAsync();
+        };
+
+        Closed += (s, e) =>
+        {
+            if (DataContext is IDisposable disposable)
+            {
+                disposable.Dispose();
+            }
         };
     }
 }

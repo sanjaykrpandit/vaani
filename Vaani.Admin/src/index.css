@@ -22,14 +22,14 @@
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Arial', 'Helvetica', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background-color: var(--background);
   color: var(--text-primary);
-  line-height: 1.6;
+  line-height: 1;
+  font-size: 11px;
+  /* More compact for admin panel */
 }
 
 #root {
@@ -102,6 +102,12 @@ body {
   font-size: 0.813rem;
 }
 
+.btn-xsm {
+  padding: 0.275rem 0.65rem;
+  font-size: 0.7rem;
+}
+
+
 .btn-link {
   background: none;
   border: none;
@@ -113,7 +119,7 @@ body {
 
 /* Form Elements */
 .form-group {
-  margin-bottom: 1.25rem;
+  margin-bottom: 1rem;
 }
 
 .form-group label {
@@ -221,6 +227,49 @@ body {
   background-color: #fee2e2;
   color: #991b1b;
 }
+
+.badge-running {
+  background-color: #b2e9df;
+  color: #757575;
+  font-size: 13px;
+  min-width: 90px;
+}
+
+
+
+.status-with-dot {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  text-transform: capitalize;
+  font-weight: 500;
+  font-size: 10px;
+  margin: 0px;
+  padding: 5px;
+  width: 75px;
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+/* Dot colors */
+.status-dot.upcoming {
+  background-color: #ffc107;
+}
+
+.status-dot.running {
+  background-color: #28a745;
+}
+
+.status-dot.completed {
+  background-color: #6c757d;
+}
+
+
 
 /* Utilities */
 .text-muted {

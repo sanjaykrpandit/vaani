@@ -13,6 +13,7 @@
     <!-- ClickOnce -->
     <GenerateManifests>true</GenerateManifests>
     <SignManifests>false</SignManifests>
+    <TrustUrlParameters>true</TrustUrlParameters>
 
     <Install>false</Install>
     <InstallFrom>Web</InstallFrom>
@@ -43,6 +44,22 @@
   <ItemGroup>
     <AvaloniaResource Include="Assets\**" />
   </ItemGroup>
+
+  <ItemGroup>
+    <AvaloniaXaml Remove="Docs\**" />
+    <AvaloniaXaml Remove="installer\**" />
+    <Compile Remove="Docs\**" />
+    <Compile Remove="installer\**" />
+    <!-- Legacy Azure-SDK files superseded by BackendTranslationService -->
+    <Compile Remove="Services\bck\**" />
+    <Compile Remove="Services\TranslationService.cs" />
+    <Compile Remove="Services\AzureSpeechSynthesisHelper.cs" />
+    <Compile Remove="Services\BypassTranslationService.cs" />
+    <EmbeddedResource Remove="Docs\**" />
+    <EmbeddedResource Remove="installer\**" />
+    <None Remove="Docs\**" />
+    <None Remove="installer\**" />
+  </ItemGroup>
 <ItemGroup>
   <None Include="appsettings.json">
     <CopyToOutputDirectory>Always</CopyToOutputDirectory>
@@ -54,7 +71,7 @@
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.0.10" />
     <PackageReference Include="Avalonia.Fonts.Inter" Version="11.0.10" />
     <PackageReference Include="Avalonia.ReactiveUI" Version="11.0.10" />
-    <PackageReference Include="Microsoft.CognitiveServices.Speech" Version="1.47.0" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="8.0.0" />
     <PackageReference Include="NAudio" Version="2.2.1" />
 	<PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.1" />
   </ItemGroup>

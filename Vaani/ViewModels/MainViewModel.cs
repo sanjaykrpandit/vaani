@@ -9,6 +9,8 @@ using Vaani.Authentication.Services;
 using Vaani.Common;
 using Vaani.Models;
 using Vaani.Services;
+using System.Linq;
+using static Vaani.Common.ErrorMessages;
 
 namespace Vaani.ViewModels;
 
@@ -16,7 +18,9 @@ public class MainViewModel : ViewModelBase
 {
     #region Fields
     private readonly DeviceService _deviceService;
-    private readonly TranslationService _translationService;
+    // BackendTranslationService proxies all Azure work to Vaani.API via SignalR
+    private readonly BackendTranslationService _backendService;
+    private ITranslationService? _activeService;
     private readonly MeetingAuthenticationService _sessionService;
     private readonly ClientService _clientService = new();
     private readonly AnimatedTextDisplay _textAnimator = new() { WordDelayMs = 120 };
@@ -49,24 +53,36 @@ public class MainViewModel : ViewModelBase
     private MessageBubble? _currentRecognizingMessage;
     private MessageBubble? _currentOutgoingBubble;
     private MessageBubble? _currentIncomingBubble;
+
+    // Tracks which bubble is currently synthesizing per direction so that
+    // SynthesizingCompleted can clear it by reference instead of fragile text matching.
+    private MessageBubble? _outgoingSynthesizingBubble;
+    private MessageBubble? _incomingSynthesizingBubble;
     private const int MaxMessages = 100;
     private string _logText = "";
+    // Keep logs bounded to prevent UI/memory growth in long sessions.
+    private const int MaxLogLinesInUi = 400;
+    private readonly Queue<string> _logLines = new();
+    private readonly object _logLock = new();
     private bool _isMicrophoneMuted = false;
     private bool _isSpeakerMuted = false;
     private bool _isTransitioning = false;
     private bool _isSynthesizing = false;
     private bool _isMeetingAudioActive = false;
     private bool _isUserGuideEnabled = true;
+    private bool _isBypassModeEnabled = false;
 
 
     // Animation cancellation tokens
     private CancellationTokenSource? _recognizingAnimationCts;
-    private CancellationTokenSource? _translationAnimationCts;
 
     // Add this private field in the Fields region (near other private fields)
     private bool _inputDevicesLoaded = false;
     // Add this field near other private fields (Fields region)
     private CancellationTokenSource? _deviceRefreshCts = null;
+    private bool _isRefreshingDevices;
+    private bool _autoSelectInputDevice = true;
+    private bool _autoSelectOutputDevice = true;
 
     #endregion
 
@@ -75,14 +91,14 @@ public class MainViewModel : ViewModelBase
     public MainViewModel()
     {
         _settings = LoadTranslationSettings();
-        _deviceService = new DeviceService();
-        _translationService = new TranslationService();
+        // Reuse singleton to leverage pre-warmed/shared device cache
+        _deviceService = DeviceService.Instance;
+        _backendService = new BackendTranslationService();
         _sessionService = new MeetingAuthenticationService();
-        _translationService.LogMessage += OnLogMessage;
-        _translationService.MessageReceived += OnMessageReceived;
-        _translationService.TranslationReceived += OnTranslationReceived;
-        _translationService.SystemMessage += OnSystemMessage;
-        _translationService.SynthesizingStatusChanged += OnSynthesizingStatusChanged;
+
+        // Use BackendTranslationService — all Azure work happens on the server
+        _activeService = _backendService;
+        WireServiceEvents(_activeService);
 
         InitializeCommands();
         InitializeCollections();
@@ -103,6 +119,8 @@ public class MainViewModel : ViewModelBase
     public ObservableCollection<LanguageInfo> Languages { get; } = new();
     public ObservableCollection<GenderOption> Genders { get; } = new();
     public ObservableCollection<MessageBubble> Messages { get; } = new();
+
+    public ObservableCollection<MessageBubble> MessageHistory { get; } = new();
 
     #endregion
 
@@ -296,7 +314,7 @@ public class MainViewModel : ViewModelBase
         set
         {
             this.RaiseAndSetIfChanged(ref _isMicrophoneMuted, value);
-            _translationService.SetMicrophoneMute(value);
+            _activeService?.SetMicrophoneMute(value);
             AddLog(value ? "🎙 Microphone MUTED" : "🎙 Microphone UNMUTED");
         }
     }
@@ -307,9 +325,15 @@ public class MainViewModel : ViewModelBase
         set
         {
             this.RaiseAndSetIfChanged(ref _isSpeakerMuted, value);
-            _translationService.SetSpeakerMute(value);
+            _activeService?.SetSpeakerMute(value);
             AddLog(value ? "🔇 Speaker MUTED" : "🔊 Speaker UNMUTED");
         }
+    }
+
+    public bool IsBypassModeEnabled
+    {
+        get => _isBypassModeEnabled;
+        set => this.RaiseAndSetIfChanged(ref _isBypassModeEnabled, value);
     }
 
     public bool IsTransitioning
@@ -318,7 +342,7 @@ public class MainViewModel : ViewModelBase
         set => this.RaiseAndSetIfChanged(ref _isTransitioning, value);
     }
 
-   
+
     public bool IsSynthesizing
     {
         get => _isSynthesizing;
@@ -391,17 +415,10 @@ public class MainViewModel : ViewModelBase
             StartTranslation,
             this.WhenAnyValue(x => x.IsRunning, running => !running));
 
-        //StopCommand = ReactiveCommand.CreateFromTask(
-        //    StopTranslation,
-        //    this.WhenAnyValue(x => x.IsRunning));
-
+        // ✅ FIXED: Allow stopping anytime (service handles interruption)
         StopCommand = ReactiveCommand.CreateFromTask(
-    StopTranslation,
-    this.WhenAnyValue(
-        x => x.IsRunning,
-        x => x.IsSynthesizing,
-        (running, synthesizing) => running && !synthesizing
-    ));
+            StopTranslation,
+            this.WhenAnyValue(x => x.IsRunning));
 
         // RefreshDevices is now async Task, wire with CreateFromTask
         RefreshDevicesCommand = ReactiveCommand.CreateFromTask(RefreshDevices);
@@ -425,7 +442,7 @@ public class MainViewModel : ViewModelBase
         ShowMessageViewCommand = ReactiveCommand.Create(() => IsMessageViewActive = true);
         ClearMessage = ReactiveCommand.Create(ClearLogsAndMessages);
         LogoutCommand = ReactiveCommand.CreateFromTask(LogoutAsync);
-        CloseUserGuideCommand= ReactiveCommand.Create(() => IsUserGuideEnabled = false);
+        CloseUserGuideCommand = ReactiveCommand.Create(() => IsUserGuideEnabled = false);
     }
 
     private void InitializeCollections()
@@ -437,7 +454,8 @@ public class MainViewModel : ViewModelBase
     {
         _deviceRefreshTimer = new DispatcherTimer
         {
-            Interval = TimeSpan.FromSeconds(3)
+            // Slower poll to reduce CPU churn while settings panel stays open
+            Interval = TimeSpan.FromSeconds(5)
         };
 
         // Tick only triggers a refresh when the settings panel is visible.
@@ -467,7 +485,7 @@ public class MainViewModel : ViewModelBase
 
             _sessionExpiryTimer = new DispatcherTimer
             {
-                Interval = TimeSpan.FromSeconds(30)
+                Interval = TimeSpan.FromSeconds(60)
             };
             _sessionExpiryTimer.Tick += (_, __) => UpdateSessionInfo();
             _sessionExpiryTimer.Start();
@@ -481,6 +499,33 @@ public class MainViewModel : ViewModelBase
             {
                 this.RaisePropertyChanged(nameof(TranslationButtonText));
                 this.RaisePropertyChanged(nameof(StatusText));
+            });
+
+        // ✅ Auto-enable/disable bypass mode based on language matching
+        this.WhenAnyValue(
+            x => x.SelectedSourceLanguage,
+            x => x.SelectedTargetLanguage,
+            (source, target) => new { Source = source, Target = target })
+            .Subscribe(langs =>
+            {
+                if (langs.Source == null || langs.Target == null) return;
+
+                var languagesMatch = langs.Source.Code == langs.Target.Code;
+
+                if (languagesMatch && !IsBypassModeEnabled)
+                {
+                    // Auto-enable bypass when same language
+                    IsBypassModeEnabled = true;
+                    AddLog("⚡ Auto-enabled bypass mode: same source and target language detected");
+                    //Toast.Show("Bypass mode enabled - same language selected");
+                }
+                else if (!languagesMatch && IsBypassModeEnabled)
+                {
+                    // Auto-disable bypass when different languages
+                    IsBypassModeEnabled = false;
+                    AddLog("🔄 Auto-disabled bypass mode: different languages selected");
+                    //Toast.Show("Bypass mode disabled - translation needed");
+                }
             });
     }
 
@@ -511,7 +556,7 @@ public class MainViewModel : ViewModelBase
         catch (Exception ex)
         {
             // Log but don't crash the UI during startup
-            AddLog($"⚠️ Startup initialization error: {ex.Message}");
+            AddLog($"⚠️ Startup initialization error: {Classify(ex)}");
         }
     }
 
@@ -614,23 +659,36 @@ public class MainViewModel : ViewModelBase
     #region Translation Methods
 
     private async Task StartTranslation()
-    {     
+    {
         IsSettingsPanelVisible = false;
         IsTransitioning = true;
+        IsMicrophoneMuted = false;
+        IsSpeakerMuted = false;
         try
         {
             LogText = "";
             Messages.Clear();
             _currentOutgoingBubble = null;
-            _currentIncomingBubble = null;
+            _currentIncomingBubble = null;         
 
-            IsMicrophoneMuted = false;
-            IsSpeakerMuted = false;
-
-            (bool hasStarted, string message) = await _sessionService.StartSessionAsync();
+            (bool hasStarted, string message, int? startedSessionId) = await _sessionService.StartSessionAsync();
             if (hasStarted)
             {
-                await _translationService.StartTranslationAsync(_settings);
+                // BackendTranslationService handles all translation via Vaani.API
+                if (_activeService != _backendService)
+                {
+                    UnwireServiceEvents(_activeService);
+                    _activeService = _backendService;
+                    WireServiceEvents(_activeService);
+                }
+
+                if (startedSessionId.HasValue)
+                {
+                    _settings.SessionId = startedSessionId.Value.ToString();
+                }
+
+                _settings.IsBypassMode = IsBypassModeEnabled;
+                await _activeService.StartTranslationAsync(_settings);
             }
             else
             {
@@ -644,7 +702,9 @@ public class MainViewModel : ViewModelBase
         {
             await Dispatcher.UIThread.InvokeAsync(() =>
             {
-                IsRunning = false;
+                // Do NOT set IsRunning here — it is driven exclusively by OnSystemMessage
+                // (Started → true, Stopped → true). Setting it false here races with and
+                // overwrites the SessionStarted callback on every subsequent start.
                 IsTransitioning = false;
             });
         }
@@ -652,31 +712,123 @@ public class MainViewModel : ViewModelBase
 
     private async Task StopTranslation()
     {
-        if (IsSynthesizing)
-        {
-            Toast.Show("Please wait for synthesis to complete before stopping.");
-            return;
-        }
-
         IsTransitioning = true;
+        IsMicrophoneMuted = true;
+        IsSpeakerMuted = true;
+
         try
         {
+            // 1. Wait for ALL synthesis to complete (no timeout limit)
+            bool IsTextSynthesizing = IsSynthesizing || Messages.Any(m => m.IsSynthesizing);
+            
+            if (IsTextSynthesizing)
+            {
+                AddLog("⏳ Waiting for ALL audio synthesis to complete before stopping...");
+                AddLog($"   Active synthesis tasks: {Messages.Count(m => m.IsSynthesizing)}");
+                Toast.Show("Finishing all audio playback...");
 
-            // Cancel any ongoing animations
+                var checkInterval = TimeSpan.FromMilliseconds(200);
+                var lastCount = -1;
+                var waitStartTime = DateTime.UtcNow;
+
+                // Wait indefinitely until ALL synthesis completes
+                while (true)
+                {
+                    // Check both the global flag and individual message bubbles
+                    var activeSynthesisCount = Messages.Count(m => m.IsSynthesizing);
+                    IsTextSynthesizing = IsSynthesizing || activeSynthesisCount > 0;
+
+                    // Log progress every time the count changes
+                    if (activeSynthesisCount != lastCount)
+                    {
+                        var elapsed = (DateTime.UtcNow - waitStartTime).TotalSeconds;
+                        AddLog($"   ⏱️ [{elapsed:F1}s] Active synthesis: {activeSynthesisCount} tasks");
+                        lastCount = activeSynthesisCount;
+                    }
+
+                    // Exit when all synthesis is complete
+                    if (!IsTextSynthesizing)
+                    {
+                        var totalWaitTime = (DateTime.UtcNow - waitStartTime).TotalSeconds;
+                        AddLog($"✅ All synthesis completed after {totalWaitTime:F1}s - proceeding with stop");
+                        break;
+                    }
+
+                    await Task.Delay(checkInterval);
+                }
+            }
+            else
+            {
+                AddLog("ℹ️ No active synthesis - proceeding with immediate stop");
+            }
+
+            // 2. Cancel any ongoing animations
             _recognizingAnimationCts?.Cancel();
-            _translationAnimationCts?.Cancel();
-            // Stop translation service
+            
+            // Cancel all bubble translation animations
+            foreach (var bubble in Messages)
+            {
+                bubble.TranslationAnimationCts?.Cancel();
+                bubble.TranslationAnimationCts?.Dispose();
+                bubble.TranslationAnimationCts = null;
+            }
 
-            // Await the stop to ensure clean shutdown before updating UI
+            // 3. Stop translation service and wait for complete shutdown
+            AddLog("🛑 Stopping translation service...");
+            if (_activeService != null)
+            {
+                await _activeService.StopTranslationAsync();
+                AddLog("✅ Translation service stopped");
+            }          
 
-           
+            // 4. Final verification - wait for any residual synthesis to complete
+            var residualCheckCount = 0;
+            while ((IsSynthesizing || Messages.Any(m => m.IsSynthesizing)) && residualCheckCount < 50) // Max 10 seconds
+            {
+                AddLog($"⏳ Waiting for residual synthesis to complete... ({residualCheckCount * 200}ms)");
+                await Task.Delay(200);
+                residualCheckCount++;
+            }
 
-
-            await _translationService.StopTranslationAsync();
+            if (IsSynthesizing || Messages.Any(m => m.IsSynthesizing))
+            {
+                AddLog("⚠️ Some synthesis tasks still active after service stop - forcing cleanup");
+                // Force-reset synthesis flags
+                IsSynthesizing = false;
+                foreach (var bubble in Messages.Where(m => m.IsSynthesizing))
+                {
+                    bubble.IsSynthesizing = false;
+                }
+            }
+            else
+            {
+                AddLog("✅ All synthesis tasks confirmed complete");
+            }
+        }
+        catch (Exception ex)
+        {
+            AddLog($"❌ Error during stop: {Classify(ex)}");
         }
         finally
         {
-            bool status = await _sessionService.EndSessionAsync();
+            // 5. End session
+            try
+            {
+                AddLog("🔌 Ending session...");
+
+                // Build session log and transcript from current UI state
+                var sessionLog = BuildSessionLog();
+                var sessionTranscript = BuildSessionTranscript();
+
+                bool status = await _sessionService.EndSessionAsync(sessionLog, sessionTranscript);
+                AddLog(status ? "✅ Session ended successfully" : "⚠️ Session end failed");
+            }
+            catch (Exception ex)
+            {
+                AddLog($"⚠️ Error ending session: {Classify(ex)}");
+            }
+
+            // 6. Update UI state
             await Dispatcher.UIThread.InvokeAsync(() =>
             {
                 IsRunning = false;
@@ -685,19 +837,61 @@ public class MainViewModel : ViewModelBase
         }
     }
 
+
+
+    // Helper to serialize logs into a reasonable payload
+    private string BuildSessionLog()
+    {
+        // Keep last N log lines to avoid overly large payloads
+        const int maxLogLines = 1000;
+        var lines = (LogText ?? string.Empty).Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+        if (lines.Length > maxLogLines)
+            lines = lines.Skip(lines.Length - maxLogLines).ToArray();
+
+        return string.Join("\n", lines);
+    }
+
+    // Helper to build a simple transcript from messages
+    private string BuildSessionTranscript()
+    {
+        // Export all message bubbles in chronological order
+        var transcriptLines = Messages.Select(m =>
+        {
+            var time = m.Timestamp.ToString("o");
+            var who = m.IsSystemMessage ? "SYSTEM" : (m.IsFromMeeting ? "MEETING" : "YOU");
+            var original = string.IsNullOrEmpty(m.OriginalText) ? string.Empty : $"ORIG: {m.OriginalText}";
+            var translated = string.IsNullOrEmpty(m.TranslatedText) ? string.Empty : $"TRANS: {m.TranslatedText}";
+            return $"[{time}] {who} {original} {translated}".Trim();
+        }).ToList();
+
+        // Keep last N lines to limit size
+        const int maxLines = 5000;
+        if (transcriptLines.Count > maxLines)
+            transcriptLines = transcriptLines.Skip(transcriptLines.Count - maxLines).ToList();
+
+        return string.Join("\n", transcriptLines);
+    }
+
     #endregion
 
     #region Device Management Methods
 
-
     // Replace the existing RefreshDevices method with this incremental, cancellable implementation.
     private async Task RefreshDevices()
     {
+        // Always refresh device cache before UI refresh so plug/unplug is reflected quickly.
+        _deviceService.RefreshDeviceCache();
+
         var prevInput = SelectedInputDevice;
         var prevOutput = SelectedOutputDevice;
 
-        // Cancel any in-progress refresh and create a new token for this run
-        _deviceRefreshCts?.Cancel();
+        // Cancel + dispose previous refresh CTS before creating a new one
+        if (_deviceRefreshCts != null)
+        {
+            try { _deviceRefreshCts.Cancel(); } catch { }
+            _deviceRefreshCts.Dispose();
+        }
+
         var cts = new CancellationTokenSource();
         _deviceRefreshCts = cts;
         var token = cts.Token;
@@ -752,6 +946,8 @@ public class MainViewModel : ViewModelBase
 
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
+            _isRefreshingDevices = true;
+
             // --- INPUT DEVICES: diff + update in-place to avoid UI churn ---
 
             var existingInputById = InputDevices.ToDictionary(d => d.Id);
@@ -765,6 +961,13 @@ public class MainViewModel : ViewModelBase
                 InputDevices.Remove(dev);
             }
 
+            // If selected input disappeared, clear stale reference so fallback selection can run.
+            if (SelectedInputDevice != null && !newInputById.ContainsKey(SelectedInputDevice.Id))
+            {
+                SelectedInputDevice = null;
+                _autoSelectInputDevice = true;
+            }
+
             // update properties of existing devices (preserve object references so bindings/selection remain)
             foreach (var id in existingInputById.Keys.Intersect(newInputById.Keys))
             {
@@ -772,7 +975,8 @@ public class MainViewModel : ViewModelBase
                 var newDev = newInputById[id];
                 // update mutable properties that matter for the UI
                 oldDev.FriendlyName = newDev.FriendlyName;
-                // (copy other fields here if AudioDeviceInfo exposes them)
+                oldDev.IsDefault = newDev.IsDefault;
+                oldDev.IsCableDevice = newDev.IsCableDevice;
             }
 
             // add newly found devices
@@ -795,11 +999,20 @@ public class MainViewModel : ViewModelBase
                 OutputDevices.Remove(dev);
             }
 
+            // If selected output disappeared, clear stale reference so fallback selection can run.
+            if (SelectedOutputDevice != null && !newOutputById.ContainsKey(SelectedOutputDevice.Id))
+            {
+                SelectedOutputDevice = null;
+                _autoSelectOutputDevice = true;
+            }
+
             foreach (var id in existingOutputById.Keys.Intersect(newOutputById.Keys))
             {
                 var oldDev = existingOutputById[id];
                 var newDev = newOutputById[id];
                 oldDev.FriendlyName = newDev.FriendlyName;
+                oldDev.IsDefault = newDev.IsDefault;
+                oldDev.IsCableDevice = newDev.IsCableDevice;
             }
 
             foreach (var id in newOutputById.Keys.Except(existingOutputById.Keys))
@@ -811,7 +1024,7 @@ public class MainViewModel : ViewModelBase
 
             // --- Restore selection by Id (stable) or fall back to priority pick ---
 
-            if (prevInput != null)
+            if (prevInput != null && !_autoSelectInputDevice)
             {
                 var restored = InputDevices.FirstOrDefault(d => d.Id == prevInput.Id);
                 if (restored != null)
@@ -821,9 +1034,12 @@ public class MainViewModel : ViewModelBase
                 }
             }
             if (SelectedInputDevice == null)
-                SelectedInputDevice = PickPriorityDevice(InputDevices, prevInput);
+            {
+                SelectedInputDevice = InputDevices.FirstOrDefault(d => d.IsDefault && !d.IsCableDevice)
+                    ?? PickPriorityDevice(InputDevices, prevInput);
+            }
 
-            if (prevOutput != null)
+            if (prevOutput != null && !_autoSelectOutputDevice)
             {
                 var restored = OutputDevices.FirstOrDefault(d => d.Id == prevOutput.Id);
                 if (restored != null)
@@ -833,7 +1049,10 @@ public class MainViewModel : ViewModelBase
                 }
             }
             if (SelectedOutputDevice == null)
-                SelectedOutputDevice = PickPriorityDevice(OutputDevices, prevOutput);
+            {
+                SelectedOutputDevice = OutputDevices.FirstOrDefault(d => d.IsDefault && !d.IsCableDevice)
+                    ?? PickPriorityDevice(OutputDevices, prevOutput);
+            }
 
             // Clear initial loading flag after first successful refresh
             if (!_inputDevicesLoaded)
@@ -841,16 +1060,23 @@ public class MainViewModel : ViewModelBase
                 _inputDevicesLoaded = true;
                 IsInputDevicesLoading = false;
             }
+
+            _isRefreshingDevices = false;
         });
 
         sw.Stop();
         AddLog($"🔄 Devices refreshed in {sw.ElapsedMilliseconds}ms");
+
+        // Keep meeting setup labels in sync with latest topology changes.
+        await getConnectedMeetingDevices();
     }
 
     private void OnInputDevicePropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(AudioDeviceInfo.IsSelected) && sender is AudioDeviceInfo device && device.IsSelected)
         {
+            if (!_isRefreshingDevices)
+                _autoSelectInputDevice = false;
             SelectedInputDevice = device;
         }
     }
@@ -859,6 +1085,8 @@ public class MainViewModel : ViewModelBase
     {
         if (e.PropertyName == nameof(AudioDeviceInfo.IsSelected) && sender is AudioDeviceInfo device && device.IsSelected)
         {
+            if (!_isRefreshingDevices)
+                _autoSelectOutputDevice = false;
             SelectedOutputDevice = device;
         }
     }
@@ -895,7 +1123,7 @@ public class MainViewModel : ViewModelBase
 
     #region Language Management Methods
 
-    public async Task LoadLanguagesAsync(TranslationSettings setting)
+    public Task LoadLanguagesAsync(TranslationSettings setting)
     {
         SourceLanguage = setting.SourceLanguage;
         TargetLanguage = setting.TargetLanguage;
@@ -903,7 +1131,7 @@ public class MainViewModel : ViewModelBase
         _targetLanguage = TargetLanguage;
         _targetVoice = TargetVoice;
 
-        var langs = await _clientService.GetLanguagesAsync();
+        var langs = _clientService.GetLanguagesAsync();
         Languages.Clear();
         foreach (var lang in langs)
             Languages.Add(lang);
@@ -919,6 +1147,7 @@ public class MainViewModel : ViewModelBase
 
         _sourceLanguage = GetLanguageCode(_sourceLanguage);
         _targetLanguage = GetLanguageCode(_targetLanguage);
+        return Task.CompletedTask;
     }
 
     private void UpdateSourceVoice()
@@ -926,7 +1155,7 @@ public class MainViewModel : ViewModelBase
         if (SelectedSourceLanguage == null || SelectedGender == null)
             return;
 
-        var voice = _clientService.GetVoiceForLanguageAndGender("en-US", SelectedGender.Value);
+        var voice = _clientService.GetVoiceForLanguageAndGender(_settings.TargetLanguage, SelectedGender.Value);
 
         if (voice != null)
         {
@@ -943,7 +1172,7 @@ public class MainViewModel : ViewModelBase
     private TranslationSettings LoadTranslationSettings()
     {
         _settings = _clientService.GetTranslationSettings();
-        _ = LoadLanguagesAsync(_settings);
+        LoadLanguagesAsync(_settings);
         SetupDefaultLanguageSelection();
         return _settings;
     }
@@ -1048,54 +1277,75 @@ public class MainViewModel : ViewModelBase
         {
             IsSynthesizing = e.IsSynthesizing;
 
-            MessageBubble? targetBubble = null;
+            ref MessageBubble? trackedRef = ref (e.IsFromMeeting
+                ? ref _incomingSynthesizingBubble
+                : ref _outgoingSynthesizingBubble);
 
-            // 1) Try exact translated-text match first (most reliable).
-            if (!string.IsNullOrWhiteSpace(e.TranslatedText))
+            if (e.IsSynthesizing)
             {
-                targetBubble = Messages.LastOrDefault(m =>
-                    m.IsFromMeeting == e.IsFromMeeting &&
-                    !m.IsSystemMessage &&
-                    !string.IsNullOrEmpty(m.TranslatedText) &&
-                    string.Equals(m.TranslatedText, e.TranslatedText, StringComparison.OrdinalIgnoreCase));
+                // SynthesizingStarted: find the bubble by text and store the reference.
+                // Text matching is reliable here because OriginalText is always set before
+                // synthesis starts and TranslatedText may still be animating.
+                MessageBubble? targetBubble = null;
 
-                // 2) If no exact match, handle progressive/partial rendering:
-                //    the bubble may contain a prefix of the full translated text (or vice-versa).
-                if (targetBubble == null)
+                // 1) Exact translated-text match.
+                if (!string.IsNullOrWhiteSpace(e.TranslatedText))
                 {
                     targetBubble = Messages.LastOrDefault(m =>
                         m.IsFromMeeting == e.IsFromMeeting &&
                         !m.IsSystemMessage &&
                         !string.IsNullOrEmpty(m.TranslatedText) &&
-                        (m.TranslatedText.Contains(e.TranslatedText, StringComparison.OrdinalIgnoreCase) ||
-                         e.TranslatedText.Contains(m.TranslatedText, StringComparison.OrdinalIgnoreCase)));
+                        string.Equals(m.TranslatedText, e.TranslatedText, StringComparison.OrdinalIgnoreCase));
+
+                    // 2) Partial/progressive text match (animation may be mid-way).
+                    if (targetBubble == null)
+                    {
+                        targetBubble = Messages.LastOrDefault(m =>
+                            m.IsFromMeeting == e.IsFromMeeting &&
+                            !m.IsSystemMessage &&
+                            !string.IsNullOrEmpty(m.TranslatedText) &&
+                            (m.TranslatedText.Contains(e.TranslatedText, StringComparison.OrdinalIgnoreCase) ||
+                             e.TranslatedText.Contains(m.TranslatedText, StringComparison.OrdinalIgnoreCase)));
+                    }
+                }
+
+                // 3) OriginalText match — reliable because recognition finishes before synthesis.
+                if (targetBubble == null && !string.IsNullOrWhiteSpace(e.OriginalText))
+                {
+                    targetBubble = Messages.LastOrDefault(m =>
+                        m.IsFromMeeting == e.IsFromMeeting &&
+                        !m.IsSystemMessage &&
+                        !string.IsNullOrEmpty(m.OriginalText) &&
+                        (string.Equals(m.OriginalText, e.OriginalText, StringComparison.OrdinalIgnoreCase) ||
+                         m.OriginalText.Contains(e.OriginalText, StringComparison.OrdinalIgnoreCase) ||
+                         e.OriginalText.Contains(m.OriginalText, StringComparison.OrdinalIgnoreCase)));
+                }
+
+                // 4) Last-resort fallback: most recent translated bubble for this direction.
+                if (targetBubble == null)
+                {
+                    targetBubble = Messages.LastOrDefault(m =>
+                        m.IsFromMeeting == e.IsFromMeeting &&
+                        !m.IsSystemMessage &&
+                        !string.IsNullOrEmpty(m.TranslatedText));
+                }
+
+                if (targetBubble != null)
+                {
+                    trackedRef = targetBubble;
+                    targetBubble.IsSynthesizing = true;
                 }
             }
-
-            // 3) Fallback: try matching by original text (sometimes only original is reliable).
-            if (targetBubble == null && !string.IsNullOrWhiteSpace(e.OriginalText))
+            else
             {
-                targetBubble = Messages.LastOrDefault(m =>
-                    m.IsFromMeeting == e.IsFromMeeting &&
-                    !m.IsSystemMessage &&
-                    !string.IsNullOrEmpty(m.OriginalText) &&
-                    (string.Equals(m.OriginalText, e.OriginalText, StringComparison.OrdinalIgnoreCase) ||
-                     m.OriginalText.Contains(e.OriginalText, StringComparison.OrdinalIgnoreCase) ||
-                     e.OriginalText.Contains(m.OriginalText, StringComparison.OrdinalIgnoreCase)));
-            }
-
-            // 4) Final fallback: pick last non-system translated bubble for that direction.
-            if (targetBubble == null)
-            {
-                targetBubble = Messages.LastOrDefault(m =>
-                    m.IsFromMeeting == e.IsFromMeeting &&
-                    !m.IsSystemMessage &&
-                    !string.IsNullOrEmpty(m.TranslatedText));
-            }
-
-            if (targetBubble != null)
-            {
-                targetBubble.IsSynthesizing = e.IsSynthesizing;
+                // SynthesizingCompleted: clear the bubble we stored on Started.
+                // This avoids re-running text matching against partially-animated text
+                // which is what caused bubbles to get stuck.
+                if (trackedRef != null)
+                {
+                    trackedRef.IsSynthesizing = false;
+                    trackedRef = null;
+                }
             }
         });
     }
@@ -1242,58 +1492,56 @@ public class MainViewModel : ViewModelBase
 
     private void HandleTranslation(TranslationEventArgs e)
     {
+        // In bypass mode (same source/target language), avoid duplicating transcript
+        // into TranslatedText. Show only the original transcript bubble.
+        if (_settings.IsBypassMode || IsBypassModeEnabled)
+            return;
+
         MessageBubble? currentBubble = e.IsFromMeeting ? _currentIncomingBubble : _currentOutgoingBubble;
 
-        _translationAnimationCts?.Cancel();
-        _translationAnimationCts = new CancellationTokenSource();
+        // ✅ FIX: Use per-bubble cancellation token instead of shared direction token
+        MessageBubble? targetBubble = null;
 
         if (currentBubble != null && string.IsNullOrEmpty(currentBubble.TranslatedText))
         {
-            var bubbleRef = currentBubble;
-            _ = _textAnimator.DisplayProgressivelyAsync(
-                e.TranslatedText,
-                (displayedText, isComplete) =>
-                {
-                    bubbleRef.TranslatedText = displayedText;
-
-                    if (isComplete)
-                    {
-                        if (e.IsFromMeeting)
-                            _currentIncomingBubble = null;
-                        else
-                            _currentOutgoingBubble = null;
-                    }
-                },
-                _translationAnimationCts.Token
-            );
+            targetBubble = currentBubble;
         }
         else
         {
-            var targetBubble = Messages.LastOrDefault(m =>
+            targetBubble = Messages.LastOrDefault(m =>
                 m.IsFromMeeting == e.IsFromMeeting &&
                 string.IsNullOrEmpty(m.TranslatedText) &&
                 !m.IsSystemMessage);
-
-            if (targetBubble != null)
-            {
-                _ = _textAnimator.DisplayProgressivelyAsync(
-                    e.TranslatedText,
-                    (displayedText, isComplete) =>
-                    {
-                        targetBubble.TranslatedText = displayedText;
-
-                        if (isComplete)
-                        {
-                            if (e.IsFromMeeting)
-                                _currentIncomingBubble = null;
-                            else
-                                _currentOutgoingBubble = null;
-                        }
-                    },
-                    _translationAnimationCts.Token
-                );
-            }
         }
+
+        if (targetBubble == null)
+            return;
+
+        // Cancel only THIS bubble's animation (if any)
+        targetBubble.TranslationAnimationCts?.Cancel();
+        targetBubble.TranslationAnimationCts = new CancellationTokenSource();
+
+        var bubbleRef = targetBubble;
+        _ = _textAnimator.DisplayProgressivelyAsync(
+            e.TranslatedText,
+            (displayedText, isComplete) =>
+            {
+                bubbleRef.TranslatedText = displayedText;
+
+                if (isComplete)
+                {
+                    if (e.IsFromMeeting)
+                        _currentIncomingBubble = null;
+                    else
+                        _currentOutgoingBubble = null;
+
+                    // Clean up the cancellation token
+                    bubbleRef.TranslationAnimationCts?.Dispose();
+                    bubbleRef.TranslationAnimationCts = null;
+                }
+            },
+            targetBubble.TranslationAnimationCts.Token
+        );
     }
 
     #endregion
@@ -1302,7 +1550,17 @@ public class MainViewModel : ViewModelBase
 
     private void AddLog(string message)
     {
-        LogText += message + Environment.NewLine;
+        lock (_logLock)
+        {
+            _logLines.Enqueue(message);
+            while (_logLines.Count > MaxLogLinesInUi)
+                _logLines.Dequeue();
+
+            LogText = string.Join(Environment.NewLine, _logLines) + Environment.NewLine;
+        }
+
+        // ✅ Also log to Output window for debugging
+        System.Diagnostics.Debug.WriteLine($"[MainViewModel] {message}");
     }
 
     private void TrimMessages()
@@ -1315,7 +1573,12 @@ public class MainViewModel : ViewModelBase
 
     private void ClearLogsAndMessages()
     {
-        LogText = string.Empty;
+        lock (_logLock)
+        {
+            _logLines.Clear();
+            LogText = string.Empty;
+        }
+
         Messages.Clear();
         _currentOutgoingBubble = null;
         _currentIncomingBubble = null;
@@ -1360,10 +1623,15 @@ public class MainViewModel : ViewModelBase
         if (IsRunning)
         {
             await StopTranslation();
+            var sessionManager = _clientService.GetSessionManager();
+            await sessionManager.LogoutAsync(true);
         }
-
-        var sessionManager = _clientService.GetSessionManager();
-        await sessionManager.LogoutAsync();
+        else
+        {
+            var sessionManager = _clientService.GetSessionManager();
+            await sessionManager.LogoutAsync(false);
+        }
+               
 
         AddLog("🚪 Logged out successfully");
         Toast.Show("Logged out successfully");
@@ -1387,11 +1655,112 @@ public class MainViewModel : ViewModelBase
         _deviceRefreshTimer?.Stop();
         _sessionExpiryTimer?.Stop();
         _recognizingAnimationCts?.Cancel();
-        _translationAnimationCts?.Cancel();
         _recognizingAnimationCts?.Dispose();
-        _translationAnimationCts?.Dispose();
-        _translationService?.Dispose();
+        
+        // Dispose all bubble animation tokens
+        foreach (var bubble in Messages)
+        {
+            bubble.TranslationAnimationCts?.Cancel();
+            bubble.TranslationAnimationCts?.Dispose();
+        }
+        
+        _backendService?.Dispose();
     }
 
+    private void WireServiceEvents(ITranslationService? service)
+    {
+        if (service == null) return;
+        service.LogMessage += OnLogMessage;
+        service.MessageReceived += OnMessageReceived;
+        service.TranslationReceived += OnTranslationReceived;
+        service.SystemMessage += OnSystemMessage;
+        service.SynthesizingStatusChanged += OnSynthesizingStatusChanged;
+    }
+
+    private void UnwireServiceEvents(ITranslationService? service)
+    {
+        if (service == null) return;
+        service.LogMessage -= OnLogMessage;
+        service.MessageReceived -= OnMessageReceived;
+        service.TranslationReceived -= OnTranslationReceived;
+        service.SystemMessage -= OnSystemMessage;
+        service.SynthesizingStatusChanged -= OnSynthesizingStatusChanged;
+    }
+
+    #endregion
+
+    #region Cleanup Methods
+
+    /// <summary>
+    /// Clean up all resources when the application is closing
+    /// </summary>
+    public async Task CleanupAsync()
+    {
+        if (IsRunning)
+        {
+            AddLog("🔄 Application closing - stopping translation...");
+
+            // Wait for synthesis to complete (with timeout) - already handled in MainWindow
+            // Just proceed with stopping translation
+            try
+            {
+                await StopTranslation();
+                AddLog("✅ Translation stopped successfully");
+            }
+            catch (Exception ex)
+            {
+                AddLog($"⚠️ Error stopping translation: {Classify(ex)}");
+            }
+        }
+        else
+        {
+            // Send final session end with logs/transcript
+            try
+            {
+                var sessionLog = BuildSessionLog();
+                var sessionTranscript = BuildSessionTranscript();
+                await _sessionService.EndSessionAsync(sessionLog, sessionTranscript);
+                AddLog("✅ Session end reported to server");
+            }
+            catch (Exception ex)
+            {
+                AddLog($"⚠️ Error reporting session end: {Classify(ex)}");
+            }
+        }
+
+        // Stop all timers
+        try
+        {
+            _deviceRefreshTimer?.Stop();
+            _sessionExpiryTimer?.Stop();
+            AddLog("✅ Timers stopped");
+        }
+        catch (Exception ex)
+        {
+            AddLog($"⚠️ Error stopping timers: {Classify(ex)}");
+        }
+
+        // Cancel all animations
+        try
+        {
+            _recognizingAnimationCts?.Cancel();
+            
+            // Cancel all bubble animations
+            foreach (var bubble in Messages)
+            {
+                bubble.TranslationAnimationCts?.Cancel();
+                bubble.TranslationAnimationCts?.Dispose();
+            }
+            
+            _deviceRefreshCts?.Cancel();
+            AddLog("✅ Animations cancelled");
+        }
+        catch (Exception ex)
+        {
+            AddLog($"⚠️ Error cancelling animations: {Classify(ex)}");
+        }
+
+        AddLog("✅ Application cleanup complete");
+    }
     #endregion
 }

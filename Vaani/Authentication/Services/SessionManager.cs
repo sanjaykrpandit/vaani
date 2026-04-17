@@ -98,14 +98,14 @@ public class SessionManager
     /// <summary>
     /// Stop the current session
     /// </summary>
-    public async Task StopSessionAsync()
-    {
-        if (_currentSession != null)
-        {
-            await _authService.EndSessionAsync();
-        }
-        StopSession();
-    }
+    //public async Task StopSessionAsync()
+    //{
+    //    if (_currentSession != null)
+    //    {
+    //        await _authService.EndSessionAsync();
+    //    }
+    //    StopSession();
+    //}
 
     /// <summary>
     /// Stop session without API call (local only)
@@ -320,13 +320,22 @@ public class SessionManager
 
     }
 
+    public void UpdateSessionId(int sessionId)
+    {
+        if (_currentSession == null)
+            return;
+
+        _currentSession.SessionId = sessionId;
+        SaveSession();
+    }
+
 
 
     /// <summary>
     /// Logout and clear all session data
     /// This will end the session with the API and clear local storage
     /// </summary>
-    public async Task LogoutAsync()
+    public async Task LogoutAsync(bool isRunningTranslation=false)
     {
         // Get statistics before clearing session
         var statistics = GetSessionStatistics();
@@ -334,7 +343,10 @@ public class SessionManager
         // End session with API if active
         if (_currentSession != null && !string.IsNullOrEmpty(_currentSession.SessionToken))
         {
-            await _authService.EndSessionAsync();
+            if (isRunningTranslation)
+            {
+                await _authService.EndSessionAsync();
+            }            
         }
 
         // Stop all timers and clear session data

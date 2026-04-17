@@ -1,0 +1,50 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Vaani.Views.AlreadyRunningWindow"
+        Title="Vaani - Already Running"
+        Width="450" Height="200"
+        CanResize="False"
+        WindowStartupLocation="CenterScreen"
+        Background="#F5F5F5">
+
+    <Grid Margin="30">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Icon and Title -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,20">
+            <TextBlock Text="??" FontSize="32" Margin="0,0,15,0"/>
+            <TextBlock Text="Application Already Running" 
+                       FontSize="18" 
+                       FontWeight="Bold"
+                       VerticalAlignment="Center"/>
+        </StackPanel>
+
+        <!-- Message -->
+        <TextBlock Grid.Row="1" 
+                   TextWrapping="Wrap"
+                   FontSize="14"
+                   Foreground="#333333"
+                   VerticalAlignment="Center">
+            <Run Text="Vaani is already running on this machine."/>
+            <LineBreak/>
+            <LineBreak/>
+            <Run Text="Please close the existing instance before starting a new one, or switch to the running instance."/>
+        </TextBlock>
+
+        <!-- OK Button -->
+        <Button Grid.Row="2"
+                Content="OK"
+                Click="OnOkClick"
+                Width="100"
+                Height="35"
+                HorizontalAlignment="Center"
+                Background="#0078D4"
+                Foreground="White"
+                FontWeight="SemiBold"
+                CornerRadius="4"/>
+    </Grid>
+</Window>

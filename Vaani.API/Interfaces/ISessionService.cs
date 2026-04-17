@@ -14,7 +14,7 @@ public interface ISessionService
     Task<(bool success, string? message, int? sessionId)> StartSessionAsync(string meetingId, string deviceId);
 
        
-    Task<(bool success, int? sessionId, string? accessToken, string? message)> CreateSessionAsync(string meetingId, string deviceId, string deviceName, string appVersion);
+    Task<(bool success, int? sessionId, string? accessToken, string? message)> CreateSessionAsync(string meetingId, string deviceId, string deviceName, string appVersion, string username);
     /// <summary>
     /// Process heartbeat for a session
     /// </summary>

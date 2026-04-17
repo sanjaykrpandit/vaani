@@ -10,7 +10,7 @@ namespace Vaani.API.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/admin/[controller]")]
-[Authorize]
+[Authorize(Roles = "admin")]
 public class AdminMeetingsController : ControllerBase
 {
     private readonly IAdminService _adminService;
@@ -38,11 +38,6 @@ public class AdminMeetingsController : ControllerBase
     {
         try
         {
-            if (!ValidateAdminToken())
-            {
-                return Unauthorized(new { message = "Invalid or expired token" });
-            }
-
             var meetings = await _adminService.GetAllMeetingsAsync();
             return Ok(meetings);
         }
@@ -65,11 +60,7 @@ public class AdminMeetingsController : ControllerBase
     public async Task<ActionResult<MeetingResponse>> GetMeeting(string meetingId)
     {
         try
-        {
-            if (!ValidateAdminToken())
-            {
-                return Unauthorized(new { message = "Invalid or expired token" });
-            }
+        {          
 
             var meeting = await _adminService.GetMeetingByIdAsync(meetingId);
 
@@ -100,11 +91,7 @@ public class AdminMeetingsController : ControllerBase
     public async Task<ActionResult<MeetingResponse>> CreateMeeting([FromBody] CreateMeetingRequest request)
     {
         try
-        {
-            if (!ValidateAdminToken())
-            {
-                return Unauthorized(new { message = "Invalid or expired token" });
-            }
+        {            
 
             if (string.IsNullOrWhiteSpace(request.MeetingId))
             {
@@ -153,11 +140,7 @@ public class AdminMeetingsController : ControllerBase
     public async Task<ActionResult<MeetingResponse>> UpdateMeeting(string meetingId, [FromBody] UpdateMeetingRequest request)
     {
         try
-        {
-            if (!ValidateAdminToken())
-            {
-                return Unauthorized(new { message = "Invalid or expired token" });
-            }
+        {           
 
             if (request.ValidFrom.HasValue && request.ValidUntil.HasValue && request.ValidUntil <= request.ValidFrom)
             {
@@ -194,11 +177,7 @@ public class AdminMeetingsController : ControllerBase
     public async Task<ActionResult> DeleteMeeting(string meetingId)
     {
         try
-        {
-            if (!ValidateAdminToken())
-            {
-                return Unauthorized(new { message = "Invalid or expired token" });
-            }
+        {          
 
             var result = await _adminService.DeleteMeetingAsync(meetingId);
 
@@ -218,17 +197,101 @@ public class AdminMeetingsController : ControllerBase
         }
     }
 
-    private bool ValidateAdminToken()
+    /// <summary>
+    /// Get session metrics for a meeting
+    /// </summary>
+    /// <param name="meetingId">Meeting ID</param>
+    /// <returns>Session metrics and analytics</returns>
+    [HttpGet("{meetingId}/metrics")]
+    [ProducesResponseType(typeof(SessionMetricsDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<SessionMetricsDto>> GetSessionMetrics(string meetingId)
     {
-        var authHeader = Request.Headers.Authorization.FirstOrDefault();
-        if (string.IsNullOrWhiteSpace(authHeader) || !authHeader.StartsWith("Bearer "))
-        {
-            return false;
+        try
+        {          
+
+            var metrics = await _adminService.GetSessionMetricsAsync(meetingId);
+
+            if (metrics == null)
+            {
+                return NotFound(new { message = "Meeting not found" });
+            }
+
+            return Ok(metrics);
         }
-
-        var token = authHeader.Substring("Bearer ".Length).Trim();
-        var (isValid, _, _) = _jwtTokenService.ValidateAdminToken(token);
-
-        return isValid;
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving session metrics for meeting: {MeetingId}", meetingId);
+            return StatusCode(StatusCodes.Status500InternalServerError, new { message = "An error occurred" });
+        }
     }
+
+    /// <summary>
+    /// Get session logs for a specific session
+    /// </summary>
+    /// <param name="sessionId">Session ID</param>
+    /// <returns>List of session logs</returns>
+    [HttpGet("sessions/{sessionId}/logs")]
+    [ProducesResponseType(typeof(IEnumerable<SessionLogDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<IEnumerable<SessionLogDto>>> GetSessionLogs(int sessionId)
+    {
+        try
+        {          
+
+            var logs = await _adminService.GetSessionLogsAsync(sessionId);
+            return Ok(logs);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving session logs for session: {SessionId}", sessionId);
+            return StatusCode(StatusCodes.Status500InternalServerError, new { message = "An error occurred" });
+        }
+    }
+
+    /// <summary>
+    /// Generate encrypted token for meeting app download
+    /// </summary>
+    /// <param name="meetingId">Meeting ID</param>
+    /// <returns>Encrypted token</returns>
+    [HttpPost("{meetingId}/generate-token")]
+    [ProducesResponseType(typeof(GenerateMeetingTokenResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<GenerateMeetingTokenResponse>> GenerateMeetingToken(string meetingId)
+    {
+        try
+        {
+            var response = await _adminService.GenerateMeetingTokenAsync(meetingId);
+
+            if (response == null)
+            {
+                return NotFound(new { message = "Meeting not found or inactive" });
+            }
+
+            _logger.LogInformation("Token generated for meeting: {MeetingId}", meetingId);
+
+            return Ok(response);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error generating token for meeting: {MeetingId}", meetingId);
+            return StatusCode(StatusCodes.Status500InternalServerError, new { message = "An error occurred" });
+        }
+    }
+
+    //private bool ValidateAdminToken()
+    //{
+    //    var authHeader = Request.Headers.Authorization.FirstOrDefault();
+    //    if (string.IsNullOrWhiteSpace(authHeader) || !authHeader.StartsWith("Bearer "))
+    //    {
+    //        return false;
+    //    }
+
+    //    var token = authHeader.Substring("Bearer ".Length).Trim();
+    //    var (isValid, _, _) = _jwtTokenService.ValidateAdminToken(token);
+
+    //    return isValid;
+    //}
 }

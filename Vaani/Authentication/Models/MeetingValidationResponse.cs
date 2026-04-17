@@ -54,7 +54,11 @@ public class MeetingValidationResponse
     /// </summary>
     public string? Message { get; set; }
 
-   
+    /// <summary>
+    /// SignalR hub URL for backend translation.
+    /// Desktop connects here for real-time audio streaming — no Azure credentials needed.
+    /// </summary>
+    public string BackendTranslationHubUrl { get; set; } = string.Empty;
 }
 
 /// <summary>

@@ -129,6 +129,75 @@ namespace Vaani.API.Migrations
                     b.ToTable("azure_subscriptions", (string)null);
                 });
 
+            modelBuilder.Entity("Vaani.API.Models.Entities.Language", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("created_by");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("LanguageCode")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("language_code");
+
+                    b.Property<string>("LanguageFemaleNeural")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("language_female_neural");
+
+                    b.Property<string>("LanguageMaleNeural")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("language_male_neural");
+
+                    b.Property<string>("LanguageName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("language_name");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("UpdatedBy")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LanguageCode")
+                        .IsUnique();
+
+                    b.ToTable("languages", (string)null);
+                });
+
             modelBuilder.Entity("Vaani.API.Models.Entities.Meeting", b =>
                 {
                     b.Property<int>("Id")
@@ -148,6 +217,12 @@ namespace Vaani.API.Migrations
                         .HasColumnName("created_at")
                         .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("created_by");
+
                     b.Property<bool>("IsActive")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")
@@ -160,15 +235,42 @@ namespace Vaani.API.Migrations
                         .HasColumnType("character varying(50)")
                         .HasColumnName("meeting_id");
 
+                    b.Property<string>("MeetingLanguage")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("meeting_language");
+
                     b.Property<string>("MeetingName")
                         .IsRequired()
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)")
                         .HasColumnName("meeting_name");
 
+                    b.Property<string>("PasswordHash")
+                        .HasColumnType("text");
+
+                    b.Property<string>("PasswordSalt")
+                        .HasColumnType("text");
+
+                    b.Property<string>("PublicToken")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("public_token");
+
+                    b.Property<bool>("RequiresPassword")
+                        .HasColumnType("boolean");
+
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
+
+                    b.Property<string>("UpdatedBy")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("updated_by");
 
                     b.Property<DateTime>("ValidFrom")
                         .HasColumnType("timestamp with time zone")
@@ -203,6 +305,10 @@ namespace Vaani.API.Migrations
                         .HasColumnType("character varying(20)")
                         .HasColumnName("app_version");
 
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
                     b.Property<string>("DeviceId")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -231,6 +337,16 @@ namespace Vaani.API.Migrations
                         .HasColumnType("character varying(50)")
                         .HasColumnName("meeting_id");
 
+                    b.Property<string>("SessionLog")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("session_log");
+
+                    b.Property<string>("SessionTrascript")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("session_transcript");
+
                     b.Property<DateTime>("StartedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("timestamp with time zone")
@@ -244,6 +360,11 @@ namespace Vaani.API.Migrations
                         .HasColumnType("character varying(20)")
                         .HasDefaultValue("Active")
                         .HasColumnName("status");
+
+                    b.Property<string>("UserName")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("user_name");
 
                     b.HasKey("Id");
 

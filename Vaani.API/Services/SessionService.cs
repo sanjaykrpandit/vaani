@@ -25,7 +25,7 @@ public class SessionService : ISessionService
         _logger = logger;
     }
        
-    public async Task<(bool success, int? sessionId, string? accessToken, string? message)> CreateSessionAsync(string meetingId, string deviceId, string deviceName, string appVersion)
+    public async Task<(bool success, int? sessionId, string? accessToken, string? message)> CreateSessionAsync(string meetingId, string deviceId, string deviceName, string appVersion, string username)
     {
         try
         {
@@ -58,28 +58,33 @@ public class SessionService : ISessionService
 
             // Check if session already exists for this device
             var existingSession = await _dbContext.Sessions
-                .Where(s => s.MeetingId == meetingId && s.DeviceId == deviceId && s.Status == "Active")
+                .Where(s => s.MeetingId == meetingId && s.DeviceId == deviceId && (s.Status == "Active" || s.Status == "Initial"))
                 .FirstOrDefaultAsync();
 
             // Generate JWT token for API authentication
             var accessToken = _jwtTokenService.GenerateToken(meetingId, deviceId, meeting.ValidUntil);
 
-            if (existingSession != null)
-            {
-                // Log session creation
-                var _sessionLog = new SessionLog
-                {
-                    SessionId = existingSession.Id,
-                    EventType = "SessionCreated",
-                    Timestamp = DateTime.UtcNow,
-                    Details = $"Device: {deviceName}, App: {appVersion}"
-                };
-                _dbContext.SessionLogs.Add(_sessionLog);
-                await _dbContext.SaveChangesAsync();
-
+            if (existingSession != null) {
                 _logger.LogInformation("Returning existing session for device: {DeviceId} in meeting: {MeetingId}", deviceId, meetingId);
                 return (true, existingSession.Id, accessToken, "Existing session found");
             }
+
+            //if (existingSession != null)
+            //{
+            //    // Log session creation
+            //    var _sessionLog = new SessionLog
+            //    {
+            //        SessionId = existingSession.Id,
+            //        EventType = "SessionCreated",
+            //        Timestamp = DateTime.UtcNow,
+            //        Details = $"Device: {deviceName}, User: {username}"
+            //    };
+            //    _dbContext.SessionLogs.Add(_sessionLog);
+            //    await _dbContext.SaveChangesAsync();
+
+            //    _logger.LogInformation("Returning existing session for device: {DeviceId} in meeting: {MeetingId}", deviceId, meetingId);
+            //    return (true, existingSession.Id, accessToken, "Existing session found");
+            //}
 
             // Create session entity
             var session = new Session
@@ -90,7 +95,11 @@ public class SessionService : ISessionService
                 AppVersion = appVersion,
                 StartedAt = DateTime.UtcNow,
                 LastHeartbeat = DateTime.UtcNow,
-                Status = "Active"
+                Status = "Initial",
+                CreatedAt = DateTime.UtcNow,
+                SessionTrascript = string.Empty,
+                SessionLog = string.Empty,
+                UserName = username
             };
 
             _dbContext.Sessions.Add(session);
@@ -102,7 +111,7 @@ public class SessionService : ISessionService
                 SessionId = session.Id,
                 EventType = "SessionCreated",
                 Timestamp = DateTime.UtcNow,
-                Details = $"Device: {deviceName}, App: {appVersion}"
+                Details = $"Device: {deviceName}"
             };
             _dbContext.SessionLogs.Add(sessionLog);
             await _dbContext.SaveChangesAsync();
@@ -153,6 +162,7 @@ public class SessionService : ISessionService
             // Check if session already exists for this device
             var session = await _dbContext.Sessions
                 .Where(s => s.MeetingId == meetingId && s.DeviceId == deviceId)
+                .OrderByDescending(s => s.Id)
                 .FirstOrDefaultAsync();
 
 
@@ -160,8 +170,9 @@ public class SessionService : ISessionService
                 return (false, "No active session found to start", 0);
             }
 
-            session.Status = "Ended";
-            session.EndedAt = DateTime.UtcNow;
+            session.Status = "Active";
+            session.StartedAt = DateTime.UtcNow;
+            _dbContext.Sessions.Update(session);
             await _dbContext.SaveChangesAsync();
 
             // Log session creation
@@ -170,7 +181,7 @@ public class SessionService : ISessionService
                 SessionId = session.Id,
                 EventType = "SessionStarted",
                 Timestamp = DateTime.UtcNow,
-                Details = $"Device: {session.DeviceId}-{session.DeviceName}"
+                Details = ""
             };
             _dbContext.SessionLogs.Add(sessionLog);
             await _dbContext.SaveChangesAsync();
@@ -193,7 +204,7 @@ public class SessionService : ISessionService
         {
             // Get session from database
             var session = await _dbContext.Sessions
-                .Where(s => s.MeetingId == meetingId && s.DeviceId == deviceId && s.Status == "Active")
+                .Where(s => s.MeetingId == meetingId && s.DeviceId == deviceId && (s.Status == "Active" || s.Status == "Initial"))
                 .OrderByDescending(s => s.StartedAt)
                 .FirstOrDefaultAsync();
 
@@ -265,7 +276,7 @@ public class SessionService : ISessionService
 
             var session = await _dbContext.Sessions
                .Where(s => s.MeetingId == request.meetingId && s.DeviceId == request.deviceId)
-               .OrderByDescending(s => s.StartedAt)
+               .OrderByDescending(s => s.Id)
                .FirstOrDefaultAsync();
 
 
@@ -283,6 +294,9 @@ public class SessionService : ISessionService
             // Update session status
             session.Status = "Ended";
             session.EndedAt = DateTime.UtcNow;
+            session.SessionLog = session.SessionLog + " \n " + request.SessionLog;
+            session.SessionTrascript = session.SessionTrascript + " \n " + request.SessionTrascript;
+            _dbContext.Sessions.Update(session);
             await _dbContext.SaveChangesAsync();
 
             // Calculate duration
@@ -325,7 +339,7 @@ public class SessionService : ISessionService
     public async Task<bool> IsSessionValidAsync(string meetingId, string deviceId)
     {
         var session = await _dbContext.Sessions
-            .Where(s => s.MeetingId == meetingId && s.DeviceId == deviceId && s.Status == "Active")
+            .Where(s => s.MeetingId == meetingId && s.DeviceId == deviceId && (s.Status == "Active" || s.Status == "Initial"))
             .AnyAsync();
 
         return session;

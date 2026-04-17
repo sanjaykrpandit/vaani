@@ -7,6 +7,8 @@ public class EndSessionRequest
 {
     public string? meetingId { get; set; }
     public string? deviceId { get; set; }
+    public string SessionLog { get; set; } = string.Empty;
+    public string SessionTrascript { get; set; } = string.Empty;
 }
 
 /// <summary>

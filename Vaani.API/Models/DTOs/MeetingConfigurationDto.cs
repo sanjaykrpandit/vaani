@@ -14,6 +14,12 @@ public class MeetingConfigurationDto
     public ConfigMetadataDto Metadata { get; set; } = new();
     public List<Voice> AvailableVoices { get; set; } = new();
     public List<LanguageInfo> AvailableLanguages { get; set; } = new();
+
+    /// <summary>
+    /// SignalR hub URL embedded in the encrypted config.
+    /// Desktop reads this to connect to the backend translation service.
+    /// </summary>
+    public string BackendTranslationHubUrl { get; set; } = string.Empty;
 }
 
 public class LanguageInfo

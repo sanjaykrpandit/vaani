@@ -6,10 +6,6 @@
     <BuildOutputFolder>$(MSBuildProjectDirectory)\dist</BuildOutputFolder>
   </PropertyGroup>
   <ItemGroup>
-    <Folder Include="src\" />
-    <Folder Include="src\components\" />
     <Folder Include="src\context\" />
-    <Folder Include="src\pages\" />
-    <Folder Include="src\services\" />
   </ItemGroup>
 </Project>

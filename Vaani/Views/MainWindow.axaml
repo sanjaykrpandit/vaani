@@ -233,7 +233,7 @@
                       <Setter Property="Padding" Value="0"/>
                       <Setter Property="Margin" Value="0,0,0,16"/>
                       <Setter Property="Background" Value="Transparent"/>
-                      <Setter Property="Opacity" Value="0"/>
+                      <Setter Property="Opacity" Value="1"/>
                     </Style>
                     <Style Selector="ListBoxItem:selected">
                       <Setter Property="Background" Value="Transparent"/>
@@ -516,13 +516,19 @@
 					<Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
 
 						<!-- Language Settings -->
-						<Grid Grid.Row="0" Grid.ColumnSpan="2" ColumnDefinitions="*,*" Margin="0,0,15,0">
-							<StackPanel Grid.Column="0" VerticalAlignment="Top">
-								<TextBlock Text="Your Language" Foreground="White"  FontSize="13" Margin="0,0,0,7"/>
+						<Grid Grid.Row="0"
+      Grid.ColumnSpan="2"
+      RowDefinitions="Auto, Auto"
+      ColumnDefinitions="*,*"
+      Margin="0,0,15,0">
+
+							<!-- FIRST ROW: Dropdowns -->
+							<StackPanel Grid.Row="0" Grid.Column="0" Margin="0,0,5,10">
+								<TextBlock Text="Your Language" Foreground="White" FontSize="13" Margin="0,0,0,7"/>
 								<ComboBox ItemsSource="{Binding Languages}"
-                                          SelectedItem="{Binding SelectedSourceLanguage, Mode=TwoWay}"
-                                          IsEnabled="{Binding !IsRunning}"
-                                          HorizontalAlignment="Stretch"  FontSize="13">
+										  SelectedItem="{Binding SelectedSourceLanguage, Mode=TwoWay}"
+										  IsEnabled="{Binding !IsRunning}"
+										  HorizontalAlignment="Stretch" FontSize="13">
 									<ComboBox.ItemTemplate>
 										<DataTemplate>
 											<TextBlock Text="{Binding DisplayName}" />
@@ -531,12 +537,12 @@
 								</ComboBox>
 							</StackPanel>
 
-							<StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Top">
-								<TextBlock Text="Gender" Foreground="White"  FontSize="13" Margin="0,0,0,7"/>
+							<StackPanel Grid.Row="0" Grid.Column="1" Margin="5,0,0,10">
+								<TextBlock Text="Gender" Foreground="White" FontSize="13" Margin="0,0,0,7"/>
 								<ComboBox ItemsSource="{Binding Genders}"
-                                          SelectedItem="{Binding SelectedGender, Mode=TwoWay}"
-                                          IsEnabled="{Binding !IsRunning}"
-                                          HorizontalAlignment="Stretch"  FontSize="13">
+										  SelectedItem="{Binding SelectedGender, Mode=TwoWay}"
+										  IsEnabled="{Binding !IsRunning}"
+										  HorizontalAlignment="Stretch" FontSize="13">
 									<ComboBox.ItemTemplate>
 										<DataTemplate>
 											<TextBlock Text="{Binding DisplayName}" />
@@ -545,7 +551,18 @@
 								</ComboBox>
 							</StackPanel>
 
+							<!-- SECOND ROW: Label -->
+							<StackPanel Grid.Row="1" 
+										IsVisible="{Binding IsBypassModeEnabled}" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,1,0,0">
+								<TextBlock Text="(Bypass audio mode enabled: same source and target language detected.)"
+									   FontSize="11"
+									   Foreground="#CCCCCC"
+									   FontFamily="Segoe UI"
+									   FontWeight="SemiBold"
+									   FontStyle="Italic"/>
+							</StackPanel>
 						</Grid>
+
 
 						<!-- Input Devices Radio List -->
             <StackPanel Grid.Row="2"
@@ -1348,32 +1365,48 @@
           <TextBlock Text="Setup Meeting Audio"
                   FontSize="12"
                   Foreground="#333" TextWrapping="Wrap"
-             MaxWidth="350" FontWeight="SemiBold" Padding="4"/>
+             MaxWidth="350" FontWeight="SemiBold" Padding="2"/>
           
           <TextBlock Text="• Microphone: CABLE-A Output (VB-Audio Cable A)"
                     FontSize="12"
                     Foreground="#333" TextWrapping="Wrap"
-               MaxWidth="350" Padding="4"/>
+               MaxWidth="350" Padding="2"/>
 
           <TextBlock Text="• Speaker: CABLE-B Input (VB-Audio Cable B)"
                      FontSize="12"
                      Foreground="#333" TextWrapping="Wrap"
-                MaxWidth="350" Padding="4"/>
+                MaxWidth="350" Padding="2"/>
           
         </StackPanel>
 
         <!-- Close Button -->
-        <Button Content="Got it"
-                HorizontalAlignment="Center"
-                Padding="18,6"
-                FontSize="12"
-                FontWeight="SemiBold"
-                Background="#FFB74D"
-                Foreground="#222"
-                CornerRadius="16"
-                Command="{Binding CloseUserGuideCommand}"/>
+		  <Button Content="Got it"
+			HorizontalAlignment="Center"
+			Padding="18,6"
+			FontSize="12"
+			FontWeight="SemiBold"
+			Background="#FFB74D"
+			Foreground="#222"
+			CornerRadius="16"
+			Command="{Binding CloseUserGuideCommand}">
+			  <Button.Styles>
+				  <!-- This targets the internal part of the button that handles hover colors -->
+				  <Style Selector="Button:pointerover /template/ ContentPresenter">
+					  <!-- Set your desired gray background here -->
+					  <Setter Property="Background" Value="#E0E0E0" />
+					  <!-- Ensure text remains visible -->
+					  <Setter Property="Foreground" Value="#222" />
+				  </Style>
 
-      </StackPanel>
+				  <!-- Optional: Style for when the button is actually clicked/pressed -->
+				  <Style Selector="Button:pressed /template/ ContentPresenter">
+					  <Setter Property="Background" Value="#CCCCCC" />
+				  </Style>
+			  </Button.Styles>
+		  </Button>
+
+
+	  </StackPanel>
     </Border>
 
 

@@ -28,6 +28,11 @@ public class SessionInfo
     public string SessionToken { get; set; } = string.Empty;
 
     /// <summary>
+    /// Server-side session identifier (Sessions table ID)
+    /// </summary>
+    public int? SessionId { get; set; }
+
+    /// <summary>
     /// Device identifier for this session
     /// </summary>
     public string DeviceId { get; set; } = string.Empty;

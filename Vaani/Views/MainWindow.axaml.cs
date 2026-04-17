@@ -1,4 +1,4 @@
-using Avalonia;
+﻿using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Threading;
 using Avalonia.Media;
@@ -7,7 +7,9 @@ using Avalonia.VisualTree;
 using ReactiveUI;
 using System;
 using System.Collections.Specialized;
+using System.ComponentModel;
 using System.Linq;
+using System.Threading.Tasks;
 using Vaani.ViewModels;
 
 namespace Vaani.Views;
@@ -19,6 +21,7 @@ public partial class MainWindow : Window
     private bool _isNearBottom = true;
     private bool _isScrolling = false;
     private DispatcherTimer? _smoothScrollTimer;
+    private bool _isClosing = false;
 
     public MainWindow()
     {
@@ -74,6 +77,60 @@ public partial class MainWindow : Window
                 };
             }
         };
+
+        // Handle window closing event
+        this.Closing += OnWindowClosing;
+    }
+
+    private async void OnWindowClosing(object? sender, WindowClosingEventArgs e)
+    {
+        // Prevent multiple close attempts
+        if (_isClosing)
+            return;
+
+        if (DataContext is MainViewModel viewModel)
+        {
+            // Check if translation is running or synthesis is active
+            if (viewModel.IsRunning || viewModel.IsSynthesizing)
+            {
+                // Cancel the close event to perform cleanup first
+                 e.Cancel = true;
+                _isClosing = true;
+
+                try
+                {
+                    await viewModel.CleanupAsync();
+                }              
+                finally
+                {
+                    // Dispose ViewModel resources
+                    viewModel.Dispose();
+
+                    // Stop smooth scroll timer
+                    _smoothScrollTimer?.Stop();
+
+                    // Remove the closing event handler to prevent infinite loop
+                    this.Closing -= OnWindowClosing;
+
+                    // Now close the window
+                    this.Close();
+                }
+            }
+            else
+            {
+                // Not running, just cleanup
+                try
+                {
+                    await viewModel.CleanupAsync();
+                    viewModel.Dispose();
+                    _smoothScrollTimer?.Stop();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"⚠️ Error during disposal: {ex.Message}");
+                }
+            }
+        }
     }
 
     private void Messages_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)

@@ -1,8 +1,8 @@
+using Microsoft.EntityFrameworkCore;
+using Vaani.API.Data;
 using Vaani.API.Interfaces;
 using Vaani.API.Models.DTOs;
 using Vaani.API.Models.Entities;
-using Microsoft.EntityFrameworkCore;
-using Vaani.API.Data;
 
 namespace Vaani.API.Services;
 
@@ -15,17 +15,22 @@ public class MeetingService : IMeetingService
     private readonly IEncryptionService _encryptionService;
     private readonly ISessionService _sessionService;
     private readonly ILogger<MeetingService> _logger;
+    private readonly PasswordHashingService _passwordHashingService;
+    private readonly IConfiguration _configuration;
 
     public MeetingService(
         VaaniDbContext dbContext,
         IEncryptionService encryptionService,
         ISessionService sessionService,
-        ILogger<MeetingService> logger)
+        ILogger<MeetingService> logger,
+        IConfiguration configuration)
     {
         _dbContext = dbContext;
         _encryptionService = encryptionService;
         _sessionService = sessionService;
         _logger = logger;
+        _configuration = configuration;
+        _passwordHashingService = new PasswordHashingService();
     }
 
     public async Task<MeetingValidationResponse> ValidateMeetingAsync(MeetingValidationRequest request)
@@ -64,7 +69,9 @@ public class MeetingService : IMeetingService
 
             // Check time window
             var now = DateTime.UtcNow;
-            if (now < meeting.ValidFrom)
+            //start 15 minutes before validfrom
+            var startFrom = meeting.ValidFrom.AddMinutes(-10);
+            if (now < startFrom)
             {
                 return new MeetingValidationResponse
                 {
@@ -74,7 +81,8 @@ public class MeetingService : IMeetingService
                 };
             }
 
-            if (now > meeting.ValidUntil)
+            var endTime = meeting.ValidUntil.AddMinutes(+15);
+            if (now > endTime)
             {
                 return new MeetingValidationResponse
                 {
@@ -84,8 +92,35 @@ public class MeetingService : IMeetingService
                 };
             }
 
-            // Create configuration DTO
-            var config = await GetMeetingConfigurationAsync(meeting.MeetingId);
+            // Check password if required
+            if (meeting.RequiresPassword)
+            {
+                if (string.IsNullOrWhiteSpace(request.Password))
+                {
+                    _logger.LogWarning("Password required but not provided for meeting: {MeetingId}", request.MeetingId);
+                    return new MeetingValidationResponse
+                    {
+                        IsValid = false,
+                        ErrorCode = "PASSWORD_REQUIRED",
+                        Message = "This meeting requires a password"
+                    };
+                }
+
+                if (!_passwordHashingService.VerifyPassword(request.Password, meeting.PasswordHash!, meeting.PasswordSalt!))
+                {
+                    _logger.LogWarning("Incorrect password provided for meeting: {MeetingId}", request.MeetingId);
+                    return new MeetingValidationResponse
+                    {
+                        IsValid = false,
+                        ErrorCode = "PASSWORD_INCORRECT",
+                        Message = "Incorrect meeting password"
+                    };
+                }
+            }
+
+            // Create configuration DTO — pass the already-loaded meeting entity to avoid
+            // a second DB round-trip inside GetMeetingConfigurationAsync.
+            var config = await BuildConfigurationAsync(meeting);
             if (config == null)
             {
                 return new MeetingValidationResponse
@@ -100,7 +135,8 @@ public class MeetingService : IMeetingService
                 request.MeetingId,
                 request.DeviceId,
                 request.DeviceName,
-                request.AppVersion
+                request.AppVersion,
+                request.UserName
             );
 
             if (!success)
@@ -130,6 +166,8 @@ public class MeetingService : IMeetingService
                 EncryptedConfig = encryptedConfig,
                 ValidUntil = meeting.ValidUntil,
                 RemainingMinutes = remainingMinutes,
+                // ✅ Backend translation hub URL — desktop connects here instead of calling Azure directly
+                BackendTranslationHubUrl = _configuration["Translation:HubUrl"] ?? "/hubs/translation",
                 Features = new MeetingFeaturesDto
                 {
                     AllowReconnect = true,
@@ -149,7 +187,6 @@ public class MeetingService : IMeetingService
             };
         }
     }
-
     public async Task<MeetingConfigurationDto?> GetMeetingConfigurationAsync(string meetingId)
     {
         var meeting = await _dbContext.Meetings
@@ -158,24 +195,76 @@ public class MeetingService : IMeetingService
 
         if (meeting == null) return null;
 
+        return await BuildConfigurationAsync(meeting);
+    }
+
+    /// <summary>
+    /// Builds the configuration DTO from an already-loaded <see cref="Meeting"/> entity.
+    /// Called by both <see cref="GetMeetingConfigurationAsync"/> and
+    /// <see cref="ValidateMeetingAsync"/> to avoid fetching the meeting twice.
+    /// </summary>
+    private async Task<MeetingConfigurationDto?> BuildConfigurationAsync(Meeting meeting)
+    {
+        var languages = await _dbContext.Languages
+            .Where(l => l.IsActive)
+            .ToListAsync();
+
+        var availableLanguages = languages.Select(lang => new LanguageInfo
+        {
+            Code = lang.LanguageCode,
+            DisplayName = lang.LanguageName
+        }).ToList();
+
+        var availableVoices = languages.SelectMany(lang => new[]
+        {
+            new Voice
+            {
+                Name = lang.LanguageMaleNeural,
+                DisplayName = lang.LanguageMaleNeural.Replace(lang.LanguageCode + "-", ""),
+                LanguageCode = lang.LanguageCode,
+                Gender = "Male"
+            },
+            new Voice
+            {
+                Name = lang.LanguageFemaleNeural,
+                DisplayName = lang.LanguageFemaleNeural.Replace(lang.LanguageCode + "-", ""),
+                LanguageCode = lang.LanguageCode,
+                Gender = "Female"
+            }
+        }).ToList();
+
+        // VendorLanguage and voice are configurable per deployment (appsettings.json).
+        var vendorLangCode = _configuration["Translation:VendorLanguage"] ?? "hi-IN";
+        var vendorVoiceName = _configuration["Translation:VendorVoice"] ?? "hi-IN-SwaraNeural";
+
+        var organizerVoice = availableVoices
+            .FirstOrDefault(v => v.LanguageCode == meeting.MeetingLanguage && v.Gender == "Male")?.Name
+            ?? "en-US-JennyNeural";
+
         return new MeetingConfigurationDto
         {
             MeetingId = meeting.MeetingId,
             MeetingName = meeting.MeetingName,
             AzureConfig = new AzureConfigDto
             {
-                SubscriptionKey = meeting.AzureSubscription.SubscriptionKey,
-                Region = meeting.AzureSubscription.Region
+                // Never send Azure credentials to the desktop client.
+                // Backend owns Azure access end-to-end.
+                SubscriptionKey = string.Empty,
+                Region = string.Empty
             },
             TranslationConfig = new TranslationConfigDto
             {
-                VendorLanguage = new LanguageConfigDto { Code = "hi-IN", Voice = "hi-IN-SwaraNeural" },
-                OrganizerLanguage = new LanguageConfigDto { Code = "en-US", Voice = "en-US-JennyNeural" }
+                VendorLanguage = new LanguageConfigDto { Code = vendorLangCode, Voice = vendorVoiceName },
+                OrganizerLanguage = new LanguageConfigDto
+                {
+                    Code = meeting.MeetingLanguage,
+                    Voice = organizerVoice
+                }
             },
             TimeWindow = new TimeWindowDto
             {
-                ValidFrom = meeting.ValidFrom,
-                ValidUntil = meeting.ValidUntil
+                ValidFrom = meeting.ValidFrom.AddMinutes(-10),
+                ValidUntil = meeting.ValidUntil.AddMinutes(+15)
             },
             Features = new MeetingFeaturesDto
             {
@@ -189,62 +278,11 @@ public class MeetingService : IMeetingService
                 EncryptedAt = DateTime.UtcNow,
                 ConfigVersion = 1
             },
-            AvailableLanguages = new List<LanguageInfo>
-            {
-                new LanguageInfo { Code = "en-US", DisplayName = "English (US)" },
-                new LanguageInfo { Code = "en-GB", DisplayName = "English (UK)" },
-                new LanguageInfo { Code = "hi-IN", DisplayName = "Hindi (India)" },
-                new LanguageInfo { Code = "es-ES", DisplayName = "Spanish (Spain)" },
-                new LanguageInfo { Code = "fr-FR", DisplayName = "French (France)" },
-                new LanguageInfo { Code = "de-DE", DisplayName = "German (Germany)" },
-                new LanguageInfo { Code = "ja-JP", DisplayName = "Japanese (Japan)" },
-                new LanguageInfo { Code = "zh-CN", DisplayName = "Chinese (Simplified)" }
-            },
-            AvailableVoices = new List<Voice>
-            {
-           // English (US)
-            new Voice { Name = "en-US-GuyNeural", DisplayName = "Guy (Natural)", LanguageCode = "en-US", Gender = "Male" },
-            new Voice { Name = "en-US-DavisNeural", DisplayName = "Davis (Natural)", LanguageCode = "en-US", Gender = "Male" },
-            new Voice { Name = "en-US-JasonNeural", DisplayName = "Jason (Natural)", LanguageCode = "en-US", Gender = "Male" },
-            new Voice { Name = "en-US-AriaNeural", DisplayName = "Aria (Natural)", LanguageCode = "en-US", Gender = "Female" },
-            new Voice { Name = "en-US-JennyNeural", DisplayName = "Jenny (Natural)", LanguageCode = "en-US", Gender = "Female" },
-            new Voice { Name = "en-US-NancyNeural", DisplayName = "Nancy (Natural)", LanguageCode = "en-US", Gender = "Female" },
-
-            // English (UK)
-            new Voice { Name = "en-GB-RyanNeural", DisplayName = "Ryan (Natural)", LanguageCode = "en-GB", Gender = "Male" },
-            new Voice { Name = "en-GB-ThomasNeural", DisplayName = "Thomas (Natural)", LanguageCode = "en-GB", Gender = "Male" },
-            new Voice { Name = "en-GB-LibbyNeural", DisplayName = "Libby (Natural)", LanguageCode = "en-GB", Gender = "Female" },
-            new Voice { Name = "en-GB-SoniaNeural", DisplayName = "Sonia (Natural)", LanguageCode = "en-GB", Gender = "Female" },
-
-            // Hindi (India)
-            new Voice { Name = "hi-IN-MadhurNeural", DisplayName = "Madhur (Natural)", LanguageCode = "hi-IN", Gender = "Male" },
-            new Voice { Name = "hi-IN-SwaraNeural", DisplayName = "Swara (Natural)", LanguageCode = "hi-IN", Gender = "Female" },
-
-            // Spanish (Spain)
-            new Voice { Name = "es-ES-AlvaroNeural", DisplayName = "Alvaro (Natural)", LanguageCode = "es-ES", Gender = "Male" },
-            new Voice { Name = "es-ES-ElviraNeural", DisplayName = "Elvira (Natural)", LanguageCode = "es-ES", Gender = "Female" },
-
-            // French (France)
-            new Voice { Name = "fr-FR-HenriNeural", DisplayName = "Henri (Natural)", LanguageCode = "fr-FR", Gender = "Male" },
-            new Voice { Name = "fr-FR-DeniseNeural", DisplayName = "Denise (Natural)", LanguageCode = "fr-FR", Gender = "Female" },
-
-            // German (Germany)
-            new Voice { Name = "de-DE-ConradNeural", DisplayName = "Conrad (Natural)", LanguageCode = "de-DE", Gender = "Male" },
-            new Voice { Name = "de-DE-KatjaNeural", DisplayName = "Katja (Natural)", LanguageCode = "de-DE", Gender = "Female" },
-
-            // Japanese (Japan)
-            new Voice { Name = "ja-JP-KeitaNeural", DisplayName = "Keita (Natural)", LanguageCode = "ja-JP", Gender = "Male" },
-            new Voice { Name = "ja-JP-NanamiNeural", DisplayName = "Nanami (Natural)", LanguageCode = "ja-JP", Gender = "Female" },
-
-            // Chinese (Simplified)
-            new Voice { Name = "zh-CN-YunxiNeural", DisplayName = "Yunxi (Natural)", LanguageCode = "zh-CN", Gender = "Male" },
-            new Voice { Name = "zh-CN-XiaoxiaoNeural", DisplayName = "Xiaoxiao (Natural)", LanguageCode = "zh-CN", Gender = "Female" }
-
-            }
-
+            AvailableLanguages = availableLanguages,
+            AvailableVoices = availableVoices,
+            BackendTranslationHubUrl = _configuration["Translation:HubUrl"] ?? "/hubs/translation"
         };
     }
-
     public async Task<bool> IsMeetingValidAsync(string meetingId)
     {
         var meeting = await _dbContext.Meetings

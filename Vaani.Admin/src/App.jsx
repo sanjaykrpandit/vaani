@@ -4,7 +4,13 @@ import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import AddMeeting from './pages/AddMeeting'
 import EditMeeting from './pages/EditMeeting'
+import MeetingMetricsPage from './pages/MeetingMetricsPage'
+import PublicMeetingAccess from './pages/PublicMeetingAccess'
+import MeetingDownload from './pages/MeetingDownload'
+import Thanks from './pages/Thanks'
 import ProtectedRoute from './components/ProtectedRoute'
+import LanguageList from './components/LanguageList'
+import UserList from './components/UserList'
 import './App.css'
 
 function App() {
@@ -12,10 +18,18 @@ function App() {
 
   return (
     <Routes>
-      <Route 
-        path="/login" 
-        element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Login />} 
+      {/* Public routes - no authentication required */}
+      <Route path="/public-access" element={<PublicMeetingAccess />} />
+      <Route path="/meeting-download" element={<MeetingDownload />} />
+      <Route path="/thanks" element={<Thanks />} />
+
+      {/* Authentication route */}
+      <Route
+        path="/login"
+        element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Login />}
       />
+
+      {/* Protected admin routes */}
       <Route
         path="/dashboard"
         element={
@@ -37,6 +51,30 @@ function App() {
         element={
           <ProtectedRoute>
             <EditMeeting />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/meetings/:meetingId/metrics"
+        element={
+          <ProtectedRoute>
+            <MeetingMetricsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/languages"
+        element={
+          <ProtectedRoute>
+            <LanguageList />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/users"
+        element={
+          <ProtectedRoute>
+            <UserList />
           </ProtectedRoute>
         }
       />

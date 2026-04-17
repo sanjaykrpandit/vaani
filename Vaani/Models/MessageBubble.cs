@@ -43,4 +43,7 @@ public class MessageBubble : ReactiveObject
         get => _isSynthesizing;
         set => this.RaiseAndSetIfChanged(ref _isSynthesizing, value);
     }
+
+    // ? Per-bubble cancellation token for translation animation
+    public CancellationTokenSource? TranslationAnimationCts { get; set; }
 }

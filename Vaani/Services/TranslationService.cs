@@ -16,7 +16,7 @@ namespace Vaani.Services;
 /// Supports parallel voice processing with Channel-based async iteration (no blocking loops).
 /// Optimized for low latency with smart microphone pause/resume and enhanced loopback prevention.
 /// </summary>
-public class TranslationService : IDisposable
+public class TranslationService : ITranslationService
 {
     private DeviceService _deviceService;
     private CancellationTokenSource? _cts;
@@ -69,6 +69,9 @@ public class TranslationService : IDisposable
     // ✅ LOOPBACK PREVENTION: Enhanced protection flag and lock
     private volatile bool _microphonePausedForPlayback = false;
     private readonly SemaphoreSlim _microphoneControlLock = new(1, 1);
+
+    private volatile bool _isOutgoingSynthesizing = false;
+    private volatile bool _isIncomingSynthesizing = false;
 
     public TranslationService()
     {
@@ -319,12 +322,238 @@ public class TranslationService : IDisposable
 
     public async Task StopTranslationAsync()
     {
+        if (_cts == null || _cts.Token.IsCancellationRequested)
+        {
+            _logger.Info(LogCategory.System, "Translation is not running or already stopping");
+            return;
+        }
 
-        //check is synthesis is ongoing
+        _logger.Info(LogCategory.System, "╔══════════════════════════════════════════════════════════╗");
+        _logger.Info(LogCategory.System, "║           STOPPING TRANSLATION SERVICE                   ║");
+        _logger.Info(LogCategory.System, "╚══════════════════════════════════════════════════════════╝");
 
-       
+        // 1. Log synthesis status (but don't wait - ViewModel already did)
+        if (_isOutgoingSynthesizing || _isIncomingSynthesizing)
+        {
+            _logger.Info(LogCategory.System, "ℹ️ Synthesis status:");
+            _logger.Info(LogCategory.System, $"   Outgoing: {(_isOutgoingSynthesizing ? "active" : "idle")}");
+            _logger.Info(LogCategory.System, $"   Incoming: {(_isIncomingSynthesizing ? "active" : "idle")}");
+        }
 
+        // 2. Stop Azure recognizers FIRST (before cancelling token)
+        var stopTasks = new List<Task>();
 
+        if (_outgoingRecognizer != null)
+        {
+            _logger.Info(LogCategory.Outgoing, "🎤 Stopping outgoing recognizer...");
+            stopTasks.Add(Task.Run(async () =>
+            {
+                try
+                {
+                    await _outgoingRecognizer.StopContinuousRecognitionAsync();
+                    _logger.Info(LogCategory.Outgoing, "✅ Outgoing recognizer stopped");
+                }
+                catch (Exception ex)
+                {
+                    _logger.Warning(LogCategory.Outgoing, $"⚠️ Error stopping: {ex.Message}");
+                }
+            }));
+        }
+
+        if (_incomingRecognizer != null)
+        {
+            _logger.Info(LogCategory.Incoming, "🎤 Stopping incoming recognizer...");
+            stopTasks.Add(Task.Run(async () =>
+            {
+                try
+                {
+                    await _incomingRecognizer.StopContinuousRecognitionAsync();
+                    _logger.Info(LogCategory.Incoming, "✅ Incoming recognizer stopped");
+                }
+                catch (Exception ex)
+                {
+                    _logger.Warning(LogCategory.Incoming, $"⚠️ Error stopping: {ex.Message}");
+                }
+            }));
+        }
+
+        if (_incomingWaveIn != null)
+        {
+            _logger.Info(LogCategory.Incoming, "🎙️ Stopping audio capture...");
+            stopTasks.Add(Task.Run(() =>
+            {
+                try
+                {
+                    _incomingWaveIn.StopRecording();
+                    _logger.Info(LogCategory.Incoming, "✅ Audio capture stopped");
+                }
+                catch (Exception ex)
+                {
+                    _logger.Warning(LogCategory.Incoming, $"⚠️ Error stopping: {ex.Message}");
+                }
+            }));
+        }
+
+        // Wait for recognizers to stop (with timeout)
+        if (stopTasks.Count > 0)
+        {
+            try
+            {
+                await Task.WhenAll(stopTasks).WaitAsync(TimeSpan.FromSeconds(3));
+                _logger.Info(LogCategory.System, "✅ All recognizers stopped");
+            }
+            catch (TimeoutException)
+            {
+                _logger.Warning(LogCategory.System, "⚠️ Recognizer stop timed out");
+            }
+        }
+
+        // 3. Clear and close playback channels
+        try
+        {
+            // Clear outgoing channel
+            if (_outgoingPlaybackChannel != null)
+            {
+                _logger.Info(LogCategory.Outgoing, "🧹 Clearing outgoing playback queue...");
+                _outgoingPlaybackChannel.Writer.TryComplete();
+
+                int outgoingCleared = 0;
+                while (_outgoingPlaybackChannel.Reader.TryRead(out _))
+                {
+                    outgoingCleared++;
+                }
+
+                if (outgoingCleared > 0)
+                {
+                    _logger.Info(LogCategory.Outgoing, $"🗑️ Cleared {outgoingCleared} queued item(s)");
+                }
+            }
+
+            // Clear incoming channel
+            if (_incomingPlaybackChannel != null)
+            {
+                _logger.Info(LogCategory.Incoming, "🧹 Clearing incoming playback queue...");
+                _incomingPlaybackChannel.Writer.TryComplete();
+
+                int incomingCleared = 0;
+                while (_incomingPlaybackChannel.Reader.TryRead(out _))
+                {
+                    incomingCleared++;
+                }
+
+                if (incomingCleared > 0)
+                {
+                    _logger.Info(LogCategory.Incoming, $"🗑️ Cleared {incomingCleared} queued item(s)");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(LogCategory.System, $"Error clearing channels: {ex.Message}");
+        }
+
+        // 4. Cancel the cancellation token
+        _logger.Info(LogCategory.System, "🛑 Cancelling all operations...");
+        try
+        {
+            _cts.Cancel();
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(LogCategory.System, $"Error cancelling: {ex.Message}");
+        }
+
+        // 5. Wait for background tasks
+        var running = _runningTask;
+        if (running != null)
+        {
+            _logger.Info(LogCategory.System, "⏳ Waiting for flows to terminate (timeout: 5s)...");
+
+            try
+            {
+                await running.WaitAsync(TimeSpan.FromSeconds(5));
+                _logger.Info(LogCategory.System, "✅ All flows terminated gracefully");
+            }
+            catch (OperationCanceledException)
+            {
+                _logger.Info(LogCategory.System, "✅ Flows cancelled");
+            }
+            catch (TimeoutException)
+            {
+                _logger.Warning(LogCategory.System, "⚠️ Shutdown timed out - forcing termination");
+            }
+            catch (Exception ex)
+            {
+                _logger.Error(LogCategory.System, $"❌ Shutdown error: {ex.Message}");
+            }
+        }
+
+        // 6. Reset flags
+        _isOutgoingSynthesizing = false;
+        _isIncomingSynthesizing = false;
+        _microphonePausedForPlayback = false;
+
+        _logger.Info(LogCategory.System, "╔══════════════════════════════════════════════════════════╗");
+        _logger.Info(LogCategory.System, "║      TRANSLATION SERVICE STOPPED SUCCESSFULLY            ║");
+        _logger.Info(LogCategory.System, "╚══════════════════════════════════════════════════════════╝");
+    }
+    public async Task StopTranslationAsyncoooo()
+    {
+        if (_cts == null || _cts.Token.IsCancellationRequested)
+        {
+            _logger.Info(LogCategory.System, "Translation is not running or already stopping");
+            return;
+        }
+
+        _logger.Info(LogCategory.System, "╔══════════════════════════════════════════════════════════╗");
+        _logger.Info(LogCategory.System, "║           STOPPING TRANSLATION SERVICE                   ║");
+        _logger.Info(LogCategory.System, "╚══════════════════════════════════════════════════════════╝");
+
+        try
+        {
+            // 1. ✅ CRITICAL: Close channels FIRST - this breaks the await foreach loops
+            _logger.Info(LogCategory.System, "🔇 Closing playback channels...");
+            try
+            {
+                _outgoingPlaybackChannel?.Writer.TryComplete();
+                _incomingPlaybackChannel?.Writer.TryComplete();
+                _logger.Info(LogCategory.System, "✅ Channels closed");
+            }
+            catch (Exception ex)
+            {
+                _logger.Error(LogCategory.System, $"Error closing channels: {ex.Message}");
+            }
+
+            // 2. Cancel the master token - interrupts audio playback
+            _logger.Info(LogCategory.System, "🛑 Triggering cancellation...");
+            _cts.Cancel();
+            _logger.Info(LogCategory.System, "✅ Cancellation triggered");
+
+            // 3. Reset synthesis flags immediately for UI responsiveness
+            _isOutgoingSynthesizing = false;
+            _isIncomingSynthesizing = false;
+            _microphonePausedForPlayback = false;
+
+            // 4. ✅ NEW: Give a brief moment for immediate cleanup, then return
+            //    The finally blocks will complete in background
+            _logger.Info(LogCategory.System, "⏱️ Allowing 100ms for immediate cleanup...");
+            await Task.Delay(100);
+
+            _logger.Info(LogCategory.System, "✅ Service stop initiated - cleanup continuing in background");
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(LogCategory.System, $"Error during stop: {ex.Message}");
+        }
+
+        _logger.Info(LogCategory.System, "╔══════════════════════════════════════════════════════════╗");
+        _logger.Info(LogCategory.System, "║      TRANSLATION SERVICE STOPPED                         ║");
+        _logger.Info(LogCategory.System, "╚══════════════════════════════════════════════════════════╝");
+    }
+    public async Task StopTranslationAsyncOld()
+    {
+
+        //check is synthesis is ongoing     
 
         if (_cts != null && !_cts.Token.IsCancellationRequested)
         {
@@ -616,12 +845,23 @@ public class TranslationService : IDisposable
 
     private async Task ProcessOutgoingPlaybackAsync(MMDevice? cableDevice, CancellationToken ct)
     {
+        _logger.Info(LogCategory.Outgoing, "[OUT] 🎵 Playback processor started");
+
         try
         {
             await foreach (var item in _outgoingPlaybackChannel!.Reader.ReadAllAsync(ct))
             {
-                if (ct.IsCancellationRequested || _isSpeakerMuted)
+                if (ct.IsCancellationRequested)
+                {
+                    _logger.Info(LogCategory.Outgoing, "[OUT] ⏹️ Cancellation requested - stopping playback");
+                    break;
+                }
+
+                if (_isSpeakerMuted)
+                {
+                    _logger.Debug(LogCategory.Outgoing, "[OUT] 🔇 Skipping playback - speaker muted");
                     continue;
+                }
 
                 try
                 {
@@ -629,16 +869,25 @@ public class TranslationService : IDisposable
                 }
                 catch (OperationCanceledException)
                 {
+                    _logger.Info(LogCategory.Outgoing, "[OUT] ⏹️ Playback lock acquisition cancelled");
                     break;
                 }
 
                 try
                 {
-                    var audioDurationMs = AudioPlaybackManager.CalculateAudioDuration(item.result.AudioData.Length, AudioConfiguration.SampleRate,
-                        AudioConfiguration.Channels, AudioConfiguration.BitsPerSample);
+                    // Mark synthesis as active
+                    _isOutgoingSynthesizing = true;
 
-                    _logger.Info(LogCategory.Playback, $"[OUT] Playing audio ({audioDurationMs:F0}ms) to meeting...");
+                    var audioDurationMs = AudioPlaybackManager.CalculateAudioDuration(
+                        item.result.AudioData.Length,
+                        AudioConfiguration.SampleRate,
+                        AudioConfiguration.Channels,
+                        AudioConfiguration.BitsPerSample);
 
+                    _logger.Info(LogCategory.Playback, $"[OUT] 🔊 Starting playback ({audioDurationMs:F0}ms) to meeting...");
+                    _logger.Debug(LogCategory.Playback, $"[OUT] Original: '{item.original}' → Translated: '{item.translated}'");
+
+                    // Notify UI that synthesis started
                     SynthesizingStatusChanged?.Invoke(this, new SynthesizingEventArgs
                     {
                         OriginalText = item.original,
@@ -647,8 +896,12 @@ public class TranslationService : IDisposable
                         IsSynthesizing = true
                     });
 
+                    // Play audio (this will be cancelled if ct is triggered)
                     await AudioPlaybackManager.PlayAudioToCableDeviceAsync(item.result.AudioData, cableDevice, ct);
 
+                    _logger.Info(LogCategory.Playback, $"[OUT] ✅ Playback completed successfully ({audioDurationMs:F0}ms)");
+
+                    // Notify UI that synthesis completed
                     SynthesizingStatusChanged?.Invoke(this, new SynthesizingEventArgs
                     {
                         OriginalText = item.original,
@@ -657,22 +910,56 @@ public class TranslationService : IDisposable
                         IsSynthesizing = false
                     });
                 }
-                catch (OperationCanceledException) { }
+                catch (OperationCanceledException)
+                {
+                    _logger.Warning(LogCategory.Playback, "[OUT] ⚠️ Playback cancelled mid-stream");
+
+                    // Notify UI that synthesis was interrupted
+                    SynthesizingStatusChanged?.Invoke(this, new SynthesizingEventArgs
+                    {
+                        OriginalText = item.original,
+                        TranslatedText = item.translated,
+                        IsFromMeeting = false,
+                        IsSynthesizing = false
+                    });
+
+                    break;
+                }
                 catch (Exception ex)
                 {
-                    _logger.Error(LogCategory.Playback, $"[OUT] Playback error: {ex.Message}");
+                    _logger.Error(LogCategory.Playback, $"[OUT] ❌ Playback error: {ex.Message}");
+
+                    // Notify UI of error
+                    SynthesizingStatusChanged?.Invoke(this, new SynthesizingEventArgs
+                    {
+                        OriginalText = item.original,
+                        TranslatedText = item.translated,
+                        IsFromMeeting = false,
+                        IsSynthesizing = false
+                    });
                 }
                 finally
                 {
+                    _isOutgoingSynthesizing = false;
                     _outgoingPlaybackLock.Release();
                 }
             }
         }
-        catch (OperationCanceledException) { }
-
-        _logger.Debug(LogCategory.Queue, "[OUT] Playback processor finished");
+        catch (OperationCanceledException)
+        {
+            _logger.Info(LogCategory.Outgoing, "[OUT] ⏹️ Playback processor cancelled");
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(LogCategory.Outgoing, $"[OUT] ❌ Playback processor error: {ex.Message}");
+        }
+        finally
+        {
+            _isOutgoingSynthesizing = false;
+            _logger.Info(LogCategory.Outgoing, "[OUT] 🛑 Playback processor finished");
+        }
     }
-
+  
     private async Task IncomingFlow(TranslationSettings settings, CancellationToken ct)
     {
         SpeechSynthesizer? synthesizer = null;
@@ -722,9 +1009,6 @@ public class TranslationService : IDisposable
             //config.SetProperty(PropertyId.SpeechServiceConnection_InitialSilenceTimeoutMs, AudioConfiguration.InitialSilenceTimeoutMs.ToString());
             //config.SetProperty(PropertyId.SpeechServiceConnection_EndSilenceTimeoutMs, AudioConfiguration.EndSilenceTimeoutMs.ToString());
             //config.SetProperty(PropertyId.Speech_SegmentationSilenceTimeoutMs, AudioConfiguration.SegmentationSilenceTimeoutMs.ToString());
-
-
-
 
 
             var deviceNumber = AudioDeviceHelper.GetWaveInDeviceNumber(cableDevice.FriendlyName);
@@ -980,15 +1264,25 @@ public class TranslationService : IDisposable
         }
     }
 
-    // ✅ OPTIMIZATION #1 + ENHANCED LOOPBACK PREVENTION
     private async Task ProcessIncomingPlaybackAsync(MMDevice? physicalSpeaker, CancellationToken ct)
     {
+        _logger.Info(LogCategory.Incoming, "[IN] 🎵 Playback processor started");
+
         try
         {
             await foreach (var item in _incomingPlaybackChannel!.Reader.ReadAllAsync(ct))
             {
-                if (ct.IsCancellationRequested || _isSpeakerMuted)
+                if (ct.IsCancellationRequested)
+                {
+                    _logger.Info(LogCategory.Incoming, "[IN] ⏹️ Cancellation requested - stopping playback");
+                    break;
+                }
+
+                if (_isSpeakerMuted)
+                {
+                    _logger.Debug(LogCategory.Incoming, "[IN] 🔇 Skipping playback - speaker muted");
                     continue;
+                }
 
                 try
                 {
@@ -996,17 +1290,24 @@ public class TranslationService : IDisposable
                 }
                 catch (OperationCanceledException)
                 {
+                    _logger.Info(LogCategory.Incoming, "[IN] ⏹️ Playback lock acquisition cancelled");
                     break;
                 }
 
                 try
                 {
                     _isPlayingIncomingAudio = true;
+                    _isIncomingSynthesizing = true;
 
-                    var audioDurationMs = AudioPlaybackManager.CalculateAudioDuration(item.result.AudioData.Length,
-                        AudioConfiguration.SampleRate, AudioConfiguration.Channels, AudioConfiguration.BitsPerSample);
+                    var audioDurationMs = AudioPlaybackManager.CalculateAudioDuration(
+                        item.result.AudioData.Length,
+                        AudioConfiguration.SampleRate,
+                        AudioConfiguration.Channels,
+                        AudioConfiguration.BitsPerSample);
 
-                    // ✅ OPTIMIZATION #1: Smart microphone pause - only if user is speaking
+                    _logger.Debug(LogCategory.Playback, $"[IN] Original: '{item.original}' → Translated: '{item.translated}'");
+
+                    // Smart microphone pause logic
                     bool needsPause = _outgoingRecognizer != null && !_isMicrophoneMuted && _isUserSpeaking;
                     bool microphonePaused = false;
 
@@ -1017,25 +1318,22 @@ public class TranslationService : IDisposable
                         {
                             if (needsPause)
                             {
-                                _logger.Debug(LogCategory.AudioCapture, $"[LOOPBACK] Pausing microphone (user was speaking)");
+                                _logger.Debug(LogCategory.AudioCapture, "[LOOPBACK] ⏸️ Pausing microphone (user was speaking)");
                             }
                             else
                             {
-                                _logger.Debug(LogCategory.AudioCapture, $"[LOOPBACK] Pausing microphone (preventive loopback protection)");
+                                _logger.Debug(LogCategory.AudioCapture, "[LOOPBACK] ⏸️ Pausing microphone (preventive protection)");
                             }
 
                             await _outgoingRecognizer.StopContinuousRecognitionAsync();
-
-                            // ✅ Set flag AFTER successful pause
                             _microphonePausedForPlayback = true;
                             microphonePaused = true;
 
-                            _logger.Info(LogCategory.AudioCapture, $"[LOOPBACK] ✅ Microphone paused - loopback protection ACTIVE");
+                            _logger.Info(LogCategory.AudioCapture, "[LOOPBACK] ✅ Microphone paused - protection ACTIVE");
                         }
                         catch (Exception ex)
                         {
                             _logger.Error(LogCategory.AudioCapture, $"[LOOPBACK] ❌ Failed to pause microphone: {ex.Message}");
-                            // Don't set flag if pause failed
                         }
                         finally
                         {
@@ -1043,14 +1341,14 @@ public class TranslationService : IDisposable
                         }
                     }
 
-                    // ✅ Safety delay to ensure microphone stopped processing
                     if (microphonePaused)
                     {
                         await Task.Delay(50, ct);
                     }
 
-                    _logger.Info(LogCategory.Playback, $"[IN] Playing audio ({audioDurationMs:F0}ms) to speakers...");
+                    _logger.Info(LogCategory.Playback, $"[IN] 🔊 Starting playback ({audioDurationMs:F0}ms) to speakers...");
 
+                    // Notify UI that synthesis started
                     SynthesizingStatusChanged?.Invoke(this, new SynthesizingEventArgs
                     {
                         OriginalText = item.original,
@@ -1059,8 +1357,12 @@ public class TranslationService : IDisposable
                         IsSynthesizing = true
                     });
 
+                    // Play audio (this will be cancelled if ct is triggered)
                     await AudioPlaybackManager.PlayAudioToPhysicalSpeakerAsync(item.result.AudioData, physicalSpeaker, ct);
 
+                    _logger.Info(LogCategory.Playback, $"[IN] ✅ Playback completed successfully ({audioDurationMs:F0}ms)");
+
+                    // Notify UI that synthesis completed
                     SynthesizingStatusChanged?.Invoke(this, new SynthesizingEventArgs
                     {
                         OriginalText = item.original,
@@ -1069,34 +1371,27 @@ public class TranslationService : IDisposable
                         IsSynthesizing = false
                     });
 
-                    _logger.Debug(LogCategory.Playback, $"[IN] Playback completed");
-
-
-                    // ✅ OPTIMIZATION #5: Adaptive settling delay
+                    // Adaptive settling delay
                     if (microphonePaused)
                     {
                         int settlingDelay = needsPause ? 100 : 50;
                         await Task.Delay(settlingDelay, ct);
                     }
 
-                    // ✅ RESUME microphone after audio fully cleared
+                    // Resume microphone after audio fully cleared
                     if (microphonePaused && _outgoingRecognizer != null && !_isMicrophoneMuted)
                     {
                         await _microphoneControlLock.WaitAsync(ct);
                         try
                         {
-                            _logger.Debug(LogCategory.AudioCapture, $"[LOOPBACK] Resuming microphone after settling delay");
-
-                            // ✅ Clear flag BEFORE resuming
+                            _logger.Debug(LogCategory.AudioCapture, "[LOOPBACK] ▶️ Resuming microphone...");
                             _microphonePausedForPlayback = false;
-
                             await _outgoingRecognizer.StartContinuousRecognitionAsync();
-                            _logger.Info(LogCategory.AudioCapture, $"[LOOPBACK] ✅ Microphone resumed - loopback protection INACTIVE");
+                            _logger.Info(LogCategory.AudioCapture, "[LOOPBACK] ✅ Microphone resumed - protection INACTIVE");
                         }
                         catch (Exception ex)
                         {
                             _logger.Error(LogCategory.AudioCapture, $"[LOOPBACK] ❌ Failed to resume microphone: {ex.Message}");
-                            // Clear flag even if resume failed
                             _microphonePausedForPlayback = false;
                         }
                         finally
@@ -1105,26 +1400,62 @@ public class TranslationService : IDisposable
                         }
                     }
                 }
-                catch (OperationCanceledException) { }
+                catch (OperationCanceledException)
+                {
+                    _logger.Warning(LogCategory.Playback, "[IN] ⚠️ Playback cancelled mid-stream");
+
+                    // Notify UI that synthesis was interrupted
+                    SynthesizingStatusChanged?.Invoke(this, new SynthesizingEventArgs
+                    {
+                        OriginalText = item.original,
+                        TranslatedText = item.translated,
+                        IsFromMeeting = true,
+                        IsSynthesizing = false
+                    });
+
+                    _microphonePausedForPlayback = false;
+                    break;
+                }
                 catch (Exception ex)
                 {
-                    _logger.Error(LogCategory.Playback, $"[IN] Playback error: {ex.Message}");
+                    _logger.Error(LogCategory.Playback, $"[IN] ❌ Playback error: {ex.Message}");
 
-                    // ✅ Ensure flag is cleared on error
+                    // Notify UI of error
+                    SynthesizingStatusChanged?.Invoke(this, new SynthesizingEventArgs
+                    {
+                        OriginalText = item.original,
+                        TranslatedText = item.translated,
+                        IsFromMeeting = true,
+                        IsSynthesizing = false
+                    });
+
                     _microphonePausedForPlayback = false;
                 }
                 finally
                 {
                     _isPlayingIncomingAudio = false;
+                    _isIncomingSynthesizing = false;
                     _incomingPlaybackLock.Release();
                 }
             }
         }
-        catch (OperationCanceledException) { }
-
-        _logger.Debug(LogCategory.Queue, "[IN] Playback processor finished");
+        catch (OperationCanceledException)
+        {
+            _logger.Info(LogCategory.Incoming, "[IN] ⏹️ Playback processor cancelled");
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(LogCategory.Incoming, $"[IN] ❌ Playback processor error: {ex.Message}");
+        }
+        finally
+        {
+            _isPlayingIncomingAudio = false;
+            _isIncomingSynthesizing = false;
+            _microphonePausedForPlayback = false;
+            _logger.Info(LogCategory.Incoming, "[IN] 🛑 Playback processor finished");
+        }
     }
-
+   
     private void LogMetrics()
     {
         _logger.Info(LogCategory.Metrics, "***************************************************************");
@@ -1147,7 +1478,9 @@ public class TranslationService : IDisposable
     private void LogRaw(string message)
     {
         LogMessage?.Invoke(this, message);
-    }
+        // ✅ Also log to Output window for debugging
+        System.Diagnostics.Debug.WriteLine($"[TranslationService] {message}");
+    }      
 
     public void Dispose()
     {
@@ -1161,24 +1494,110 @@ public class TranslationService : IDisposable
 
         if (disposing)
         {
-            _cts?.Cancel();
-            _cts?.Dispose();
+            _logger?.Info(LogCategory.System, "🧹 Disposing TranslationService...");
 
-            _outgoingPlaybackLock?.Dispose();
-            _incomingPlaybackLock?.Dispose();
+            try
+            {
+                // Cancel the cancellation token source
+                _cts?.Cancel();
+                _cts?.Dispose();
+                _cts = null;
+                _logger?.Debug(LogCategory.System, "✅ Cancellation token disposed");
+            }
+            catch (Exception ex)
+            {
+                _logger?.Warning(LogCategory.System, $"⚠️ Error disposing CTS: {ex.Message}");
+            }
 
-            _muteLock?.Dispose();
-            _microphoneControlLock?.Dispose();
+            // Dispose semaphores
+            try
+            {
+                _outgoingPlaybackLock?.Dispose();
+                _incomingPlaybackLock?.Dispose();
+                _muteLock?.Dispose();
+                _microphoneControlLock?.Dispose();
+                _logger?.Debug(LogCategory.System, "✅ Semaphores disposed");
+            }
+            catch (Exception ex)
+            {
+                _logger?.Warning(LogCategory.System, $"⚠️ Error disposing semaphores: {ex.Message}");
+            }
 
-            _outgoingTranscriptManager?.Dispose();
-            _incomingTranscriptManager?.Dispose();
+            // Dispose transcript managers
+            try
+            {
+                _outgoingTranscriptManager?.Dispose();
+                _incomingTranscriptManager?.Dispose();
+                _logger?.Debug(LogCategory.System, "✅ Transcript managers disposed");
+            }
+            catch (Exception ex)
+            {
+                _logger?.Warning(LogCategory.System, $"⚠️ Error disposing transcript managers: {ex.Message}");
+            }
 
-            _outgoingRecognizer?.Dispose();
-            _incomingRecognizer?.Dispose();
-            _incomingWaveIn?.Dispose();
+            // Dispose recognizers
+            try
+            {
+                _outgoingRecognizer?.Dispose();
+                _outgoingRecognizer = null;
+                _incomingRecognizer?.Dispose();
+                _incomingRecognizer = null;
+                _logger?.Debug(LogCategory.System, "✅ Recognizers disposed");
+            }
+            catch (Exception ex)
+            {
+                _logger?.Warning(LogCategory.System, $"⚠️ Error disposing recognizers: {ex.Message}");
+            }
 
-            _outgoingPlaybackChannel?.Writer.Complete();
-            _incomingPlaybackChannel?.Writer.Complete();
+            // Dispose wave input
+            try
+            {
+                _incomingWaveIn?.Dispose();
+                _incomingWaveIn = null;
+                _logger?.Debug(LogCategory.System, "✅ Wave input disposed");
+            }
+            catch (Exception ex)
+            {
+                _logger?.Warning(LogCategory.System, $"⚠️ Error disposing wave input: {ex.Message}");
+            }
+
+            // Complete channels safely (only if not already completed)
+            try
+            {
+                if (_outgoingPlaybackChannel != null)
+                {
+                    // TryComplete returns false if already completed
+                    if (_outgoingPlaybackChannel.Writer.TryComplete())
+                    {
+                        _logger?.Debug(LogCategory.System, "✅ Outgoing playback channel completed");
+                    }
+                    else
+                    {
+                        _logger?.Debug(LogCategory.System, "ℹ️ Outgoing playback channel already completed");
+                    }
+                    _outgoingPlaybackChannel = null;
+                }
+
+                if (_incomingPlaybackChannel != null)
+                {
+                    // TryComplete returns false if already completed
+                    if (_incomingPlaybackChannel.Writer.TryComplete())
+                    {
+                        _logger?.Debug(LogCategory.System, "✅ Incoming playback channel completed");
+                    }
+                    else
+                    {
+                        _logger?.Debug(LogCategory.System, "ℹ️ Incoming playback channel already completed");
+                    }
+                    _incomingPlaybackChannel = null;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.Warning(LogCategory.System, $"⚠️ Error completing channels: {ex.Message}");
+            }
+
+            _logger?.Info(LogCategory.System, "✅ TranslationService disposed successfully");
         }
 
         _disposed = true;

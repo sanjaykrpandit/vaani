@@ -10,6 +10,17 @@ public class BoolToBrushConverter : IValueConverter
     public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
         var isRunning = value is bool b && b;
+        var param = parameter as string;
+        
+        // Handle toggle switch colors
+        if (param == "toggle")
+        {
+            return isRunning 
+                ? new SolidColorBrush(Color.Parse("#4CAF50"))  // Green when ON
+                : new SolidColorBrush(Color.Parse("#3E3E42")); // Gray when OFF
+        }
+        
+        // Original behavior for other cases
         return isRunning ? new SolidColorBrush(Color.Parse("#E74C3C")) : new SolidColorBrush(Color.Parse("#000000"));
     }
 

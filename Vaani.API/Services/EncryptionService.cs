@@ -117,4 +117,90 @@ public class EncryptionService : IEncryptionService
     {
         return BCrypt.Net.BCrypt.Verify(password, hash);
     }
+
+    public string EncryptMeetingToken(string meetingId, string publicToken)
+    {
+        try
+        {
+            // Combine meetingId and publicToken with a delimiter
+            var tokenData = $"{meetingId}|{publicToken}";
+            var plainTextBytes = Encoding.UTF8.GetBytes(tokenData);
+
+            using var aes = Aes.Create();
+            aes.Key = _encryptionKey;
+            aes.GenerateIV();
+
+            using var encryptor = aes.CreateEncryptor(aes.Key, aes.IV);
+            using var ms = new MemoryStream();
+            
+            // Write IV first
+            ms.Write(aes.IV, 0, aes.IV.Length);
+            
+            using (var cs = new CryptoStream(ms, encryptor, CryptoStreamMode.Write))
+            {
+                cs.Write(plainTextBytes, 0, plainTextBytes.Length);
+                cs.FlushFinalBlock();
+            }
+
+            var encryptedBytes = ms.ToArray();
+            return Convert.ToBase64String(encryptedBytes)
+                .Replace("+", "-")
+                .Replace("/", "_")
+                .Replace("=", "");
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException("Failed to encrypt meeting token", ex);
+        }
+    }
+
+    public (string meetingId, string publicToken)? DecryptMeetingToken(string encryptedToken)
+    {
+        try
+        {
+            // Restore base64 padding and special characters
+            var base64 = encryptedToken
+                .Replace("-", "+")
+                .Replace("_", "/");
+            
+            var padding = (4 - base64.Length % 4) % 4;
+            if (padding > 0)
+            {
+                base64 += new string('=', padding);
+            }
+
+            var encryptedBytes = Convert.FromBase64String(base64);
+
+            using var aes = Aes.Create();
+            aes.Key = _encryptionKey;
+
+            // Extract IV (first 16 bytes)
+            var iv = new byte[16];
+            Array.Copy(encryptedBytes, 0, iv, 0, 16);
+            aes.IV = iv;
+
+            // Extract encrypted data (rest of bytes)
+            var cipherText = new byte[encryptedBytes.Length - 16];
+            Array.Copy(encryptedBytes, 16, cipherText, 0, cipherText.Length);
+
+            using var decryptor = aes.CreateDecryptor(aes.Key, aes.IV);
+            using var ms = new MemoryStream(cipherText);
+            using var cs = new CryptoStream(ms, decryptor, CryptoStreamMode.Read);
+            using var reader = new StreamReader(cs);
+            
+            var tokenData = reader.ReadToEnd();
+            var parts = tokenData.Split('|');
+            
+            if (parts.Length != 2)
+            {
+                return null;
+            }
+
+            return (parts[0], parts[1]);
+        }
+        catch
+        {
+            return null;
+        }
+    }
 }

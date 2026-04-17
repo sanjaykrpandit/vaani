@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import Layout from '../components/Layout'
 import { meetingService } from '../services/meetingService'
+import languageService from '../services/languageService'
 
 function EditMeeting() {
   const { meetingId } = useParams()
@@ -9,33 +10,62 @@ function EditMeeting() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [languages, setLanguages] = useState([])
+  const [langsLoading, setLangsLoading] = useState(true)
   const [formData, setFormData] = useState({
     meetingName: '',
     azureSubscriptionId: '',
     validFrom: '',
     validUntil: '',
-    isActive: true
+    isActive: true,
+    meetingLanguage: 'en-US',
+    requiresPassword: false,
+    password: '',
+    confirmPassword: '',
+    clearPassword: false
   })
 
   useEffect(() => {
     loadMeeting()
+    loadLanguages()
   }, [meetingId])
+
+  const formatDateForInput = (dateStr) => {
+    if (!dateStr) return ''
+    const d = new Date(dateStr)
+    const pad = (n) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+  }
+
+  const loadLanguages = async () => {
+    try {
+      setLangsLoading(true)
+      const data = await languageService.getAllLanguages()
+      setLanguages(data || [])
+    } catch (err) {
+      console.error('Failed to load languages', err)
+    } finally {
+      setLangsLoading(false)
+    }
+  }
 
   const loadMeeting = async () => {
     try {
       setLoading(true)
       const meeting = await meetingService.getMeetingById(meetingId)
-      
+
       // Convert dates to datetime-local format
-      const validFrom = new Date(meeting.validFrom)
-      const validUntil = new Date(meeting.validUntil)
-      
       setFormData({
         meetingName: meeting.meetingName,
         azureSubscriptionId: meeting.azureSubscriptionId,
-        validFrom: validFrom.toISOString().slice(0, 16),
-        validUntil: validUntil.toISOString().slice(0, 16),
-        isActive: meeting.isActive
+        validFrom: formatDateForInput(meeting.validFrom),
+        validUntil: formatDateForInput(meeting.validUntil),
+        isActive: meeting.isActive,
+        meetingLanguage: meeting.meetingLanguage || 'en-US',
+        requiresPassword: meeting.requiresPassword || false,
+        password: '',
+        confirmPassword: '',
+        clearPassword: false
       })
     } catch (err) {
       setError('Failed to load meeting')
@@ -62,7 +92,7 @@ function EditMeeting() {
       // Validate dates
       const validFrom = new Date(formData.validFrom)
       const validUntil = new Date(formData.validUntil)
-      
+
       if (validUntil <= validFrom) {
         setError('End date must be after start date')
         setSaving(false)
@@ -77,12 +107,33 @@ function EditMeeting() {
         return
       }
 
+      // Validate password if being set/updated
+      if (formData.password) {
+        if (formData.password.length < 6) {
+          setError('Password must be at least 6 characters long')
+          setSaving(false)
+          return
+        }
+        if (formData.password !== formData.confirmPassword) {
+          setError('Passwords do not match')
+          setSaving(false)
+          return
+        }
+      }
+
       const updateData = {
         meetingName: formData.meetingName,
-        azureSubscriptionId: parseInt(formData.azureSubscriptionId),
+        meetingLanguage: formData.meetingLanguage || 'en-US',
         validFrom: validFrom.toISOString(),
         validUntil: validUntil.toISOString(),
         isActive: formData.isActive
+      }
+
+      // Handle password changes
+      if (formData.clearPassword) {
+        updateData.clearPassword = true
+      } else if (formData.password) {
+        updateData.password = formData.password
       }
 
       await meetingService.updateMeeting(meetingId, updateData)
@@ -106,13 +157,7 @@ function EditMeeting() {
     <Layout>
       <div className="page-container">
         <div className="page-header">
-          <h1>Edit Meeting</h1>
-          <button 
-            className="btn btn-secondary"
-            onClick={() => navigate('/dashboard')}
-          >
-            Cancel
-          </button>
+          <h1 className="h1-header"> Edit Meeting</h1>
         </div>
 
         <form onSubmit={handleSubmit} className="meeting-form">
@@ -148,16 +193,23 @@ function EditMeeting() {
           </div>
 
           <div className="form-group">
-            <label htmlFor="azureSubscriptionId">Azure Subscription ID *</label>
-            <input
-              id="azureSubscriptionId"
-              name="azureSubscriptionId"
-              type="number"
-              value={formData.azureSubscriptionId}
-              onChange={handleChange}
-              placeholder="e.g., 1"
-              required
-            />
+            <label htmlFor="meetingLanguage">Meeting Language *</label>
+            {langsLoading ? (
+              <div>Loading languages...</div>
+            ) : (
+              <select
+                id="meetingLanguage"
+                name="meetingLanguage"
+                value={formData.meetingLanguage}
+                onChange={handleChange}
+                required
+              >
+                <option value="">-- Select language --</option>
+                {languages.map(l => (
+                  <option key={l.languageCode} value={l.languageCode}>{l.languageName}</option>
+                ))}
+              </select>
+            )}
           </div>
 
           <div className="form-row">
@@ -187,6 +239,64 @@ function EditMeeting() {
           </div>
 
           <div className="form-group">
+            <label>Password Protection</label>
+            {formData.requiresPassword && (
+              <div style={{ marginBottom: '10px', padding: '10px', backgroundColor: '#f0f0f0', borderRadius: '4px' }}>
+                <span style={{ color: '#28a745', fontWeight: 'bold' }}>? Password Protected</span>
+                <p style={{ margin: '5px 0 0 0', fontSize: '0.9em', color: '#666' }}>
+                  This meeting currently requires a password to join
+                </p>
+              </div>
+            )}
+            
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                name="clearPassword"
+                checked={formData.clearPassword}
+                onChange={handleChange}
+                disabled={!formData.requiresPassword}
+              />
+              <span>Remove password protection</span>
+            </label>
+
+            {!formData.clearPassword && (
+              <>
+                <div style={{ marginTop: '15px' }}>
+                  <label htmlFor="password">
+                    {formData.requiresPassword ? 'Change Password' : 'Set Password'}
+                  </label>
+                  <input
+                    id="password"
+                    name="password"
+                    type="password"
+                    value={formData.password}
+                    onChange={handleChange}
+                    placeholder={formData.requiresPassword ? 'Enter new password (leave blank to keep current)' : 'Enter password to protect this meeting'}
+                    minLength={6}
+                  />
+                  {formData.password && <small>Minimum 6 characters</small>}
+                </div>
+
+                {formData.password && (
+                  <div style={{ marginTop: '10px' }}>
+                    <label htmlFor="confirmPassword">Confirm Password *</label>
+                    <input
+                      id="confirmPassword"
+                      name="confirmPassword"
+                      type="password"
+                      value={formData.confirmPassword}
+                      onChange={handleChange}
+                      placeholder="Confirm password"
+                      required
+                    />
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          <div className="form-group">
             <label className="checkbox-label">
               <input
                 type="checkbox"
@@ -197,18 +307,17 @@ function EditMeeting() {
               <span>Active</span>
             </label>
           </div>
-
           <div className="form-actions">
-            <button 
-              type="button" 
-              className="btn btn-secondary"
+            <button
+              type="button"
+              className="btn btn-sm btn-secondary"
               onClick={() => navigate('/dashboard')}
             >
               Cancel
             </button>
-            <button 
-              type="submit" 
-              className="btn btn-primary"
+            <button
+              type="submit"
+              className="btn btn-sm btn-primary"
               disabled={saving}
             >
               {saving ? 'Saving...' : 'Save Changes'}

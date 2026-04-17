@@ -5,10 +5,10 @@ namespace Vaani.DriverInstallation.Views;
 
 public partial class DriverInstallationWindow : Window
 {
-    public DriverInstallationWindow()
+    public DriverInstallationWindow(bool autoReinstall = false)
     {
         InitializeComponent();
-        var viewModel = new DriverInstallationViewModel();
+        var viewModel = new DriverInstallationViewModel(autoReinstall);
         DataContext = viewModel;
         
         // Check driver status when window opens
