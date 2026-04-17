@@ -66,6 +66,21 @@ function Dashboard() {
     }
   }
 
+  const handleLaunchVaaniTranslation = (meetingId) => {
+    const origin = window.location.origin
+    const targetUrl =
+      `https://vaani-rtt-api.tryzent.com/launcher/Lipi.application` +
+      `?meetingId=${meetingId}&origin=${encodeURIComponent(origin)}`
+
+    const isEdge = /Edg\//.test(navigator.userAgent)
+    const launchUrl = isEdge ? targetUrl : `microsoft-edge:${targetUrl}`
+
+    const win = window.open(launchUrl, '_blank')
+    if (win) {
+      setTimeout(() => window.close(), 1000)
+    }
+  }
+
   /* 🔹 Status helpers */
   const isUpcoming = (m) => new Date() < new Date(m.validFrom)
   const isRunning = (m) =>
@@ -161,6 +176,7 @@ function Dashboard() {
             logo={logo}
             meetings={filteredMeetings}
             onLaunch={handleLaunch}
+            onLaunchVaaniTranslation={handleLaunchVaaniTranslation}
             onEdit={handleEdit}
             onDelete={handleDelete}
             onViewMetrics={handleViewMetrics}

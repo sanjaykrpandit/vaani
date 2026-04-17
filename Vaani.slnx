@@ -1,4 +1,5 @@
 <Solution>
+  <Project Path="Lipi/VaaniTranslator.csproj" />
   <Project Path="Vaani.Admin/Vaani.Admin.esproj">
     <Build />
     <Deploy />

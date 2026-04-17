@@ -8,23 +8,10 @@ function MeetingList({
   onEdit,
   onDelete,
   onLaunch,
+  onLaunchVaaniTranslation,
   onViewMetrics
 }) {
   const [copyingId, setCopyingId] = useState(null)
-
-  const onLaunchApp = async (meetingId) => {
-    try {
-      const token = await generateMeetingToken(meetingId)
-      const origin = window.location.origin
-      const publicUrl = `${origin}/public-access?token=${token}`
-      window.open(publicUrl, '_blank')
-      setTimeout(() => setCopyingId(null), 2000)
-    } catch (error) {
-      console.error('Failed to copy link:', error)
-      alert('Failed to generate meeting link. Please try again.')
-      setCopyingId(null)
-    }
-  }
 
   const handleCopyLink = async (meetingId) => {
   try {
@@ -139,13 +126,21 @@ function MeetingList({
                 {/* Launch */}
                 <td>
                   {status === 'running' && meeting.isActive && (
-                    <button
-                      className="btn btn-xsm btn-primary d-inline-flex align-items-center gap-2"
-                      onClick={() => onLaunchApp(meeting.meetingId)}
-                    >
-                      Launch
-                      <img src={logo} alt="logo" height="10" />
-                    </button>
+                    <div className="d-inline-flex align-items-center gap-2">
+                      <button
+                        className="btn btn-xsm btn-primary d-inline-flex align-items-center gap-2"
+                        onClick={() => onLaunch(meeting.meetingId)}
+                      >
+                        Launch
+                        <img src={logo} alt="logo" height="10" />
+                      </button>
+                      <button
+                        className="btn btn-xsm btn-secondary"
+                        onClick={() => onLaunchVaaniTranslation(meeting.meetingId)}
+                      >
+                        Launch Vaani Translation
+                      </button>
+                    </div>
                   )}
 
                   {status === 'completed' && (
