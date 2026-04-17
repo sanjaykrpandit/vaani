@@ -11,14 +11,9 @@ using System.Text;
 using System.Text.Json;
 using System.Threading.RateLimiting;
 using Vaani.API.Data;
-using Vaani.API.Hubs;
 using Vaani.API.Interfaces;
 using Vaani.API.Services;
-using Microsoft.AspNetCore.StaticFiles;
-using System.Security.Claims;
-using System.IdentityModel.Tokens.Jwt;
-using System.Text.Json;
-using Microsoft.Extensions.FileProviders;
+
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -122,23 +117,27 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         options.Events = new JwtBearerEvents
         {
             // ✅ SignalR: read JWT from query-string ?access_token= during WebSocket upgrade
-            //OnMessageReceived = ctx =>
-            //{
-            //    var accessToken = ctx.Request.Query["access_token"];
-            //    var path = ctx.HttpContext.Request.Path;
-            //    if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
-            //        ctx.Token = accessToken;
-            //    return Task.CompletedTask;
-            //},
-            //for maruti
             OnMessageReceived = ctx =>
             {
                 var accessToken = ctx.Request.Query["access_token"];
                 var path = ctx.HttpContext.Request.Path;
-                if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/api/hubs"))
+                if (!string.IsNullOrEmpty(accessToken) &&
+                    (path.StartsWithSegments("/hubs") || path.StartsWithSegments("/api/hubs")))
+                {
                     ctx.Token = accessToken;
+                }
+
                 return Task.CompletedTask;
             },
+            //for maruti
+            //OnMessageReceived = ctx =>
+            //{
+            //    var accessToken = ctx.Request.Query["access_token"];
+            //    var path = ctx.HttpContext.Request.Path;
+            //    if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/api/hubs"))
+            //        ctx.Token = accessToken;
+            //    return Task.CompletedTask;
+            //},
             OnTokenValidated = ctx =>
             {
                 try
@@ -336,13 +335,19 @@ provider.Mappings[".application"] = "application/x-ms-application";
 provider.Mappings[".manifest"] = "application/x-ms-manifest"; // ClickOnce often needs this too
 
 // 2. Map the physical 'launcher' folder to the '/api/launcher' URL
+
 app.UseStaticFiles(new StaticFileOptions
 {
-    FileProvider = new PhysicalFileProvider(
-        Path.Combine(builder.Environment.ContentRootPath, "wwwroot", "launcher")),
-    RequestPath = "/api/launcher",
     ContentTypeProvider = provider
 });
+
+//app.UseStaticFiles(new StaticFileOptions
+//{
+//    FileProvider = new PhysicalFileProvider(
+//        Path.Combine(builder.Environment.ContentRootPath, "wwwroot", "launcher")),
+//    RequestPath = "/api/launcher",
+//    ContentTypeProvider = provider
+//});
 
 
 // Test database connection (optional - won't crash if DB is down)
@@ -412,11 +417,13 @@ app.UseAuthorization();
 // Map Controllers
 app.MapControllers();
 
-// Map SignalR Translation Hub
-//app.MapHub<Vaani.API.Hubs.TranslationHub>("/hubs/translation");
-
-//for maruti
+// Map SignalR hubs.
+// Keep both legacy and /api-prefixed routes so existing desktop clients continue working
+// after config conflicts or environment-specific URL changes.
+app.MapHub<Vaani.API.Hubs.TranslationHub>("/hubs/translation");
 app.MapHub<Vaani.API.Hubs.TranslationHub>("/api/hubs/translation");
+app.MapHub<Vaani.API.Hubs.LipiHub>("/hubs/lipi");
+app.MapHub<Vaani.API.Hubs.LipiHub>("/api/hubs/lipi");
 
 // Health check endpoint
 app.MapGet("/health", async (VaaniDbContext dbContext) =>
