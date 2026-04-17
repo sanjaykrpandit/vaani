@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { validateMeetingToken } from '../services/tokenService'
 import './PublicMeetingAccess.css'
@@ -7,31 +7,25 @@ function PublicMeetingAccess() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
 
+  // State Management
   const [meetingId, setMeetingId] = useState('')
   const [token, setToken] = useState('')
   const [loading, setLoading] = useState(false)
+  const [isAutoValidating, setIsAutoValidating] = useState(false) // Controls "Hidden" state
   const [error, setError] = useState('')
-  const [meetingDetails, setMeetingDetails] = useState(null)
 
-  useEffect(() => {
-    // Read token from URL query parameter (hidden from user)
-    const urlToken = searchParams.get('token')
+  /**
+   * Core Validation Logic
+   * Accepts direct arguments to handle the async nature of React state
+   */
+  const handleValidate = useCallback(async (idToUse, tokenToUse) => {
+    // Fallback to state if arguments aren't provided (for manual button clicks)
+    const mId = idToUse || meetingId
+    const mToken = tokenToUse || token
 
-    if (urlToken) {
-      setToken(urlToken)
-    } else {
-      setError('Invalid meeting link. Token is missing.')
-    }
-  }, [searchParams])
-
-  const handleValidate = async () => {
-    if (!meetingId) {
+    if (!mId) {
       setError('Please enter your Meeting ID')
-      return
-    }
-
-    if (!token) {
-      setError('Invalid meeting link. Token is missing.')
+      setIsAutoValidating(false)
       return
     }
 
@@ -39,50 +33,79 @@ function PublicMeetingAccess() {
     setError('')
 
     try {
-      // Validate the meeting token (backend decrypts and validates)
-      const data = await validateMeetingToken(meetingId, token)
+      // Pass the token as both the ID and the Token as requested
+      const data = await validateMeetingToken(mId, mToken)
 
-      // Check if meeting is valid
       if (!data.isValid) {
-        setError('Meeting validation failed. Please check your meeting ID.')
-        setLoading(false)
-        return
+        throw new Error('Meeting validation failed. Please check your meeting ID.')
       }
 
-      // Store access information in sessionStorage
+      // Success: Store and Redirect
       sessionStorage.setItem('meetingAccess', JSON.stringify({
         meetingId: data.meetingId,
         meetingName: data.meetingName,
         validUntil: data.validUntil,
         downloadLink: data.downloadLink,
-        accessToken: token,
+        accessToken: mToken,
         validatedAt: new Date().toISOString()
       }))
 
-      // Redirect to download page
       navigate('/meeting-download')
-
-    } catch (error) {
-      const errorMessage = error.response?.data?.message ||
-        error.response?.data?.error ||
-        'Invalid or expired meeting link. Please contact the meeting organizer.'
+    } catch (err) {
+      const errorMessage = err.response?.data?.message || 
+                         err.message || 
+                         'Invalid or expired meeting link.'
       setError(errorMessage)
       setLoading(false)
+      setIsAutoValidating(false) // "Unhide" the form so user can see error/fix ID
     }
-  }
+  }, [meetingId, token, navigate])
+
+  /**
+   * Auto-run on Page Load
+   */
+  useEffect(() => {
+    const urlToken = searchParams.get('token')
+
+    if (urlToken) {
+      // 1. Pre-fill states for the UI
+      setToken(urlToken)
+      setMeetingId(urlToken) 
+      
+      // 2. Hide the form immediately
+      setIsAutoValidating(true)
+
+      // 3. Trigger validation using the token for BOTH parameters
+      handleValidate(urlToken, urlToken)
+    } else {
+      // No token in URL? Just show the empty form
+      setIsAutoValidating(false)
+    }
+  }, [searchParams, handleValidate])
 
   const handleKeyPress = (e) => {
-    if (e.key === 'Enter') {
-      handleValidate()
-    }
+    if (e.key === 'Enter') handleValidate()
   }
 
+  // SCREEN 1: Loading/Hidden State (shown during auto-validation)
+  if (isAutoValidating) {
+    return (
+      <div className="public-access-container">
+        <div className="loader-container">
+          <div className="spinner"></div>
+          <p>Verifying meeting access...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // SCREEN 2: The Form (shown if no token present or if validation fails)
   return (
     <div className="public-access-container">
       <div className="public-access-card">
         <div className="card-header">
-          <h1>Join Vaani a Realtime voice translator</h1>
-          <p>Enter your vaani meeting details to join</p>
+          <h1>Join Vaani</h1>
+          <p>Realtime voice translator</p>
         </div>
 
         <div className="card-body">
@@ -109,15 +132,15 @@ function PublicMeetingAccess() {
 
           <button
             className="btn btn-primary btn-block"
-            onClick={handleValidate}
-            disabled={loading || !meetingId || !token}
+            onClick={() => handleValidate()}
+            disabled={loading || !meetingId}
           >
             {loading ? 'Validating...' : 'Join Meeting'}
           </button>
 
           <div className="help-text">
             <p>
-              Don't have a meeting link? Contact your meeting organizer to get access.
+              Don't have a link? Contact your organizer to get access.
             </p>
           </div>
         </div>

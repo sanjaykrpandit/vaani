@@ -834,23 +834,23 @@ public class AdminService : IAdminService
             var (tokenMeetingId, publicToken) = decryptedData.Value;
 
             // Validate that the decrypted meetingId matches the request
-            if (!tokenMeetingId.Equals(request.MeetingId, StringComparison.OrdinalIgnoreCase))
-            {
-                _logger.LogWarning("Meeting ID mismatch. Token: {TokenMeetingId}, Request: {RequestMeetingId}", 
-                    tokenMeetingId, request.MeetingId);
-                return new ValidateMeetingTokenResponse
-                {
-                    IsValid = false
-                };
-            }
+            ////if (!tokenMeetingId.Equals(request.MeetingId, StringComparison.OrdinalIgnoreCase))
+            ////{
+            ////    _logger.LogWarning("Meeting ID mismatch. Token: {TokenMeetingId}, Request: {RequestMeetingId}", 
+            ////        tokenMeetingId, request.MeetingId);
+            ////    return new ValidateMeetingTokenResponse
+            ////    {
+            ////        IsValid = false
+            ////    };
+            ////}
 
             // Get meeting from database
             var meeting = await _dbContext.Meetings
-                .FirstOrDefaultAsync(m => m.MeetingId == request.MeetingId.ToUpperInvariant());
+                .FirstOrDefaultAsync(m => m.MeetingId == tokenMeetingId.ToUpperInvariant());
 
             if (meeting == null)
             {
-                _logger.LogWarning("Meeting not found: {MeetingId}", request.MeetingId);
+                _logger.LogWarning("Meeting not found: {MeetingId}", tokenMeetingId);
                 return new ValidateMeetingTokenResponse
                 {
                     IsValid = false
@@ -897,7 +897,7 @@ public class AdminService : IAdminService
             // Get download link from configuration
             var downloadLink = _configuration["AppDownload:Link"] ?? string.Empty;
 
-            _logger.LogInformation("Token validated successfully for meeting: {MeetingId}", request.MeetingId);
+            _logger.LogInformation("Token validated successfully for meeting: {MeetingId}", tokenMeetingId);
 
             return new ValidateMeetingTokenResponse
             {

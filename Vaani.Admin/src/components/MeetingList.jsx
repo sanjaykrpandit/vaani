@@ -27,27 +27,37 @@ function MeetingList({
   }
 
   const handleCopyLink = async (meetingId) => {
-    try {
-      setCopyingId(meetingId)
+  try {
+    setCopyingId(meetingId);
+    const token = await generateMeetingToken(meetingId);
+    const origin = window.location.origin;
+    const publicUrl = `${origin}/public-access?token=${token}`;
 
-      // Generate token from backend
-      const token = await generateMeetingToken(meetingId)
-
-      // Create public access URL with only token parameter
-      const origin = window.location.origin
-      const publicUrl = `${origin}/public-access?token=${token}`
-
-      // Copy to clipboard
-      await navigator.clipboard.writeText(publicUrl)
-
-      // Show success feedback
-      setTimeout(() => setCopyingId(null), 2000)
-    } catch (error) {
-      console.error('Failed to copy link:', error)
-      alert('Failed to generate meeting link. Please try again.')
-      setCopyingId(null)
+    // Try modern API first
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(publicUrl);
+    } else {
+      // Fallback for insecure contexts
+      const textArea = document.createElement("textarea");
+      textArea.value = publicUrl;
+      document.body.appendChild(textArea);
+      textArea.select();
+      try {
+        document.execCommand('copy');
+      } catch (err) {
+        console.error('Fallback copy failed', err);
+      }
+      document.body.removeChild(textArea);
     }
+
+    setTimeout(() => setCopyingId(null), 2000);
+  } catch (error) {
+    console.error('Failed to copy link:', error);
+    alert('Failed to generate meeting link. Please try again.');
+    setCopyingId(null);
   }
+};
+
 
   const formatDate = (dateString) => {
     const date = new Date(dateString)

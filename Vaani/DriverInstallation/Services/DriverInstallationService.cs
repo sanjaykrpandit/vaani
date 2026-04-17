@@ -15,7 +15,7 @@ namespace Vaani.DriverInstallation.Services;
 /// </summary>
 public class DriverInstallationService
 {
-    private const string VB_CABLE_PRIMARY_DOWNLOAD_URL = "https://vaani-rtt.s3.ap-south-1.amazonaws.com/drivers/VBCable_AB_PackSetup.zip";
+    private const string VB_CABLE_PRIMARY_DOWNLOAD_URL = "http://20.198.120.78/api/launcher/VBCable_AB_PackSetup.zip";
     private const string VB_CABLE_FALLBACK_DOWNLOAD_URL = "https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack43.zip";
     private const string DRIVER_BUNDLE_FOLDER = "Drivers";
     private const string DRIVER_ZIP_NAME = "VBCABLE_Driver_Pack43.zip";
