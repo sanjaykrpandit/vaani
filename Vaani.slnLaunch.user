@@ -3,14 +3,13 @@
     "Name": "New Profile",
     "Projects": [
       {
-        "Path": "Vaani\\Vaani.csproj",
-        "Action": "Start",
-        "DebugTarget": "vconsole"
-      },
-      {
         "Path": "Vaani.API\\Vaani.API.csproj",
         "Action": "Start",
         "DebugTarget": "https"
+      },
+      {
+        "Path": "Lipi\\VaaniTranslator.csproj",
+        "Action": "Start"
       }
     ]
   }

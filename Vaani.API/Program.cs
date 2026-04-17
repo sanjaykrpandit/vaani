@@ -56,6 +56,7 @@ builder.Services.AddScoped<IAzureSubscriptionService, AzureSubscriptionService>(
 builder.Services.AddScoped<ILanguageService, LanguageService>();
 // Register translation service (singleton - manages long-lived per-session Azure SDK instances)
 builder.Services.AddSingleton<ITranslationService, TranslationService>();
+builder.Services.AddSingleton<ILipiTranslationService, LipiTranslationService>();
 // Background service: tears down sessions whose meetings have expired or that have gone silent
 builder.Services.AddHostedService<StaleSessionCleanupService>();
 // Add SignalR for real-time translation hub
@@ -379,6 +380,7 @@ app.MapControllers();
 
 // Map SignalR Translation Hub
 app.MapHub<Vaani.API.Hubs.TranslationHub>("/hubs/translation");
+app.MapHub<Vaani.API.Hubs.LipiHub>("/hubs/lipi");
 
 // Health check endpoint
 app.MapGet("/health", async (VaaniDbContext dbContext) =>
