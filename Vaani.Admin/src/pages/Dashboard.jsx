@@ -69,7 +69,7 @@ function Dashboard() {
   const handleLaunchVaaniTranslation = (meetingId) => {
     const origin = window.location.origin
     const targetUrl =
-      `https://vaani-rtt-api.tryzent.com/launcher/Lipi.application` +
+      `http://20.198.120.78/api/launcher/translator/VaaniTranslator.application` +
       `?meetingId=${meetingId}&origin=${encodeURIComponent(origin)}`
 
     const isEdge = /Edg\//.test(navigator.userAgent)

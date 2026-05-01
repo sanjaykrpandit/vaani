@@ -5,8 +5,8 @@
         x:DataType="vm:MainViewModel"
         Width="720" Height="320"
         MinWidth="260" MinHeight="320"
-        TransparencyLevelHint="Blur"
-        Background="#EF000000"
+        TransparencyLevelHint="Transparent"
+        Background="#AA000000"
         SystemDecorations="BorderOnly"
         CanResize="True"
         Topmost="True"
@@ -14,6 +14,7 @@
         Title="Vaani Translator">
 
   <Window.Styles>
+
     <Style Selector="TextBlock.recognizing-dot">
       <Setter Property="Foreground" Value="#9CCC65"/>
       <Setter Property="FontSize" Value="16"/>
@@ -24,9 +25,15 @@
     <Style Selector="TextBlock.dot-1">
       <Style.Animations>
         <Animation Duration="0:0:0.9" IterationCount="INFINITE">
-          <KeyFrame Cue="0%"><Setter Property="Opacity" Value="0.25"/></KeyFrame>
-          <KeyFrame Cue="35%"><Setter Property="Opacity" Value="1"/></KeyFrame>
-          <KeyFrame Cue="100%"><Setter Property="Opacity" Value="0.25"/></KeyFrame>
+          <KeyFrame Cue="0%">
+            <Setter Property="Opacity" Value="0.25"/>
+          </KeyFrame>
+          <KeyFrame Cue="35%">
+            <Setter Property="Opacity" Value="1"/>
+          </KeyFrame>
+          <KeyFrame Cue="100%">
+            <Setter Property="Opacity" Value="0.25"/>
+          </KeyFrame>
         </Animation>
       </Style.Animations>
     </Style>
@@ -34,9 +41,15 @@
     <Style Selector="TextBlock.dot-2">
       <Style.Animations>
         <Animation Duration="0:0:0.9" IterationCount="INFINITE" Delay="0:0:0.15">
-          <KeyFrame Cue="0%"><Setter Property="Opacity" Value="0.25"/></KeyFrame>
-          <KeyFrame Cue="35%"><Setter Property="Opacity" Value="1"/></KeyFrame>
-          <KeyFrame Cue="100%"><Setter Property="Opacity" Value="0.25"/></KeyFrame>
+          <KeyFrame Cue="0%">
+            <Setter Property="Opacity" Value="0.25"/>
+          </KeyFrame>
+          <KeyFrame Cue="35%">
+            <Setter Property="Opacity" Value="1"/>
+          </KeyFrame>
+          <KeyFrame Cue="100%">
+            <Setter Property="Opacity" Value="0.25"/>
+          </KeyFrame>
         </Animation>
       </Style.Animations>
     </Style>
@@ -44,177 +57,278 @@
     <Style Selector="TextBlock.dot-3">
       <Style.Animations>
         <Animation Duration="0:0:0.9" IterationCount="INFINITE" Delay="0:0:0.3">
-          <KeyFrame Cue="0%"><Setter Property="Opacity" Value="0.25"/></KeyFrame>
-          <KeyFrame Cue="35%"><Setter Property="Opacity" Value="1"/></KeyFrame>
-          <KeyFrame Cue="100%"><Setter Property="Opacity" Value="0.25"/></KeyFrame>
+          <KeyFrame Cue="0%">
+            <Setter Property="Opacity" Value="0.25"/>
+          </KeyFrame>
+          <KeyFrame Cue="35%">
+            <Setter Property="Opacity" Value="1"/>
+          </KeyFrame>
+          <KeyFrame Cue="100%">
+            <Setter Property="Opacity" Value="0.25"/>
+          </KeyFrame>
         </Animation>
       </Style.Animations>
     </Style>
+
   </Window.Styles>
 
-  <Border CornerRadius="10" BorderBrush="#88FFFFFF" BorderThickness="0" Padding="10,0,10,10">
+  <!-- Window root: fully transparent, no border -->
+  <Border CornerRadius="10" BorderThickness="0" Padding="10,1,10,10">
     <Grid RowDefinitions="Auto,*,Auto">
-      <Grid x:Name="HeaderDragArea" Grid.Row="0" ColumnDefinitions="*,Auto,Auto,Auto" MinHeight="28" Background="Transparent" PointerPressed="DragArea_OnPointerPressed">
-        <StackPanel Orientation="Horizontal" Spacing="4" Margin="2,0" VerticalAlignment="Center">
-          <Image Source="/Assets/icon.ico" Width="18" Height="18"/>         
-        </StackPanel>
-        <Button Grid.Column="1" Content="⇄" Command="{Binding ToggleOrientationCommand}" Margin="2,0" Height="22" Width="24" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" ToolTip.Tip="Toggle view" Background="#EF000000" Foreground="Gray" BorderThickness="0" CornerRadius="4"/>
-        <Button Grid.Column="2" Content="⚙" Command="{Binding ShowSettingsCommand}" Margin="2,0" Height="22" Width="24" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" ToolTip.Tip="Settings" Background="#EF000000" Foreground="Gray" BorderThickness="0" CornerRadius="4"/>
-        <Button Grid.Column="3" Content="✕" Click="CloseButton_OnClick" Margin="2,0" Height="22" Width="24" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" ToolTip.Tip="Close" Background="#EF000000" Foreground="Gray" BorderThickness="0" CornerRadius="4"/>
+
+      <!-- ── Header drag area ── -->
+      <Grid x:Name="HeaderDragArea" Grid.Row="0"
+            ColumnDefinitions="*,Auto,Auto,Auto"
+            MinHeight="28"
+            Background="#01000000"
+            PointerPressed="DragArea_OnPointerPressed">
+
+        <!--<StackPanel Orientation="Horizontal" Spacing="4" Margin="2,0" VerticalAlignment="Center">
+          <Image Source="/Assets/icon.ico" Width="18" Height="18" Opacity="0.7"/>
+        </StackPanel>-->
+
+        <Button Grid.Column="1" Content="⇄"
+                Command="{Binding ToggleOrientationCommand}"
+                Margin="2,0" Height="22" Width="24" Padding="0"
+                HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                ToolTip.Tip="Toggle view"
+                Foreground="White"
+                BorderThickness="0" CornerRadius="4"/>
+        <Button Grid.Column="2" Content="⚙"
+                Command="{Binding ShowSettingsCommand}"
+                Margin="2,0" Height="22" Width="24" Padding="0"
+                HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                ToolTip.Tip="Settings"
+                Foreground="White"
+                BorderThickness="0" CornerRadius="4"/>
+        <Button Grid.Column="3" Content="✕"
+                Click="CloseButton_OnClick"
+                Margin="2,0" Height="22" Width="24" Padding="0"
+                HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                ToolTip.Tip="Close"
+                 Foreground="White"
+                BorderThickness="0" CornerRadius="4"/>
       </Grid>
 
-      <Grid Grid.Row="1" Margin="0,10,0,0">
-        <ScrollViewer x:Name="BubbleScrollViewer" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-          <Grid>
-            <ItemsControl ItemsSource="{Binding Bubbles}">
-              <ItemsControl.ItemsPanel>
-                <ItemsPanelTemplate>
-                  <StackPanel Orientation="Vertical"/>
-                </ItemsPanelTemplate>
-              </ItemsControl.ItemsPanel>
-              <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                  <Border HorizontalAlignment="Stretch" Background="#80303030" CornerRadius="8" Margin="0,0,0,10" Padding="10">
-                    <StackPanel Spacing="6">
-                      <Grid ColumnDefinitions="Auto,*">
-                        <StackPanel Grid.Column="0" Orientation="Horizontal" IsVisible="{Binding IsRecognizing}" VerticalAlignment="Center">
-                          <TextBlock Classes="recognizing-dot dot-1" Text="."/>
-                          <TextBlock Classes="recognizing-dot dot-2" Text="."/>
-                          <TextBlock Classes="recognizing-dot dot-3" Text="."/>
-                        </StackPanel>
-                        <TextBlock Grid.Column="1" Margin="4,0,0,0" Text="{Binding Transcript}" TextWrapping="Wrap" FontSize="12" FontStyle="Italic" LineHeight="22" FontWeight="SemiBold" Foreground="White"/>
-                      </Grid>
+      <!-- ── Transcript bubbles ── -->
+      <Grid Grid.Row="1" Margin="0,6,0,0">
+        <ScrollViewer x:Name="BubbleScrollViewer"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+          <ItemsControl ItemsSource="{Binding Bubbles}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <StackPanel Orientation="Vertical"/>
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <!--
+                  Single glass bubble — 67% opaque black (#AA000000).
+                  Readable on white, still shows ~33% of slide through.
+                  Subtle white border keeps edges crisp without adding opacity.
+                -->
+                <Border HorizontalAlignment="Stretch"                      
+                        BorderBrush="#33FFFFFF"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Margin="0,0,0,8"
+                        Padding="10">
+                  <StackPanel Spacing="5">
 
-                      <ItemsControl ItemsSource="{Binding Translations}">
-                        <ItemsControl.ItemTemplate>
-                          <DataTemplate>
-                            <Border Margin="0,4,0,0" Padding="6" CornerRadius="4" Background="#12000000" BorderBrush="#44FFFFFF" BorderThickness="1">
-                              <Grid ColumnDefinitions="Auto,*">
-                                <TextBlock Grid.Column="0" Text="{Binding ShortLanguageCode}" FontSize="10" Foreground="#70FFFFFF" VerticalAlignment="Center"/>
-                                <TextBlock Grid.Column="1" Margin="6,0,0,0" Text="{Binding Text}" TextWrapping="Wrap" FontSize="14" Foreground="#FFF5F5F5"/>
-                              </Grid>
-                            </Border>
-                          </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                      </ItemsControl>
-                    </StackPanel>
-                  </Border>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-          </Grid>
+                    <!-- Transcript line -->
+                    <Grid ColumnDefinitions="Auto,*">
+                      <StackPanel Grid.Column="0"
+                                  Orientation="Horizontal"
+                                  IsVisible="{Binding IsRecognizing}"
+                                  VerticalAlignment="Center">
+                        <TextBlock Classes="recognizing-dot dot-1" Text="."/>
+                        <TextBlock Classes="recognizing-dot dot-2" Text="."/>
+                        <TextBlock Classes="recognizing-dot dot-3" Text="."/>
+                      </StackPanel>
+                      <TextBlock Grid.Column="1"
+                                 Margin="4,0,0,0"
+                                 Text="{Binding Transcript}"
+                                 TextWrapping="Wrap"
+                                 FontSize="12"
+                                 FontStyle="Italic"
+                                 LineHeight="22"
+                                 FontWeight="Bold"
+                                 Foreground="White"/>
+                    </Grid>
+
+                    <!-- Translation rows -->
+                    <ItemsControl ItemsSource="{Binding Translations}">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                          <Border Margin="0,3,0,0"
+                                  Padding="6"
+                                  CornerRadius="4"                               
+                                  BorderBrush="#44FFFFFF"
+                                  BorderThickness="1">
+                            <Grid ColumnDefinitions="Auto,*">
+                              <TextBlock Grid.Column="0"
+                                         Text="{Binding ShortLanguageCode}"
+                                         FontSize="10"
+                                         FontWeight="Bold"
+                                         Foreground="#CCFFFFFF"
+                                         VerticalAlignment="Center"/>
+                              <TextBlock Grid.Column="1"
+                                         Margin="6,0,0,0"
+                                         Text="{Binding Text}"
+                                         TextWrapping="Wrap"
+                                         FontSize="14"
+                                         FontWeight="Bold"
+                                         Foreground="White"/>
+                            </Grid>
+                          </Border>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
         </ScrollViewer>
       </Grid>
 
-      <Border Grid.Row="1" CornerRadius="8" Background="#EE000000" Padding="6" IsVisible="{Binding IsSettingsVisible}" VerticalAlignment="Stretch" ClipToBounds="True">
+      <!-- ── Settings panel ── -->
+      <Border Grid.Row="1"
+              CornerRadius="8"             
+              Padding="6"
+              IsVisible="{Binding IsSettingsVisible}"
+              VerticalAlignment="Stretch"
+              ClipToBounds="True">
         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-        <Grid RowDefinitions="Auto,Auto">
-          <Grid Grid.Row="0" ColumnDefinitions="*,*" IsVisible="{Binding IsHorizontal}">
-            <Border Grid.Column="0" Background="#22FFFFFF" CornerRadius="6" Padding="6" Margin="0,0,4,0">
-              <StackPanel Spacing="4" HorizontalAlignment="Stretch">
-                <TextBlock Text="Speaking language" Foreground="Gray"/>
-                <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding SourceLanguages}" SelectedItem="{Binding SelectedSourceLanguage}">
-                  <ComboBox.ItemTemplate>
+          <Grid RowDefinitions="Auto,Auto">
+
+            <!-- Horizontal layout: source language + mic side by side -->
+            <Grid Grid.Row="0" ColumnDefinitions="*,*" IsVisible="{Binding IsHorizontal}">
+              <Border Grid.Column="0" CornerRadius="6" Padding="6" Margin="0,0,4,0">
+                <StackPanel Spacing="4" HorizontalAlignment="Stretch">
+                  <TextBlock Text="Speaking language" Foreground="#AAFFFFFF"/>
+                  <ComboBox HorizontalAlignment="Stretch"
+                            ItemsSource="{Binding SourceLanguages}"
+                            SelectedItem="{Binding SelectedSourceLanguage}">
+                    <ComboBox.ItemTemplate>
+                      <DataTemplate>
+                        <TextBlock Text="{Binding DisplayName}"/>
+                      </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                  </ComboBox>
+                </StackPanel>
+              </Border>
+              <Border Grid.Column="1" CornerRadius="6" Padding="6" Margin="4,0,0,0">
+                <StackPanel Spacing="4" HorizontalAlignment="Stretch">
+                  <TextBlock Text="Microphone" Foreground="#AAFFFFFF"/>
+                  <ComboBox HorizontalAlignment="Stretch"
+                            ItemsSource="{Binding InputDevices}"
+                            SelectedItem="{Binding SelectedInputDevice}">
+                    <ComboBox.ItemTemplate>
+                      <DataTemplate>
+                        <TextBlock Text="{Binding Name}"/>
+                      </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                  </ComboBox>
+                </StackPanel>
+              </Border>
+            </Grid>
+
+            <!-- Vertical layout: source language + mic stacked -->
+            <StackPanel Grid.Row="0" Spacing="8" IsVisible="{Binding !IsHorizontal}">
+              <Border Background="#AA000000" CornerRadius="6" Padding="8">
+                <StackPanel Spacing="6" HorizontalAlignment="Stretch">
+                  <TextBlock Text="Speaking language" Foreground="#AAFFFFFF"/>
+                  <ComboBox HorizontalAlignment="Stretch"
+                            ItemsSource="{Binding SourceLanguages}"
+                            SelectedItem="{Binding SelectedSourceLanguage}">
+                    <ComboBox.ItemTemplate>
+                      <DataTemplate>
+                        <TextBlock Text="{Binding DisplayName}"/>
+                      </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                  </ComboBox>
+                </StackPanel>
+              </Border>
+              <Border Background="#AA000000" CornerRadius="6" Padding="8">
+                <StackPanel Spacing="6" HorizontalAlignment="Stretch">
+                  <TextBlock Text="Microphone" Foreground="#AAFFFFFF"/>
+                  <ComboBox HorizontalAlignment="Stretch"
+                            ItemsSource="{Binding InputDevices}"
+                            SelectedItem="{Binding SelectedInputDevice}">
+                    <ComboBox.ItemTemplate>
+                      <DataTemplate>
+                        <TextBlock Text="{Binding Name}"/>
+                      </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                  </ComboBox>
+                </StackPanel>
+              </Border>
+            </StackPanel>
+
+            <!-- Output languages — horizontal -->
+            <Border Grid.Row="1" Background="#AA000000" CornerRadius="6" Padding="6"
+                    Margin="0,6,0,0" IsVisible="{Binding IsHorizontal}" VerticalAlignment="Stretch">
+              <Grid RowDefinitions="Auto,Auto">
+                <TextBlock Grid.Row="0" Text="Output languages" Foreground="#AAFFFFFF"/>
+                <ItemsControl Grid.Row="1" Margin="0,4,0,0" ItemsSource="{Binding TargetLanguages}">
+                  <ItemsControl.ItemTemplate>
                     <DataTemplate>
-                      <TextBlock Text="{Binding DisplayName}"/>
+                      <Border CornerRadius="4" Padding="6" Margin="0,0,0,4" >
+                        <CheckBox Content="{Binding DisplayName}" Foreground="#AAFFFFFF" IsChecked="{Binding IsSelected}"/>
+                      </Border>
                     </DataTemplate>
-                  </ComboBox.ItemTemplate>
-                </ComboBox>
-              </StackPanel>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </Grid>
             </Border>
 
-            <Border Grid.Column="1" Background="#22FFFFFF" CornerRadius="6" Padding="6" Margin="4,0,0,0">
-              <StackPanel Spacing="4" HorizontalAlignment="Stretch">
-                <TextBlock Text="Microphone" Foreground="Gray" />
-                <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding InputDevices}" SelectedItem="{Binding SelectedInputDevice}">
-                  <ComboBox.ItemTemplate>
+            <!-- Output languages — vertical -->
+            <Border Grid.Row="1" Background="#AA000000" CornerRadius="6" Padding="6"
+                    Margin="0,6,0,0" IsVisible="{Binding !IsHorizontal}" VerticalAlignment="Stretch">
+              <Grid RowDefinitions="Auto,Auto">
+                <TextBlock Grid.Row="0" Text="Output languages" Foreground="#AAFFFFFF"/>
+                <ItemsControl Grid.Row="1" Margin="0,3,0,0" ItemsSource="{Binding TargetLanguages}">
+                  <ItemsControl.ItemTemplate>
                     <DataTemplate>
-                      <TextBlock Text="{Binding Name}"/>
+                      <Border CornerRadius="4" Padding="4" Margin="0,0,0,4">
+                        <CheckBox Content="{Binding DisplayName}" Foreground="#AAFFFFFF" IsChecked="{Binding IsSelected}"/>
+                      </Border>
                     </DataTemplate>
-                  </ComboBox.ItemTemplate>
-                </ComboBox>
-              </StackPanel>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </Grid>
             </Border>
+
           </Grid>
-
-          <StackPanel Grid.Row="0" Spacing="8" IsVisible="{Binding !IsHorizontal}">
-            <Border Background="#22FFFFFF" CornerRadius="6" Padding="8">
-              <StackPanel Spacing="6" HorizontalAlignment="Stretch">
-                <TextBlock Text="Speaking language" Foreground="Gray"/>
-                <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding SourceLanguages}" SelectedItem="{Binding SelectedSourceLanguage}">
-                  <ComboBox.ItemTemplate>
-                    <DataTemplate>
-                      <TextBlock Text="{Binding DisplayName}"/>
-                    </DataTemplate>
-                  </ComboBox.ItemTemplate>
-                </ComboBox>
-              </StackPanel>
-            </Border>
-
-            <Border Background="#22FFFFFF" CornerRadius="6" Padding="8">
-              <StackPanel Spacing="6" HorizontalAlignment="Stretch">
-                <TextBlock Text="Microphone" Foreground="Gray"/>
-                <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding InputDevices}" SelectedItem="{Binding SelectedInputDevice}">
-                  <ComboBox.ItemTemplate>
-                    <DataTemplate>
-                      <TextBlock Text="{Binding Name}"/>
-                    </DataTemplate>
-                  </ComboBox.ItemTemplate>
-                </ComboBox>
-              </StackPanel>
-            </Border>
-          </StackPanel>
-
-          <Border Grid.Row="1" Background="#22FFFFFF" CornerRadius="6" Padding="6" Margin="0,6,0,0" IsVisible="{Binding IsHorizontal}" VerticalAlignment="Stretch">
-            <Grid RowDefinitions="Auto,Auto">
-              <TextBlock Grid.Row="0" Text="Output languages" Foreground="Gray"/>
-              <ItemsControl Grid.Row="1" Margin="0,4,0,0" ItemsSource="{Binding TargetLanguages}">
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate>
-                    <Border Background="#1FFFFFFF" CornerRadius="4" Padding="6" Margin="0,0,0,4">
-                      <CheckBox Content="{Binding DisplayName}" IsChecked="{Binding IsSelected}"/>
-                    </Border>
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-            </Grid>
-          </Border>
-
-          <Border Grid.Row="1" Background="#22FFFFFF" CornerRadius="6" Padding="6" Margin="0,6,0,0" IsVisible="{Binding !IsHorizontal}" VerticalAlignment="Stretch">
-            <Grid RowDefinitions="Auto,Auto">
-              <TextBlock Grid.Row="0" Text="Output languages" Foreground="Gray"/>
-              <ItemsControl Grid.Row="1" Margin="0,4,0,0" ItemsSource="{Binding TargetLanguages}">
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate>
-                    <Border Background="#1FFFFFFF" CornerRadius="4" Padding="6" Margin="0,0,0,4">
-                      <CheckBox Content="{Binding DisplayName}" IsChecked="{Binding IsSelected}"/>
-                    </Border>
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-            </Grid>
-          </Border>
-        </Grid>
         </ScrollViewer>
       </Border>
 
-      <Border Grid.Row="2" Background="#55000000" CornerRadius="0" Padding="0" Margin="0,1,0,0" ZIndex="20">
+      <!-- ── Status bar ── -->
+      <Border Grid.Row="2"             
+              CornerRadius="0"
+              Padding="4,0"
+              Margin="0,1,0,0"
+              ZIndex="20">
         <Grid ColumnDefinitions="*,Auto">
-          <TextBlock Text="{Binding Status}" VerticalAlignment="Center" Foreground="Gray"/>
+          <TextBlock Text="{Binding Status}"
+                     VerticalAlignment="Center"
+                     FontSize="10"
+                     Foreground="#CCFFFFFF"/>
           <Button Grid.Column="1"
                   Content="{Binding StartStopText}"
                   Command="{Binding StartStopCommand}"
-                  Width="64"
-                  Height="22"
-                  Padding="0"
+                  Width="54" Height="18" Padding="0"
                   HorizontalContentAlignment="Center"
-                  VerticalContentAlignment="Center"
-                  Background="#44000000"
-                  Foreground="Gray"
-                  BorderBrush="#99FFFFFF"
+                  VerticalContentAlignment="Center"              
+                  Foreground="White"
+                  BorderBrush="#66FFFFFF"
                   BorderThickness="1"/>
         </Grid>
       </Border>
+
     </Grid>
   </Border>
 </Window>

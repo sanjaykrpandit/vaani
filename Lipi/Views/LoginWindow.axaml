@@ -6,7 +6,7 @@
         Width="360" Height="660"
         MinWidth="360" MinHeight="500"
         TransparencyLevelHint="Blur"
-        Background="#00000000"
+        Background="#AA000000"
         SystemDecorations="None"
         CanResize="False"
         WindowStartupLocation="CenterScreen"

@@ -121,6 +121,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             {
                 var accessToken = ctx.Request.Query["access_token"];
                 var path = ctx.HttpContext.Request.Path;
+                // Support both /hubs and /api/hubs paths for backwards compatibility
                 if (!string.IsNullOrEmpty(accessToken) &&
                     (path.StartsWithSegments("/hubs") || path.StartsWithSegments("/api/hubs")))
                 {
@@ -341,13 +342,13 @@ app.UseStaticFiles(new StaticFileOptions
     ContentTypeProvider = provider
 });
 
-//app.UseStaticFiles(new StaticFileOptions
-//{
-//    FileProvider = new PhysicalFileProvider(
-//        Path.Combine(builder.Environment.ContentRootPath, "wwwroot", "launcher")),
-//    RequestPath = "/api/launcher",
-//    ContentTypeProvider = provider
-//});
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new PhysicalFileProvider(
+        Path.Combine(builder.Environment.ContentRootPath, "wwwroot", "launcher")),
+    RequestPath = "/api/launcher",
+    ContentTypeProvider = provider
+});
 
 
 // Test database connection (optional - won't crash if DB is down)

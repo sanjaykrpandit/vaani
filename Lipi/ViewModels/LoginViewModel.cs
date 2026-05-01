@@ -1,5 +1,6 @@
 using ReactiveUI;
 using System.Windows.Input;
+using System.Reactive;
 using Lipi.Models;
 using Lipi.Services;
 
@@ -63,6 +64,14 @@ public class LoginViewModel : ReactiveObject
             _meetingId = initialMeetingId.Trim();
 
         LoginCommand = ReactiveCommand.CreateFromTask(LoginAsync);
+        
+        // Subscribe to handle any errors in LoginCommand
+        ((ReactiveCommand<Unit, Unit>)LoginCommand).ThrownExceptions.Subscribe(ex =>
+        {
+            Status = $"Login error: {ex.Message}";
+            IsBusy = false;
+            IsAutoLoginProcessing = false;
+        });
     }
 
     private async Task LoginAsync()

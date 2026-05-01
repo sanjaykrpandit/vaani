@@ -90,7 +90,7 @@
 
     <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,*,Auto">
 		<!-- Header -->
-      <Border Grid.Row="0" Grid.ColumnSpan="2" Background="#252526" Padding="5" PointerPressed="Header_OnPointerPressed">
+      <Border Grid.Row="0" Grid.ColumnSpan="2" >
 			<Grid ColumnDefinitions="Auto,*,Auto">
 				<!-- View Toggle Buttons -->
                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
@@ -104,7 +104,7 @@
 						<Image Source="/Assets/console.png"
 							   Width="18" Height="18"
 							   Stretch="Uniform"/>
-					</Button>-->
+					</Button>
 					<Button Command="{Binding ShowMessageViewCommand}"
                             Width="24" Height="24"
 							Padding="4"

@@ -14,53 +14,40 @@ function MeetingList({
   const [copyingId, setCopyingId] = useState(null)
 
   const handleCopyLink = async (meetingId) => {
-  try {
-    setCopyingId(meetingId);
-    const token = await generateMeetingToken(meetingId);
-    const origin = window.location.origin;
-    const publicUrl = `${origin}/public-access?token=${token}`;
-
+    try {
+      setCopyingId(meetingId);
       // Generate token from backend
-      const token = await generateMeetingToken(meetingId)
-
+      const token = await generateMeetingToken(meetingId);
       // Create public access URL with only token parameter
-      const origin = window.location.origin
-      const publicUrl = `${origin}/public-access?token=${token}`
+      const origin = window.location.origin;
+      const publicUrl = `${origin}/public-access?token=${token}`;
 
       if (navigator.clipboard && navigator.clipboard.writeText) {
         // Copy to clipboard using Clipboard API
-        await navigator.clipboard.writeText(publicUrl)
+        await navigator.clipboard.writeText(publicUrl);
       } else {
         // Fallback: Use a temporary textarea element
-        const textarea = document.createElement('textarea')
-        textarea.value = publicUrl
-        textarea.style.position = 'fixed' // Prevent scrolling to bottom
-        textarea.style.opacity = '0'
-        document.body.appendChild(textarea)
-        textarea.focus()
-        textarea.select()
+        const textarea = document.createElement('textarea');
+        textarea.value = publicUrl;
+        textarea.style.position = 'fixed'; // Prevent scrolling to bottom
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
         try {
-          document.execCommand('copy')
+          document.execCommand('copy');
         } finally {
-          document.body.removeChild(textarea)
+          document.body.removeChild(textarea);
         }
       }
-
       // Show success feedback
-      setTimeout(() => setCopyingId(null), 2000)
+      setTimeout(() => setCopyingId(null), 2000);
     } catch (error) {
-      console.error('Failed to copy link:', error)
-      alert('Failed to generate meeting link. Please try again.')
-      setCopyingId(null)
+      console.error('Failed to copy link:', error);
+      alert('Failed to generate meeting link. Please try again.');
+      setCopyingId(null);
     }
-
-    setTimeout(() => setCopyingId(null), 2000);
-  } catch (error) {
-    console.error('Failed to copy link:', error);
-    alert('Failed to generate meeting link. Please try again.');
-    setCopyingId(null);
-  }
-};
+  };
 
 
   const formatDate = (dateString) => {
@@ -150,7 +137,7 @@ function MeetingList({
                       >
                         Launch
                         <img src={logo} alt="logo" height="10" />
-                      </button>
+                      </button>&nbsp;&nbsp;
                       <button
                         className="btn btn-xsm btn-secondary"
                         onClick={() => onLaunchVaaniTranslation(meeting.meetingId)}

@@ -39,6 +39,7 @@ public class MeetingLoginViewModel : ReactiveObject, IDisposable
     private string _appVersion = string.Empty;
 
     private bool _isMeetingIdEditable = true;
+    private CancellationTokenSource? _loginCts;
 
     public MeetingLoginViewModel()
     {
@@ -425,4 +426,10 @@ public class MeetingLoginViewModel : ReactiveObject, IDisposable
     }
 
     #endregion
+
+    public void Dispose()
+    {
+        try { _loginCts?.Cancel(); } catch { }
+        try { _loginCts?.Dispose(); } catch { }
+    }
 }

@@ -5,6 +5,7 @@ using ReactiveUI;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Windows.Input;
+using System.Reactive;
 using Avalonia.Threading;
 
 namespace Lipi.ViewModels;
@@ -78,6 +79,14 @@ public class MainViewModel : ReactiveObject, IDisposable
         _session = session;
 
         StartStopCommand = ReactiveCommand.CreateFromTask(ToggleStartStopAsync);
+        
+        // Subscribe to handle any errors in StartStopCommand
+        ((ReactiveCommand<Unit, Unit>)StartStopCommand).ThrownExceptions.Subscribe(ex =>
+        {
+            Status = $"Error: {ex.Message}";
+            IsSettingsVisible = true;
+        });
+        
         ToggleOrientationCommand = ReactiveCommand.Create(() => IsHorizontal = !IsHorizontal);
         ShowSettingsCommand = ReactiveCommand.Create(() => IsSettingsVisible = !IsSettingsVisible);
 

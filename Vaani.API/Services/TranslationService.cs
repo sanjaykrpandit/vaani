@@ -195,7 +195,7 @@ public class TranslationService : ITranslationService, IDisposable
             {
                 Success = true,
                 TranslationSessionId = translationSessionId,
-                HubUrl = "/hubs/translation",
+                HubUrl = "/api/hubs/translation",
                 Message = "Translation session started successfully."
             };
         }
