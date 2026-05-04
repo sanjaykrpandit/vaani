@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Text;
+using System.Globalization;
 using Microsoft.CognitiveServices.Speech;
 using Microsoft.CognitiveServices.Speech.Audio;
 using Microsoft.CognitiveServices.Speech.Translation;
@@ -19,6 +20,14 @@ public class LipiTranslationService : ILipiTranslationService, IDisposable
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IJwtTokenService _jwtTokenService;
     private readonly ILogger<LipiTranslationService> _logger;
+    private readonly TimeSpan _recognizingEventMinInterval;
+    private readonly int _recognizingMinTextLength;
+    private readonly int _recognizingMinDeltaLength;
+    private readonly int _recognizingPreviewMaxChars;
+    private readonly bool _includeRecognizingTranslations;
+    private readonly bool _dropOutOfOrderAudioChunks;
+    private readonly int _lipiSegmentationSilenceTimeoutMs;
+    private readonly TextModerationEngine _moderation;
 
     private readonly ConcurrentDictionary<string, LipiSessionState> _sessions = new();
     private readonly ConcurrentDictionary<string, HashSet<string>> _connectionSessions = new();
@@ -26,11 +35,24 @@ public class LipiTranslationService : ILipiTranslationService, IDisposable
     public LipiTranslationService(
         IServiceScopeFactory scopeFactory,
         IJwtTokenService jwtTokenService,
-        ILogger<LipiTranslationService> logger)
+        ILogger<LipiTranslationService> logger,
+        IConfiguration configuration)
     {
         _scopeFactory = scopeFactory;
         _jwtTokenService = jwtTokenService;
         _logger = logger;
+        _recognizingEventMinInterval = TimeSpan.FromMilliseconds(
+            Math.Max(0, configuration.GetValue<int>("Translation:LipiRecognizingMinIntervalMs", 400)));
+        _recognizingMinTextLength = Math.Max(0, configuration.GetValue<int>("Translation:LipiRecognizingMinTextLength", 4));
+        _recognizingMinDeltaLength = Math.Max(0, configuration.GetValue<int>("Translation:LipiRecognizingMinDeltaLength", 3));
+        _recognizingPreviewMaxChars = Math.Max(16, configuration.GetValue<int>("Translation:LipiRecognizingPreviewMaxChars", 72));
+        _includeRecognizingTranslations = configuration.GetValue<bool>("Translation:LipiIncludeRecognizingTranslations", true);
+        _dropOutOfOrderAudioChunks = configuration.GetValue<bool>("Translation:LipiDropOutOfOrderAudioChunks", true);
+        _lipiSegmentationSilenceTimeoutMs = Math.Clamp(
+            configuration.GetValue<int>("Translation:LipiSegmentationSilenceTimeoutMs", 700),
+            300,
+            3000);
+        _moderation = new TextModerationEngine(configuration, _logger);
     }
 
     public async Task<LipiStartResponse> StartSessionAsync(LipiStartRequest request, string jwtToken)
@@ -178,6 +200,9 @@ public class LipiTranslationService : ILipiTranslationService, IDisposable
 
         try
         {
+            if (!ShouldAcceptChunkSequence(state, chunk.SequenceNumber))
+                return Task.CompletedTask;
+
             state.PushStream.Write(chunk.Data, chunk.Data.Length);
         }
         catch (Exception ex)
@@ -224,7 +249,13 @@ public class LipiTranslationService : ILipiTranslationService, IDisposable
         var config = SpeechTranslationConfig.FromEndpoint(new Uri(endpoint), state.AzureKey);
         config.SpeechRecognitionLanguage = state.SourceLanguage;
         config.OutputFormat = OutputFormat.Detailed;
-        config.SetProperty(PropertyId.SpeechServiceResponse_ProfanityOption, "Masked");
+        config.SetProperty(PropertyId.SpeechServiceResponse_ProfanityOption, "Removed");
+        config.SetProperty(
+            PropertyId.Speech_SegmentationSilenceTimeoutMs,
+            _lipiSegmentationSilenceTimeoutMs.ToString(CultureInfo.InvariantCulture));
+        config.SetProperty(
+            PropertyId.SpeechServiceConnection_EndSilenceTimeoutMs,
+            _lipiSegmentationSilenceTimeoutMs.ToString(CultureInfo.InvariantCulture));
 
         var targetMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var fullCode in state.TargetLanguages)
@@ -243,19 +274,62 @@ public class LipiTranslationService : ILipiTranslationService, IDisposable
             if (e.Result.Reason != ResultReason.TranslatingSpeech)
                 return;
 
-            var recognizingTranslations = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var pair in targetMap)
+            var originalText = e.Result.Text?.Trim();
+            if (string.IsNullOrWhiteSpace(originalText))
+                return;
+
+            var moderatedOriginal = _moderation.ModerateText(originalText);
+            if (moderatedOriginal.Blocked || string.IsNullOrWhiteSpace(moderatedOriginal.Text))
+                return;
+
+            originalText = moderatedOriginal.Text;
+
+            if (originalText.Length < _recognizingMinTextLength)
+                return;
+
+            if (!string.IsNullOrEmpty(state.LastRecognizingText) &&
+                originalText.StartsWith(state.LastRecognizingText, StringComparison.Ordinal) &&
+                originalText.Length - state.LastRecognizingText.Length < _recognizingMinDeltaLength)
             {
-                if (e.Result.Translations.TryGetValue(pair.Value, out var value) && !string.IsNullOrWhiteSpace(value))
-                    recognizingTranslations[pair.Key] = value.Trim();
+                return;
+            }
+
+            var now = DateTime.UtcNow;
+            if (originalText.Equals(state.LastRecognizingText, StringComparison.Ordinal) &&
+                now - state.LastRecognizingEventAt < _recognizingEventMinInterval)
+            {
+                return;
+            }
+
+            if (now - state.LastRecognizingEventAt < _recognizingEventMinInterval)
+                return;
+
+            state.LastRecognizingEventAt = now;
+            state.LastRecognizingText = originalText;
+
+            Dictionary<string, string>? recognizingTranslations = null;
+            if (_includeRecognizingTranslations)
+            {
+                recognizingTranslations = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var pair in targetMap)
+                {
+                    if (e.Result.Translations.TryGetValue(pair.Value, out var value) && !string.IsNullOrWhiteSpace(value))
+                    {
+                        var moderatedValue = _moderation.ModerateText(value.Trim());
+                        if (!moderatedValue.Blocked && !string.IsNullOrWhiteSpace(moderatedValue.Text))
+                            recognizingTranslations[pair.Key] = moderatedValue.Text;
+                    }
+                }
             }
 
             state.FireEvent(new LipiEventDto
             {
                 LipiSessionId = state.LipiSessionId,
                 EventType = LipiEventType.Recognizing,
-                OriginalText = e.Result.Text,
-                Translations = recognizingTranslations
+                OriginalText = originalText,
+                Translations = recognizingTranslations,
+                PreviewTranslations = BuildPreviewTranslations(recognizingTranslations),
+                IsFinal = false
             });
         };
 
@@ -264,18 +338,45 @@ public class LipiTranslationService : ILipiTranslationService, IDisposable
             if (e.Result.Reason != ResultReason.TranslatedSpeech || string.IsNullOrWhiteSpace(e.Result.Text))
                 return;
 
+            var moderatedOriginal = _moderation.ModerateText(e.Result.Text.Trim());
+            if (moderatedOriginal.Blocked || string.IsNullOrWhiteSpace(moderatedOriginal.Text))
+            {
+                state.FireEvent(new LipiEventDto
+                {
+                    LipiSessionId = state.LipiSessionId,
+                    EventType = LipiEventType.Error,
+                    SystemMessage = "A phrase was filtered due to meeting content policy."
+                });
+                return;
+            }
+
             var translations = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (var pair in targetMap)
             {
                 if (e.Result.Translations.TryGetValue(pair.Value, out var value) && !string.IsNullOrWhiteSpace(value))
-                    translations[pair.Key] = value.Trim();
+                {
+                    var moderatedTranslation = _moderation.ModerateText(value.Trim());
+                    if (moderatedTranslation.Blocked)
+                    {
+                        state.FireEvent(new LipiEventDto
+                        {
+                            LipiSessionId = state.LipiSessionId,
+                            EventType = LipiEventType.Error,
+                            SystemMessage = "A phrase was filtered due to meeting content policy."
+                        });
+                        return;
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(moderatedTranslation.Text))
+                        translations[pair.Key] = moderatedTranslation.Text;
+                }
             }
 
             Interlocked.Increment(ref state._totalRecognitions);
 
             QueueTranscriptEntry(
                 state,
-                e.Result.Text.Trim(),
+                moderatedOriginal.Text,
                 translations,
                 DateTime.UtcNow);
 
@@ -283,9 +384,13 @@ public class LipiTranslationService : ILipiTranslationService, IDisposable
             {
                 LipiSessionId = state.LipiSessionId,
                 EventType = LipiEventType.Recognized,
-                OriginalText = e.Result.Text.Trim(),
-                Translations = translations
+                OriginalText = moderatedOriginal.Text,
+                Translations = translations,
+                PreviewTranslations = translations.Count > 0 ? new Dictionary<string, string>(translations, StringComparer.OrdinalIgnoreCase) : null,
+                IsFinal = true
             });
+
+            state.LastRecognizingText = string.Empty;
         };
 
         state.Recognizer.Canceled += (_, e) =>
@@ -306,6 +411,39 @@ public class LipiTranslationService : ILipiTranslationService, IDisposable
         await state.Recognizer.StartContinuousRecognitionAsync();
 
         state.TranscriptFlushLoopTask = RunTranscriptFlushLoopAsync(state);
+    }
+
+    private Dictionary<string, string>? BuildPreviewTranslations(Dictionary<string, string>? translations)
+    {
+        if (translations == null || translations.Count == 0)
+            return null;
+
+        var preview = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in translations)
+        {
+            var compact = CompactPreviewText(item.Value);
+            if (!string.IsNullOrWhiteSpace(compact))
+                preview[item.Key] = compact;
+        }
+
+        return preview.Count > 0 ? preview : null;
+    }
+
+    private string CompactPreviewText(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return string.Empty;
+
+        var normalized = string.Join(' ', text.Split([' ', '\t', '\r', '\n'], StringSplitOptions.RemoveEmptyEntries));
+        if (normalized.Length <= _recognizingPreviewMaxChars)
+            return normalized;
+
+        var truncated = normalized[.._recognizingPreviewMaxChars];
+        var lastSpace = truncated.LastIndexOf(' ');
+        if (lastSpace >= _recognizingPreviewMaxChars / 2)
+            truncated = truncated[..lastSpace];
+
+        return truncated.TrimEnd(',', ';', ':', '-', ' ') + "…";
     }
 
     private async Task TeardownStateAsync(LipiSessionState state, string reason)
@@ -340,6 +478,46 @@ public class LipiTranslationService : ILipiTranslationService, IDisposable
             EventType = LipiEventType.SessionStopped,
             SystemMessage = reason
         });
+    }
+
+    private bool ShouldAcceptChunkSequence(LipiSessionState state, long sequenceNumber)
+    {
+        lock (state.AudioSequenceSync)
+        {
+            if (!state.HasReceivedAudioChunk)
+            {
+                state.HasReceivedAudioChunk = true;
+                state.LastReceivedSequenceNumber = sequenceNumber;
+                return true;
+            }
+
+            var expectedSequence = state.LastReceivedSequenceNumber + 1;
+            if (sequenceNumber > expectedSequence)
+            {
+                _logger.LogWarning(
+                    "[{Id}] Lipi audio sequence gap detected. Expected {Expected} but received {Actual}.",
+                    state.LipiSessionId,
+                    expectedSequence,
+                    sequenceNumber);
+
+                state.LastReceivedSequenceNumber = sequenceNumber;
+                return true;
+            }
+
+            if (sequenceNumber <= state.LastReceivedSequenceNumber)
+            {
+                _logger.LogDebug(
+                    "[{Id}] Lipi audio sequence out of order or duplicate. Last {Last}, received {Actual}.",
+                    state.LipiSessionId,
+                    state.LastReceivedSequenceNumber,
+                    sequenceNumber);
+
+                return !_dropOutOfOrderAudioChunks;
+            }
+
+            state.LastReceivedSequenceNumber = sequenceNumber;
+            return true;
+        }
     }
 
     private static LipiStartResponse Fail(string code, string msg) =>
@@ -520,6 +698,11 @@ internal class LipiSessionState
     public DateTime StartedAt { get; set; }
     public DateTime MeetingValidUntil { get; set; }
     public DateTime LastTranscriptFlushAt { get; set; }
+    public DateTime LastRecognizingEventAt { get; set; }
+    public string LastRecognizingText { get; set; } = string.Empty;
+    public object AudioSequenceSync { get; } = new();
+    public bool HasReceivedAudioChunk { get; set; }
+    public long LastReceivedSequenceNumber { get; set; }
 
     public object PendingTranscriptLock { get; } = new();
     public List<string> PendingTranscripts { get; } = [];

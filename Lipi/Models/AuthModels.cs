@@ -65,3 +65,38 @@ public class LipiSessionContext
     public List<LanguageInfo> AvailableLanguages { get; set; } = [];
     public string SourceLanguage { get; set; } = string.Empty;
 }
+
+public class LipiDirectTokenResponse
+{
+    public bool Success { get; set; }
+    public string SpeechToken { get; set; } = string.Empty;
+    public string Region { get; set; } = string.Empty;
+    public string SourceLanguage { get; set; } = string.Empty;
+    public List<string> TargetLanguages { get; set; } = [];
+    public DateTime ExpiresAtUtc { get; set; }
+    public string? ErrorCode { get; set; }
+    public string? Message { get; set; }
+}
+
+public class LipiDirectTranscriptEntry
+{
+    public string OriginalText { get; set; } = string.Empty;
+    public Dictionary<string, string> Translations { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public DateTime RecognizedAtUtc { get; set; } = DateTime.UtcNow;
+}
+
+public class LipiDirectTranscriptBatchRequest
+{
+    public string MeetingId { get; set; } = string.Empty;
+    public string SessionId { get; set; } = string.Empty;
+    public string? SourceLanguage { get; set; }
+    public List<string>? TargetLanguages { get; set; }
+    public List<LipiDirectTranscriptEntry> Entries { get; set; } = [];
+}
+
+public class LipiDirectTranscriptBatchResponse
+{
+    public bool Success { get; set; }
+    public string? ErrorCode { get; set; }
+    public string? Message { get; set; }
+}

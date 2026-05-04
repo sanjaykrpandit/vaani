@@ -1,3 +1,4 @@
 C:\Users\sp250293\Documents\Workspace\spdotnet\Vaani.Admin\obj\Debug\Vaani.Admin.esproj.CoreCompileInputs.cache
 C:\Users\Administrator\Documents\GitHub\vaani\Vaani.Admin\obj\Debug\Vaani.Admin.esproj.CoreCompileInputs.cache
 C:\Users\sp250293\Documents\Workspace\spdotnet\vaani\Vaani.Admin\obj\Debug\Vaani.Admin.esproj.CoreCompileInputs.cache
+C:\Users\sp250293\Documents\Workspace\spdotnet\backup\vaani-on-server\Vaani.Admin\obj\Debug\Vaani.Admin.esproj.CoreCompileInputs.cache

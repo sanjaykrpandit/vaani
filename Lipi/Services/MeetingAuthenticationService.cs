@@ -74,6 +74,53 @@ public class MeetingAuthenticationService
             ?? new SessionStartResponse { Success = false, Message = "Invalid start session response." };
     }
 
+    public async Task<LipiDirectTokenResponse> GetDirectSpeechTokenAsync(
+        string meetingId,
+        string sessionId,
+        string sourceLanguage,
+        IEnumerable<string> targetLanguages,
+        string sessionToken)
+    {
+        var request = new
+        {
+            MeetingId = meetingId,
+            SessionId = sessionId,
+            SourceLanguage = sourceLanguage,
+            TargetLanguages = targetLanguages.ToList()
+        };
+
+        var httpRequest = new HttpRequestMessage(HttpMethod.Post, "/api/lipi/direct/token")
+        {
+            Content = JsonContent.Create(request)
+        };
+        httpRequest.Headers.Add("Authorization", $"Bearer {sessionToken}");
+
+        var response = await _httpClient.SendAsync(httpRequest);
+        if (!response.IsSuccessStatusCode)
+            return new LipiDirectTokenResponse { Success = false, Message = "Failed to acquire direct Azure token." };
+
+        return await response.Content.ReadFromJsonAsync<LipiDirectTokenResponse>()
+            ?? new LipiDirectTokenResponse { Success = false, Message = "Invalid direct token response." };
+    }
+
+    public async Task<LipiDirectTranscriptBatchResponse> SubmitDirectTranscriptBatchAsync(
+        LipiDirectTranscriptBatchRequest request,
+        string sessionToken)
+    {
+        var httpRequest = new HttpRequestMessage(HttpMethod.Post, "/api/lipi/direct/transcripts")
+        {
+            Content = JsonContent.Create(request)
+        };
+        httpRequest.Headers.Add("Authorization", $"Bearer {sessionToken}");
+
+        var response = await _httpClient.SendAsync(httpRequest);
+        if (!response.IsSuccessStatusCode)
+            return new LipiDirectTranscriptBatchResponse { Success = false, Message = "Failed to persist direct transcript." };
+
+        return await response.Content.ReadFromJsonAsync<LipiDirectTranscriptBatchResponse>()
+            ?? new LipiDirectTranscriptBatchResponse { Success = false, Message = "Invalid transcript persistence response." };
+    }
+
     public static string GetDeviceId()
     {
         var combined = $"{Environment.MachineName}_{Environment.UserName}";

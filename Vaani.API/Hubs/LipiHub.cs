@@ -54,6 +54,12 @@ public class LipiHub : Hub
         if (string.IsNullOrWhiteSpace(chunk.LipiSessionId) || chunk.Data == null || chunk.Data.Length == 0)
             return;
 
+        if (!IsSessionOwnedByConnection(chunk.LipiSessionId))
+        {
+            await SendError("SESSION_ACCESS_DENIED", "You are not authorised to send audio to this Lipi session.");
+            return;
+        }
+
         if (chunk.Data.Length > _maxChunkBytes)
         {
             await SendError("CHUNK_TOO_LARGE", $"Audio chunk exceeds max size of {_maxChunkBytes} bytes.");
@@ -89,6 +95,18 @@ public class LipiHub : Hub
 
     public async Task GetStatus(string lipiSessionId)
     {
+        if (string.IsNullOrWhiteSpace(lipiSessionId))
+        {
+            await SendError("INVALID_REQUEST", "LipiSessionId is required.");
+            return;
+        }
+
+        if (!IsSessionOwnedByConnection(lipiSessionId))
+        {
+            await SendError("SESSION_ACCESS_DENIED", "You are not authorised to view this Lipi session.");
+            return;
+        }
+
         var status = _lipiService.GetStatus(lipiSessionId);
         if (status == null)
         {

@@ -30,4 +30,11 @@
     <Folder Include="wwwroot\launcher\" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="Moderation\BlockedTerms\**\*.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>

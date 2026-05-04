@@ -3,7 +3,9 @@ using Microsoft.CognitiveServices.Speech.Audio;
 using Microsoft.CognitiveServices.Speech.Translation;
 using Microsoft.EntityFrameworkCore;
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.IO;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Channels;
 using Vaani.API.Data;
@@ -35,7 +37,10 @@ public class TranslationService : ITranslationService, IDisposable
     private readonly int _maxConcurrentSessions;
     private readonly int _maxSessionsPerMeeting;
     private readonly string _contentModerationMode;
+    private readonly bool _enableSecondaryContentModeration;
     private readonly List<Regex> _blockedPatterns;
+    private readonly string[] _blockedCanonicalTerms;
+    private static readonly Regex SecondaryTokenRegex = new(@"[\p{L}\p{M}\p{Nd}_'-]+", RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     // Terms source is file-only (local dictionaries under Translation:BlockedTermsDirectory)
 
@@ -51,7 +56,8 @@ public class TranslationService : ITranslationService, IDisposable
         _configuration = configuration;
         _maxConcurrentSessions = _configuration.GetValue<int>("Translation:MaxConcurrentSessions", 30);
         _maxSessionsPerMeeting = _configuration.GetValue<int>("Translation:MaxSessionsPerMeeting", 5);
-        _contentModerationMode = (_configuration.GetValue<string>("Translation:ContentModerationMode", "Mask") ?? "Mask").Trim();
+        _contentModerationMode = (_configuration.GetValue<string>("Translation:ContentModerationMode", "Remove") ?? "Remove").Trim();
+        _enableSecondaryContentModeration = _configuration.GetValue<bool>("Translation:EnableSecondaryContentModeration", true);
 
         var localTerms = LoadLocalBlockedTerms();
         var mergedTerms = localTerms
@@ -65,6 +71,13 @@ public class TranslationService : ITranslationService, IDisposable
             .Where(r => r != null)
             .Cast<Regex>()
             .ToList();
+
+        _blockedCanonicalTerms = mergedTerms
+            .Select(CanonicalizeForModeration)
+            .Where(t => !string.IsNullOrWhiteSpace(t))
+            .Distinct(StringComparer.Ordinal)
+            .OrderByDescending(t => t.Length)
+            .ToArray();
 
         _logger.LogInformation("Content moderation loaded: {Patterns} patterns, mode={Mode}",
             _blockedPatterns.Count, _contentModerationMode);
@@ -789,7 +802,7 @@ public class TranslationService : ITranslationService, IDisposable
 
     private static void ApplyCommonProperties(SpeechTranslationConfig config)
     {
-        config.SetProperty(PropertyId.SpeechServiceResponse_ProfanityOption, "Masked");
+        config.SetProperty(PropertyId.SpeechServiceResponse_ProfanityOption, "Removed");
         // TrueText post-processing suppresses low-confidence results and returns
         // TranslatedSpeech with empty Text, which breaks the recognition pipeline.
     }
@@ -816,15 +829,100 @@ public class TranslationService : ITranslationService, IDisposable
             {
                 output = regex.Replace(output, string.Empty);
             }
-            else // default: Mask
+            else if (_contentModerationMode.Equals("Mask", StringComparison.OrdinalIgnoreCase))
             {
                 output = regex.Replace(output, "***");
             }
+            else // default: Remove
+            {
+                output = regex.Replace(output, string.Empty);
+            }
+        }
+
+        if (_enableSecondaryContentModeration && ContainsBlockedCanonicalTerm(output))
+        {
+            flagged = true;
+
+            if (_contentModerationMode.Equals("Block", StringComparison.OrdinalIgnoreCase))
+                return (string.Empty, true, true);
+
+            output = ApplySecondaryTokenModeration(output);
         }
 
         // normalize spaces after removals
         output = Regex.Replace(output, "\\s+", " ").Trim();
         return (output, flagged, false);
+    }
+
+    private string ApplySecondaryTokenModeration(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text) || _blockedCanonicalTerms.Length == 0)
+            return text;
+
+        var remove = !_contentModerationMode.Equals("Mask", StringComparison.OrdinalIgnoreCase);
+        return SecondaryTokenRegex.Replace(text, m =>
+        {
+            if (!ContainsBlockedCanonicalTerm(m.Value))
+                return m.Value;
+
+            return remove ? string.Empty : "***";
+        });
+    }
+
+    private bool ContainsBlockedCanonicalTerm(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value) || _blockedCanonicalTerms.Length == 0)
+            return false;
+
+        var canonical = CanonicalizeForModeration(value);
+        if (string.IsNullOrWhiteSpace(canonical))
+            return false;
+
+        foreach (var term in _blockedCanonicalTerms)
+        {
+            if (canonical.Contains(term, StringComparison.Ordinal))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static string CanonicalizeForModeration(string input)
+    {
+        if (string.IsNullOrWhiteSpace(input))
+            return string.Empty;
+
+        var normalized = input.Normalize(NormalizationForm.FormKD);
+        var sb = new StringBuilder(normalized.Length);
+
+        foreach (var ch in normalized)
+        {
+            var category = CharUnicodeInfo.GetUnicodeCategory(ch);
+            if (category is UnicodeCategory.NonSpacingMark or UnicodeCategory.SpacingCombiningMark or UnicodeCategory.EnclosingMark)
+                continue;
+
+            var mapped = MapConfusableOrLeet(ch);
+            if (char.IsLetterOrDigit(mapped))
+                sb.Append(char.ToLowerInvariant(mapped));
+        }
+
+        return sb.ToString();
+    }
+
+    private static char MapConfusableOrLeet(char c)
+    {
+        return char.ToLowerInvariant(c) switch
+        {
+            '0' => 'o',
+            '1' => 'i',
+            '3' => 'e',
+            '4' => 'a',
+            '5' => 's',
+            '7' => 't',
+            '@' => 'a',
+            '$' => 's',
+            _ => c
+        };
     }
 
     private static Regex? BuildBlockedRegex(string term)

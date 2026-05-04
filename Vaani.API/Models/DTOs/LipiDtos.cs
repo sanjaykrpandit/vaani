@@ -33,6 +33,8 @@ public class LipiEventDto
     public LipiEventType EventType { get; set; }
     public string? OriginalText { get; set; }
     public Dictionary<string, string>? Translations { get; set; }
+    public Dictionary<string, string>? PreviewTranslations { get; set; }
+    public bool IsFinal { get; set; }
     public string? SystemMessage { get; set; }
     public DateTime Timestamp { get; set; } = DateTime.UtcNow;
 }
@@ -48,6 +50,49 @@ public class LipiStatusResponse
     public int TotalRecognitions { get; set; }
     public int ErrorCount { get; set; }
     public string? LastError { get; set; }
+}
+
+public class LipiDirectTokenRequest
+{
+    public string MeetingId { get; set; } = string.Empty;
+    public string SessionId { get; set; } = string.Empty;
+    public string SourceLanguage { get; set; } = "en-US";
+    public List<string> TargetLanguages { get; set; } = [];
+}
+
+public class LipiDirectTokenResponse
+{
+    public bool Success { get; set; }
+    public string SpeechToken { get; set; } = string.Empty;
+    public string Region { get; set; } = string.Empty;
+    public string SourceLanguage { get; set; } = string.Empty;
+    public List<string> TargetLanguages { get; set; } = [];
+    public DateTime ExpiresAtUtc { get; set; }
+    public string? ErrorCode { get; set; }
+    public string? Message { get; set; }
+}
+
+public class LipiDirectTranscriptEntryDto
+{
+    public string OriginalText { get; set; } = string.Empty;
+    public Dictionary<string, string> Translations { get; set; } = [];
+    public DateTime RecognizedAtUtc { get; set; } = DateTime.UtcNow;
+}
+
+public class LipiDirectTranscriptBatchRequest
+{
+    public string MeetingId { get; set; } = string.Empty;
+    public string SessionId { get; set; } = string.Empty;
+    public string? SourceLanguage { get; set; }
+    public List<string>? TargetLanguages { get; set; }
+    public List<LipiDirectTranscriptEntryDto> Entries { get; set; } = [];
+}
+
+public class LipiDirectTranscriptBatchResponse
+{
+    public bool Success { get; set; }
+    public string? ErrorCode { get; set; }
+    public string? Message { get; set; }
 }
 
 public enum LipiEventType
