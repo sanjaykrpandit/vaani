@@ -81,6 +81,35 @@ public partial class MainWindow : Window
         Close();
     }
 
+    private void MinimizeButton_OnClick(object? sender, RoutedEventArgs e)
+    {
+        WindowState = WindowState.Minimized;
+    }
+
+    private void SubtitleNarrowButton_OnClick(object? sender, RoutedEventArgs e)
+        => AdjustSubtitleWidth(-0.05);
+
+    private void SubtitleWideButton_OnClick(object? sender, RoutedEventArgs e)
+        => AdjustSubtitleWidth(+0.05);
+
+    private void AdjustSubtitleWidth(double stepFraction)
+    {
+        if (_vm?.IsSubtitleMode != true)
+            return;
+
+        var screen = Screens?.ScreenFromWindow(this) ?? Screens?.Primary;
+        if (screen == null) return;
+
+        var scaling = screen.Scaling <= 0 ? 1 : screen.Scaling;
+        var workWidthDip = screen.WorkingArea.Width / scaling;
+        var step = workWidthDip * stepFraction;
+        var minW = workWidthDip * 0.30;
+        var maxW = workWidthDip * 0.80;
+
+        Width = Math.Clamp(Width + step, Math.Max(MinWidth, minW), maxW);
+        _subtitleWindowSize = (Width, Height);
+    }
+
     private void AttachViewModelHandlers()
     {
         if (_vm != null)
@@ -145,15 +174,18 @@ public partial class MainWindow : Window
         if (_vm.IsSubtitleMode)
         {
             MinWidth = 620;
-            MinHeight = 250;
-            MaxHeight = 250;
+            MinHeight = 200;
+            MaxHeight = 200;
 
             if (!_lastIsSubtitleMode)
+            {
                 _normalWindowSizeBeforeSubtitle = (Width, Height);
+                _subtitleWindowSize = null; // reset so GetDefaultSubtitleSize() computes fresh center position
+            }
 
             var target = _subtitleWindowSize ?? GetDefaultSubtitleSize();
             Width = Math.Max(target.Width, MinWidth);
-            Height = 250;
+            Height = 200;
             SystemDecorations = SystemDecorations.None;
             Background = Brushes.Transparent;
             MoveToBottomCenter();
@@ -169,6 +201,9 @@ public partial class MainWindow : Window
             Width = _normalWindowSizeBeforeSubtitle.Value.Width;
             Height = _normalWindowSizeBeforeSubtitle.Value.Height;
         }
+
+        // Always reposition to bottom-center when returning from subtitle mode
+        var exitingSubtitle = _lastIsSubtitleMode;
 
         SystemDecorations = SystemDecorations.BorderOnly;
         Background = new SolidColorBrush(Color.Parse("#AA000000"));
@@ -205,7 +240,7 @@ public partial class MainWindow : Window
             }
         }
 
-        if (shouldMoveToDefaultPosition)
+        if (shouldMoveToDefaultPosition || exitingSubtitle)
         {
             if (_vm.IsHorizontal)
                 MoveToBottomCenter();
@@ -241,8 +276,9 @@ public partial class MainWindow : Window
 
         if (_vm.IsSubtitleMode)
         {
-            _subtitleWindowSize = (Width, Height);
-            MoveToBottomCenter();
+            _subtitleWindowSize = (Width, 200);
+            if (Math.Abs(Height - 200) > 0.5)
+                Height = 200;
             return;
         }
 
@@ -266,12 +302,11 @@ public partial class MainWindow : Window
     {
         var screen = Screens?.ScreenFromWindow(this) ?? Screens?.Primary;
         if (screen == null)
-            return (900, 250);
+            return (900, 200);
 
         var scaling = screen.Scaling <= 0 ? 1 : screen.Scaling;
         var workWidthDip = screen.WorkingArea.Width / scaling;
-        return (Math.Clamp(workWidthDip * 0.78, 700, workWidthDip * 0.92), 250);
-    }
+        return (Math.Clamp(workWidthDip * 0.78, 700, workWidthDip * 0.92), 200);    }
 
     private void MoveToBottomCenter()
     {

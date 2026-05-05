@@ -443,10 +443,10 @@ public class MainViewModel : ReactiveObject, IDisposable
         if (_realtimeClient != null)
             await _realtimeClient.StopAsync();
 
-        IsSettingsVisible = !IsSubtitleMode;
         if (IsSubtitleMode)
-            IsSubtitleChromeVisible = false;
+            IsSubtitleMode = false;
 
+        IsSettingsVisible = true;
         Status = "Stopped";
         ClearSubtitleState();
     }
