@@ -34,6 +34,7 @@ public class MainViewModel : ReactiveObject, IDisposable
     private bool _enforcingSelection;
     private TranscriptBubble? _currentRecognizingBubble;
     private readonly List<LanguageInfo> _activeTargetLanguages = [];
+    private readonly DispatcherTimer _subtitleInactivityTimer;
 
     public ObservableCollection<AudioInputDevice> InputDevices { get; } = [];
     public ObservableCollection<ConnectionModeOption> ConnectionModes { get; } = [];
@@ -239,6 +240,9 @@ public class MainViewModel : ReactiveObject, IDisposable
     public MainViewModel(LipiSessionContext session)
     {
         _session = session;
+
+        _subtitleInactivityTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(10) };
+        _subtitleInactivityTimer.Tick += (_, _) => ClearSubtitleState();
 
         StartStopCommand = ReactiveCommand.CreateFromTask(ToggleStartStopAsync);
         
@@ -548,6 +552,7 @@ public class MainViewModel : ReactiveObject, IDisposable
 
         this.RaisePropertyChanged(nameof(HasSubtitleLanguageLines));
         this.RaisePropertyChanged(nameof(HasSubtitleContent));
+        RestartSubtitleInactivityTimer();
     }
 
     private void UpdateRecognizedSubtitleState(string transcript, Dictionary<string, string> translations)
@@ -568,6 +573,7 @@ public class MainViewModel : ReactiveObject, IDisposable
         RefreshSubtitleTranslations(translations);
         this.RaisePropertyChanged(nameof(HasSubtitleLanguageLines));
         this.RaisePropertyChanged(nameof(HasSubtitleContent));
+        RestartSubtitleInactivityTimer();
     }
 
     private string ResolveSubtitleTranslatedText(Dictionary<string, string> translations)
@@ -582,8 +588,15 @@ public class MainViewModel : ReactiveObject, IDisposable
         return fallback ?? string.Empty;
     }
 
+    private void RestartSubtitleInactivityTimer()
+    {
+        _subtitleInactivityTimer.Stop();
+        _subtitleInactivityTimer.Start();
+    }
+
     private void ClearSubtitleState()
     {
+        _subtitleInactivityTimer.Stop();
         SubtitleTranslatedText = string.Empty;
         SubtitleTranscriptText = string.Empty;
         SubtitleTranslations.Clear();
@@ -678,6 +691,7 @@ public class MainViewModel : ReactiveObject, IDisposable
 
     public void Dispose()
     {
+        _subtitleInactivityTimer.Stop();
         foreach (var target in TargetLanguages)
             target.PropertyChanged -= OnTargetLanguagePropertyChanged;
 
