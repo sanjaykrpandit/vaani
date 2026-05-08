@@ -182,7 +182,7 @@ public class MainViewModel : ViewModelBase
             {
                 SourceLanguage = value.Code;
                 _settings.SourceLanguage = value.Code;
-                UpdateSourceVoice();
+                UpdateVoices();
             }
         }
     }
@@ -197,6 +197,7 @@ public class MainViewModel : ViewModelBase
             {
                 TargetLanguage = value.Code;
                 _settings.TargetLanguage = value.Code;
+                UpdateVoices();
             }
         }
     }
@@ -209,7 +210,7 @@ public class MainViewModel : ViewModelBase
             this.RaiseAndSetIfChanged(ref _selectedGender, value);
             if (value != null)
             {
-                UpdateSourceVoice();
+                UpdateVoices();
                 AddLog($"🎭 Gender changed to: {value.DisplayName}");
             }
         }
@@ -1150,22 +1151,38 @@ public class MainViewModel : ViewModelBase
         return Task.CompletedTask;
     }
 
-    private void UpdateSourceVoice()
+    private void UpdateVoices()
     {
-        if (SelectedSourceLanguage == null || SelectedGender == null)
+        if (SelectedGender == null)
             return;
 
-        var voice = _clientService.GetVoiceForLanguageAndGender(_settings.TargetLanguage, SelectedGender.Value);
-
-        if (voice != null)
+        if (SelectedSourceLanguage != null)
         {
-            _settings.TargetVoice = voice.Name;
-            TargetVoice = voice.Name;
-            AddLog($"🎙️ Voice updated: {voice.DisplayName} ({voice.LanguageCode})");
+            var sourceVoice = _clientService.GetVoiceForLanguageAndGender(_settings.SourceLanguage, "Male");
+            if (sourceVoice != null)
+            {
+                _settings.SourceVoice = sourceVoice.Name;
+                AddLog($"🎙️ Incoming voice updated: {sourceVoice.DisplayName} ({sourceVoice.LanguageCode})");
+            }
+            else
+            {
+                AddLog($"⚠️ No incoming voice found for {SelectedSourceLanguage.DisplayName} - {SelectedGender.DisplayName}");
+            }
         }
-        else
+
+        if (SelectedTargetLanguage != null)
         {
-            AddLog($"⚠️ No voice found for {SelectedSourceLanguage.DisplayName} - {SelectedGender.DisplayName}");
+            var targetVoice = _clientService.GetVoiceForLanguageAndGender(_settings.TargetLanguage, SelectedGender.Value);
+            if (targetVoice != null)
+            {
+                _settings.TargetVoice = targetVoice.Name;
+                TargetVoice = targetVoice.Name;
+                AddLog($"🎙️ Outgoing voice updated: {targetVoice.DisplayName} ({targetVoice.LanguageCode})");
+            }
+            else
+            {
+                AddLog($"⚠️ No outgoing voice found for {SelectedTargetLanguage.DisplayName} - {SelectedGender.DisplayName}");
+            }
         }
     }
 

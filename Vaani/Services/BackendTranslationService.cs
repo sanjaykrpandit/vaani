@@ -958,30 +958,32 @@ public class BackendTranslationService : ITranslationService
         {
             if (direction == MessageDirection.Outgoing)
             {
-                if (!_isBypassMode) Interlocked.Increment(ref _outgoingSynthesisActive);
+                var cableDevice = _deviceService.FindOutgoingCableDevice();
+                var suppressLoopback = !_isBypassMode && ShouldSuppressLoopbackDuringOutgoingPlayback(cableDevice);
+                if (suppressLoopback) Interlocked.Increment(ref _outgoingSynthesisActive);
                 try
                 {
-                    var cableDevice = _deviceService.FindOutgoingCableDevice();
                     await AudioPlaybackManager.PlayAudioToCableDeviceAsync(pcmData, cableDevice);
-                    if (!_isBypassMode) await Task.Delay(LoopbackSuppressBuffer);
+                    if (suppressLoopback) await Task.Delay(LoopbackSuppressBuffer);
                 }
                 finally
                 {
-                    if (!_isBypassMode) Interlocked.Decrement(ref _outgoingSynthesisActive);
+                    if (suppressLoopback) Interlocked.Decrement(ref _outgoingSynthesisActive);
                 }
             }
             else
             {
-                if (!_isBypassMode) Interlocked.Increment(ref _incomingSynthesisActive);
+                var physicalSpeaker = _deviceService.FindPhysicalSpeaker();
+                var suppressMic = !_isBypassMode && ShouldSuppressMicrophoneDuringIncomingPlayback(physicalSpeaker);
+                if (suppressMic) Interlocked.Increment(ref _incomingSynthesisActive);
                 try
                 {
-                    var physicalSpeaker = _deviceService.FindPhysicalSpeaker();
                     await AudioPlaybackManager.PlayAudioToPhysicalSpeakerAsync(pcmData, physicalSpeaker);
-                    if (!_isBypassMode) await Task.Delay(MicSuppressBuffer);
+                    if (suppressMic) await Task.Delay(MicSuppressBuffer);
                 }
                 finally
                 {
-                    if (!_isBypassMode) Interlocked.Decrement(ref _incomingSynthesisActive);
+                    if (suppressMic) Interlocked.Decrement(ref _incomingSynthesisActive);
                 }
             }
         }
@@ -989,6 +991,33 @@ public class BackendTranslationService : ITranslationService
         {
             Log($"Audio playback error: {ClassifyDevice(ex)}");
         }
+    }
+
+    private bool ShouldSuppressLoopbackDuringOutgoingPlayback(MMDevice? outgoingCableDevice)
+    {
+        if (outgoingCableDevice == null || string.IsNullOrWhiteSpace(_boundLoopbackDeviceId))
+            return false;
+
+        return string.Equals(outgoingCableDevice.ID, _boundLoopbackDeviceId, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool ShouldSuppressMicrophoneDuringIncomingPlayback(MMDevice? physicalSpeaker)
+    {
+        if (physicalSpeaker == null)
+            return true;
+
+        return !IsIsolatedPlaybackDevice(physicalSpeaker);
+    }
+
+    private static bool IsIsolatedPlaybackDevice(MMDevice device)
+    {
+        var name = device.FriendlyName;
+        return name.Contains("Headset", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("Headphone", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("Earphone", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("Earbud", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("AirPods", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("Pods", StringComparison.OrdinalIgnoreCase);
     }
 
     // ─────────────────────────────────────────────────────────────────────────

@@ -237,6 +237,7 @@ public class MeetingService : IMeetingService
         var vendorLangCode = _configuration["Translation:VendorLanguage"] ?? "hi-IN";
         var vendorVoiceName = _configuration["Translation:VendorVoice"] ?? "hi-IN-SwaraNeural";
 
+        //target language and voice are determined by the meeting configuration
         var organizerVoice = availableVoices
             .FirstOrDefault(v => v.LanguageCode == meeting.MeetingLanguage && v.Gender == "Male")?.Name
             ?? "en-US-JennyNeural";

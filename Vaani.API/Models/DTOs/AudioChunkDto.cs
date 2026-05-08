@@ -42,6 +42,15 @@ public class TranslationEventDto
     /// <summary>System message (SessionStarted, Stopped, Error)</summary>
     public string? SystemMessage { get; set; }
 
+    public DateTime? CapturedAtUtc { get; set; }
+    public DateTime? RecognizedAtUtc { get; set; }
+    public DateTime? SynthesisStartedAtUtc { get; set; }
+    public DateTime? AudioGeneratedAtUtc { get; set; }
+    public double? CaptureToRecognizedMs { get; set; }
+    public double? RecognitionToSynthesisStartMs { get; set; }
+    public double? SynthesisDurationMs { get; set; }
+    public double? EndToEndLatencyMs { get; set; }
+
     public DateTime Timestamp { get; set; } = DateTime.UtcNow;
 }
 

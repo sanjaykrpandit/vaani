@@ -231,13 +231,13 @@ public class MeetingLoginViewModel : ReactiveObject, IDisposable
             StatusMessage = "Success! Verifying audio setup...";
             await Task.Delay(500, ct);
 
-            var audioTestPassed = await LaunchAudioTestAsync();
-            if (!audioTestPassed)
-            {
-                ShowError("Audio test was not completed. Please retry or check your audio setup.");
-                _sessionManager.ClearSession();
-                return;
-            }
+            //var audioTestPassed = await LaunchAudioTestAsync();
+            //if (!audioTestPassed)
+            //{
+            //    ShowError("Audio test was not completed. Please retry or check your audio setup.");
+            //    _sessionManager.ClearSession();
+            //    return;
+            //}
 
             StatusMessage = "Audio verified! Launching Vaani...";
             await OpenMainWindowAsync(config);

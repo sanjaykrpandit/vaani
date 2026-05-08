@@ -8,7 +8,7 @@
         "DebugTarget": "https"
       },
       {
-        "Path": "Lipi\\VaaniTranslator.csproj",
+        "Path": "Vaani\\Vaani.csproj",
         "Action": "Start"
       }
     ]

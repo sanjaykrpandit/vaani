@@ -162,7 +162,12 @@ public class TranslationService : ITranslationService, IDisposable
             var translationSessionId = Guid.NewGuid().ToString("N");
             var cts = new CancellationTokenSource();
 
-            var state = new TranslationSessionState
+            var synthesisQueueCapacity = Math.Clamp(
+                _configuration.GetValue<int>("Translation:SynthesisQueueCapacity", 2),
+                1,
+                10);
+
+            var state = new TranslationSessionState(synthesisQueueCapacity)
             {
                 TranslationSessionId = translationSessionId,
                 MeetingId = request.MeetingId,
@@ -269,12 +274,14 @@ public class TranslationService : ITranslationService, IDisposable
         {
             if (chunk.Pipeline == AudioPipelineDirection.Outgoing && !state.IsMicrophoneMuted)
             {
+                state.MarkChunkReceived(chunk.Pipeline, chunk.CapturedAt);
                 state.OutgoingPushStream!.Write(chunk.Data, chunk.Data.Length);
                 if (chunk.SequenceNumber % 50 == 1)
                     _logger.LogDebug("[{Id}] OUT audio write — seq {Seq}, {Bytes}B", translationSessionId, chunk.SequenceNumber, chunk.Data.Length);
             }
             else if (chunk.Pipeline == AudioPipelineDirection.Incoming && !state.IsSpeakerMuted)
             {
+                state.MarkChunkReceived(chunk.Pipeline, chunk.CapturedAt);
                 state.IncomingPushStream!.Write(chunk.Data, chunk.Data.Length);
                 if (chunk.SequenceNumber % 50 == 1)
                     _logger.LogDebug("[{Id}] IN  audio write — seq {Seq}, {Bytes}B", translationSessionId, chunk.SequenceNumber, chunk.Data.Length);
@@ -337,7 +344,6 @@ public class TranslationService : ITranslationService, IDisposable
 
     private async Task InitializePipelinesAsync(TranslationSessionState state)
     {
-        var bufferMs = _configuration.GetValue<int>("Translation:AudioBufferSizeMs", 100);
         var endpoint = $"wss://{state.AzureRegion}.stt.speech.microsoft.com/speech/universal/v2";
 
         // ── OUTGOING: user mic → recognise (→ translate in full mode) ──────────
@@ -499,7 +505,7 @@ public class TranslationService : ITranslationService, IDisposable
 
                 if (!string.IsNullOrWhiteSpace(translated) &&
                     state.Direction != TranslationDirection.TranscribeBoth)
-                    state.OutgoingSynthesisQueue.Writer.TryWrite((translated, original));
+                    EnqueueLatestSynthesis(state, AudioPipelineDirection.Outgoing, translated, original);
             }
             catch (Exception ex)
             {
@@ -599,7 +605,7 @@ public class TranslationService : ITranslationService, IDisposable
 
                 if (!string.IsNullOrWhiteSpace(translated) &&
                     state.Direction != TranslationDirection.TranscribeBoth)
-                    state.IncomingSynthesisQueue.Writer.TryWrite((translated, original));
+                    EnqueueLatestSynthesis(state, AudioPipelineDirection.Incoming, translated, original);
             }
             catch (Exception ex)
             {
@@ -629,40 +635,82 @@ public class TranslationService : ITranslationService, IDisposable
     private async Task SynthesizeAndFireAsync(
         TranslationSessionState state,
         SpeechSynthesizer synthesizer,
-        string text,
-        string originalText,
+        SynthesisWorkItem workItem,
         AudioPipelineDirection pipeline)
     {
+        if (!state.TryBeginSynthesis(pipeline, workItem.Version))
+        {
+            _logger.LogDebug("[{Id}] {Pipeline} skipped stale synthesis work item {Version}",
+                state.TranslationSessionId,
+                pipeline,
+                workItem.Version);
+            return;
+        }
+
+        var synthesisStartedAt = DateTime.UtcNow;
+
         state.FireEvent(new TranslationEventDto
         {
             TranslationSessionId = state.TranslationSessionId,
             EventType = TranslationEventType.SynthesizingStarted,
             Pipeline = pipeline,
-            OriginalText = originalText,
-            TranslatedText = text
+            OriginalText = workItem.OriginalText,
+            TranslatedText = workItem.Text,
+            CapturedAtUtc = workItem.CapturedAtUtc,
+            RecognizedAtUtc = workItem.RecognizedAtUtc,
+            SynthesisStartedAtUtc = synthesisStartedAt,
+            CaptureToRecognizedMs = GetDurationMs(workItem.CapturedAtUtc, workItem.RecognizedAtUtc),
+            RecognitionToSynthesisStartMs = GetDurationMs(workItem.RecognizedAtUtc, synthesisStartedAt)
         });
 
         try
         {
-            using var result = await synthesizer.SpeakTextAsync(text);
+            using var result = await synthesizer.SpeakTextAsync(workItem.Text);
 
             if (result.Reason == ResultReason.SynthesizingAudioCompleted)
             {
                 Interlocked.Increment(ref state._totalTranslations);
+
+                var audioGeneratedAt = DateTime.UtcNow;
+                var captureToRecognizedMs = GetDurationMs(workItem.CapturedAtUtc, workItem.RecognizedAtUtc);
+                var recognitionToSynthesisStartMs = GetDurationMs(workItem.RecognizedAtUtc, synthesisStartedAt);
+                var synthesisDurationMs = GetDurationMs(synthesisStartedAt, audioGeneratedAt);
+                var endToEndLatencyMs = GetDurationMs(workItem.CapturedAtUtc, audioGeneratedAt);
+
+                _logger.LogInformation(
+                    "[{Id}] {Pipeline} latency — capture→recognized: {CaptureToRecognizedMs} ms, recognized→synthesis: {RecognitionToSynthesisStartMs} ms, synthesis: {SynthesisDurationMs} ms, end-to-end: {EndToEndLatencyMs} ms",
+                    state.TranslationSessionId,
+                    pipeline,
+                    captureToRecognizedMs?.ToString("F0", CultureInfo.InvariantCulture) ?? "n/a",
+                    recognitionToSynthesisStartMs?.ToString("F0", CultureInfo.InvariantCulture) ?? "n/a",
+                    synthesisDurationMs?.ToString("F0", CultureInfo.InvariantCulture) ?? "n/a",
+                    endToEndLatencyMs?.ToString("F0", CultureInfo.InvariantCulture) ?? "n/a");
+
                 state.FireEvent(new TranslationEventDto
                 {
                     TranslationSessionId = state.TranslationSessionId,
                     EventType = TranslationEventType.AudioOutput,
                     Pipeline = pipeline,
-                    OriginalText = originalText,
-                    TranslatedText = text,
-                    AudioData = result.AudioData
+                    OriginalText = workItem.OriginalText,
+                    TranslatedText = workItem.Text,
+                    AudioData = result.AudioData,
+                    CapturedAtUtc = workItem.CapturedAtUtc,
+                    RecognizedAtUtc = workItem.RecognizedAtUtc,
+                    SynthesisStartedAtUtc = synthesisStartedAt,
+                    AudioGeneratedAtUtc = audioGeneratedAt,
+                    CaptureToRecognizedMs = captureToRecognizedMs,
+                    RecognitionToSynthesisStartMs = recognitionToSynthesisStartMs,
+                    SynthesisDurationMs = synthesisDurationMs,
+                    EndToEndLatencyMs = endToEndLatencyMs
                 });
             }
             else
             {
                 Interlocked.Increment(ref state._errorCount);
-                _logger.LogWarning("[{Id}] Synthesis failed: {Reason}", state.TranslationSessionId, result.Reason);
+                _logger.LogInformation("[{Id}] {Pipeline} synthesis ended without audio output: {Reason}",
+                    state.TranslationSessionId,
+                    pipeline,
+                    result.Reason);
             }
         }
         catch (Exception ex)
@@ -671,14 +719,19 @@ public class TranslationService : ITranslationService, IDisposable
         }
         finally
         {
+            state.EndSynthesis(pipeline, workItem.Version);
+
             // Always fire SynthesizingCompleted so the client UI is never left stuck.
             state.FireEvent(new TranslationEventDto
             {
                 TranslationSessionId = state.TranslationSessionId,
                 EventType = TranslationEventType.SynthesizingCompleted,
                 Pipeline = pipeline,
-                OriginalText = originalText,
-                TranslatedText = text
+                OriginalText = workItem.OriginalText,
+                TranslatedText = workItem.Text,
+                CapturedAtUtc = workItem.CapturedAtUtc,
+                RecognizedAtUtc = workItem.RecognizedAtUtc,
+                SynthesisStartedAtUtc = synthesisStartedAt
             });
         }
     }
@@ -689,20 +742,56 @@ public class TranslationService : ITranslationService, IDisposable
     /// </summary>
     private async Task RunSynthesisQueueAsync(
         TranslationSessionState state,
-        Channel<(string Text, string OriginalText)> queue,
+        Channel<SynthesisWorkItem> queue,
         SpeechSynthesizer synthesizer,
         AudioPipelineDirection pipeline,
         CancellationToken ct)
     {
         try
         {
-            await foreach (var (text, originalText) in queue.Reader.ReadAllAsync(ct))
-                await SynthesizeAndFireAsync(state, synthesizer, text, originalText, pipeline);
+            await foreach (var workItem in queue.Reader.ReadAllAsync(ct))
+                await SynthesizeAndFireAsync(state, synthesizer, workItem, pipeline);
         }
         catch (OperationCanceledException) { }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[{Id}] Synthesis queue consumer error", state.TranslationSessionId);
+        }
+    }
+
+    private void EnqueueLatestSynthesis(
+        TranslationSessionState state,
+        AudioPipelineDirection pipeline,
+        string translatedText,
+        string originalText)
+    {
+        var queue = pipeline == AudioPipelineDirection.Outgoing
+            ? state.OutgoingSynthesisQueue
+            : state.IncomingSynthesisQueue;
+
+        var version = state.RegisterSynthesisRequest(pipeline);
+
+        var workItem = new SynthesisWorkItem(
+            translatedText,
+            originalText,
+            DateTime.UtcNow,
+            state.GetLastCapturedAtUtc(pipeline),
+            version);
+
+        var dropped = 0;
+        while (queue.Reader.TryRead(out _))
+            dropped++;
+
+        if (!queue.Writer.TryWrite(workItem))
+        {
+            Interlocked.Increment(ref state._errorCount);
+            _logger.LogWarning("[{Id}] {Pipeline} synthesis work dropped because the queue is unavailable", state.TranslationSessionId, pipeline);
+            return;
+        }
+
+        if (dropped > 0)
+        {
+            _logger.LogInformation("[{Id}] {Pipeline} dropped {Count} stale synthesis item(s) to keep audio current", state.TranslationSessionId, pipeline, dropped);
         }
     }
 
@@ -800,11 +889,40 @@ public class TranslationService : ITranslationService, IDisposable
         GC.SuppressFinalize(this);
     }
 
-    private static void ApplyCommonProperties(SpeechTranslationConfig config)
+    private void ApplyCommonProperties(SpeechTranslationConfig config)
     {
         config.SetProperty(PropertyId.SpeechServiceResponse_ProfanityOption, "Removed");
+        config.SetProperty(
+            "Speech_SegmentationSilenceTimeoutMs",
+            Math.Clamp(_configuration.GetValue<int>("Translation:SegmentationSilenceTimeoutMs", 350), 150, 2000)
+                .ToString(CultureInfo.InvariantCulture));
+        config.SetProperty(
+            "SpeechServiceResponse_StablePartialResultThreshold",
+            Math.Clamp(_configuration.GetValue<int>("Translation:StablePartialResultThreshold", 1), 1, 5)
+                .ToString(CultureInfo.InvariantCulture));
         // TrueText post-processing suppresses low-confidence results and returns
         // TranslatedSpeech with empty Text, which breaks the recognition pipeline.
+    }
+
+    private static double? GetDurationMs(DateTime? startedAtUtc, DateTime? finishedAtUtc)
+    {
+        if (!startedAtUtc.HasValue || !finishedAtUtc.HasValue)
+            return null;
+
+        return Math.Max(0, (finishedAtUtc.Value - startedAtUtc.Value).TotalMilliseconds);
+    }
+
+    internal static DateTime NormalizeUtc(DateTime value)
+    {
+        if (value == default)
+            return DateTime.UtcNow;
+
+        return value.Kind switch
+        {
+            DateTimeKind.Utc => value,
+            DateTimeKind.Local => value.ToUniversalTime(),
+            _ => DateTime.SpecifyKind(value, DateTimeKind.Utc)
+        };
     }
 
     private (string Text, bool Flagged, bool Blocked) ModerateText(string text)
@@ -999,6 +1117,20 @@ public class TranslationService : ITranslationService, IDisposable
 
 internal class TranslationSessionState
 {
+    public TranslationSessionState(int synthesisQueueCapacity)
+    {
+        OutgoingSynthesisQueue = Channel.CreateBounded<SynthesisWorkItem>(new BoundedChannelOptions(synthesisQueueCapacity)
+        {
+            FullMode = BoundedChannelFullMode.DropOldest,
+            SingleReader = true
+        });
+        IncomingSynthesisQueue = Channel.CreateBounded<SynthesisWorkItem>(new BoundedChannelOptions(synthesisQueueCapacity)
+        {
+            FullMode = BoundedChannelFullMode.DropOldest,
+            SingleReader = true
+        });
+    }
+
     public string TranslationSessionId { get; set; } = string.Empty;
     public string MeetingId { get; set; } = string.Empty;
     public string ConnectionId { get; set; } = string.Empty;
@@ -1022,12 +1154,8 @@ internal class TranslationSessionState
 
     // Per-pipeline synthesis queues — ensures sentences are spoken sequentially.
     // Bounded with DropOldest so a fast speaker never causes unbounded memory growth.
-    public Channel<(string Text, string OriginalText)> OutgoingSynthesisQueue { get; } =
-        Channel.CreateBounded<(string, string)>(new BoundedChannelOptions(10)
-        { FullMode = BoundedChannelFullMode.DropOldest, SingleReader = true });
-    public Channel<(string Text, string OriginalText)> IncomingSynthesisQueue { get; } =
-        Channel.CreateBounded<(string, string)>(new BoundedChannelOptions(10)
-        { FullMode = BoundedChannelFullMode.DropOldest, SingleReader = true });
+    public Channel<SynthesisWorkItem> OutgoingSynthesisQueue { get; }
+    public Channel<SynthesisWorkItem> IncomingSynthesisQueue { get; }
 
     // Lifecycle
     public CancellationTokenSource Cts { get; set; } = new();
@@ -1052,6 +1180,55 @@ internal class TranslationSessionState
     // Callback registered by hub to forward events to SignalR client
     public Func<TranslationEventDto, Task>? OnEvent { get; set; }
 
+    private long _lastOutgoingCapturedAtUtcTicks;
+    private long _lastIncomingCapturedAtUtcTicks;
+    private long _outgoingSynthesisRequestVersion;
+    private long _incomingSynthesisRequestVersion;
+    public void MarkChunkReceived(AudioPipelineDirection pipeline, DateTime capturedAt)
+    {
+        var normalized = TranslationService.NormalizeUtc(capturedAt).Ticks;
+        if (pipeline == AudioPipelineDirection.Outgoing)
+            Interlocked.Exchange(ref _lastOutgoingCapturedAtUtcTicks, normalized);
+        else
+            Interlocked.Exchange(ref _lastIncomingCapturedAtUtcTicks, normalized);
+    }
+
+    public DateTime? GetLastCapturedAtUtc(AudioPipelineDirection pipeline)
+    {
+        var ticks = pipeline == AudioPipelineDirection.Outgoing
+            ? Interlocked.Read(ref _lastOutgoingCapturedAtUtcTicks)
+            : Interlocked.Read(ref _lastIncomingCapturedAtUtcTicks);
+
+        return ticks > 0 ? new DateTime(ticks, DateTimeKind.Utc) : null;
+    }
+
+    public long RegisterSynthesisRequest(AudioPipelineDirection pipeline)
+    {
+        return pipeline == AudioPipelineDirection.Outgoing
+            ? Interlocked.Increment(ref _outgoingSynthesisRequestVersion)
+            : Interlocked.Increment(ref _incomingSynthesisRequestVersion);
+    }
+
+    public bool TryBeginSynthesis(AudioPipelineDirection pipeline, long version)
+    {
+        return IsLatestSynthesisRequest(pipeline, version);
+    }
+
+    public void EndSynthesis(AudioPipelineDirection pipeline, long version)
+    {
+        _ = pipeline;
+        _ = version;
+    }
+
+    public bool IsLatestSynthesisRequest(AudioPipelineDirection pipeline, long version)
+    {
+        var latestVersion = pipeline == AudioPipelineDirection.Outgoing
+            ? Interlocked.Read(ref _outgoingSynthesisRequestVersion)
+            : Interlocked.Read(ref _incomingSynthesisRequestVersion);
+
+        return latestVersion == version;
+    }
+
     public void FireEvent(TranslationEventDto evt)
     {
         var cb = OnEvent;
@@ -1061,3 +1238,10 @@ internal class TranslationSessionState
             TaskContinuationOptions.OnlyOnFaulted);
     }
 }
+
+internal sealed record SynthesisWorkItem(
+    string Text,
+    string OriginalText,
+    DateTime RecognizedAtUtc,
+    DateTime? CapturedAtUtc,
+    long Version);
