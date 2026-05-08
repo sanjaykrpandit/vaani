@@ -181,84 +181,58 @@
                         BorderThickness="0,1,0,0"
                         Padding="0"
                         IsVisible="{Binding IsMessageViewActive}">
-					<Grid RowDefinitions="Auto,*">
-						<ScrollViewer Grid.Row="1"
-                                      x:Name="MessageScroller"
-                                      VerticalScrollBarVisibility="Auto"
-                                      HorizontalScrollBarVisibility="Disabled"
-                                      Padding="15,15,10,15">
-							<!-- Narrow scrollbar styling scoped to this ScrollViewer -->
-							<ScrollViewer.Styles>
-								<Style Selector="ScrollViewer ScrollBar#PART_VerticalScrollBar">
-									<Setter Property="Width" Value="4"/>
-									<Setter Property="Background" Value="#222"/>
-								</Style>
-								<Style Selector="ScrollViewer ScrollBar#PART_VerticalScrollBar /template/ Thumb">
-									<Setter Property="Background" Value="#666"/>
-									<Setter Property="CornerRadius" Value="3"/>
-								</Style>
-								<Style Selector="ScrollViewer ScrollBar#PART_HorizontalScrollBar">
-									<Setter Property="Height" Value="4"/>
-									<Setter Property="Background" Value="#222"/>
-								</Style>
-								<Style Selector="ScrollViewer ScrollBar#PART_HorizontalScrollBar /template/ Thumb">
-									<Setter Property="Background" Value="#666"/>
-									<Setter Property="CornerRadius" Value="3"/>
-								</Style>
-							</ScrollViewer.Styles>
+                  <Grid RowDefinitions="Auto,*">
+                        <ListBox Grid.Row="1"
+                                 x:Name="MessageListBox"
+                                 ItemsSource="{Binding Messages}"
+                               Padding="15,15,10,20"
+                                 Background="Transparent"
+                                 BorderThickness="0"
+                                 VerticalAlignment="Stretch"
+                                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                            <ListBox.Styles>
+                                <Style Selector="ListBox ScrollBar#PART_VerticalScrollBar">
+                                    <Setter Property="Width" Value="4"/>
+                                    <Setter Property="Background" Value="#222"/>
+                                </Style>
+                                <Style Selector="ListBox ScrollBar#PART_VerticalScrollBar /template/ Thumb">
+                                    <Setter Property="Background" Value="#666"/>
+                                    <Setter Property="CornerRadius" Value="3"/>
+                                </Style>
+                                <Style Selector="ListBox ScrollBar#PART_HorizontalScrollBar">
+                                    <Setter Property="Height" Value="4"/>
+                                    <Setter Property="Background" Value="#222"/>
+                                </Style>
+                                <Style Selector="ListBox ScrollBar#PART_HorizontalScrollBar /template/ Thumb">
+                                    <Setter Property="Background" Value="#666"/>
+                                    <Setter Property="CornerRadius" Value="3"/>
+                                </Style>
+                                <Style Selector="ListBoxItem">
+                                    <Setter Property="IsHitTestVisible" Value="False"/>
+                                    <Setter Property="Padding" Value="0"/>
+                                    <Setter Property="Margin" Value="10,10,5,16"/>
+                                    <Setter Property="Background" Value="Transparent"/>
+                                    <Setter Property="Opacity" Value="1"/>
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                    <Setter Property="Transitions">
+                                        <Transitions>
+                                            <DoubleTransition Property="Opacity" Duration="0:0:0.16" Easing="CubicEaseOut"/>
+                                        </Transitions>
+                                    </Setter>
+                                </Style>
+                                <Style Selector="ListBoxItem:selected">
+                                    <Setter Property="Background" Value="Transparent"/>
+                                </Style>
+                            </ListBox.Styles>
 
-							<!-- Wrap list and spacer to add bottom padding -->
-							<StackPanel>
-								<!-- Virtualized list for smoother scrolling -->
-								<!--<ListBox ItemsSource="{Binding Messages}"
-                                         Background="Transparent"
-                                         BorderThickness="0"
-                                         HorizontalAlignment="Stretch">-->
+                           <ListBox.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel/>
+                                </ItemsPanelTemplate>
+                            </ListBox.ItemsPanel>
 
-                  <ListBox ItemsSource="{Binding Messages}"
-          Padding="10,10,5,80"
-          Background="Transparent"
-          BorderThickness="0"
-          VerticalAlignment="Stretch">
-                    
-									<ListBox.ItemsPanel>
-										<ItemsPanelTemplate>
-											<VirtualizingStackPanel/>
-										</ItemsPanelTemplate>
-									</ListBox.ItemsPanel>
-
-									<!-- Remove selection visuals -->
-                  <ListBox.Styles>
-                    
-                    <!-- Initial state -->
-                    <Style Selector="ListBoxItem">
-                      <Setter Property="IsHitTestVisible" Value="False"/>
-                      <Setter Property="Padding" Value="0"/>
-                      <Setter Property="Margin" Value="0,0,0,16"/>
-                      <Setter Property="Background" Value="Transparent"/>
-                      <Setter Property="Opacity" Value="1"/>
-                    </Style>
-                    <Style Selector="ListBoxItem:selected">
-                      <Setter Property="Background" Value="Transparent"/>
-                    </Style>  
-                    <!-- Animate when item is attached -->
-                    <!--<Style Selector="ListBoxItem:attached">
-                      <Style.Animations>
-                        <Animation Duration="0:0:0.22" FillMode="Forward">
-                          <KeyFrame Cue="0%">
-                            <Setter Property="Opacity" Value="0"/>
-                            <Setter Property="Margin" Value="0,0,0,0"/>
-                          </KeyFrame>
-                          <KeyFrame Cue="100%">
-                            <Setter Property="Opacity" Value="1"/>
-                            <Setter Property="Margin" Value="0,0,0,0"/>
-                          </KeyFrame>
-                        </Animation>
-                      </Style.Animations>
-                    </Style>-->
-                  </ListBox.Styles>
-
-                  <ListBox.ItemTemplate>
+                            <ListBox.ItemTemplate>
 										<DataTemplate>
 											<!-- Use Grid to create 80% width constraint -->
 											<Grid ColumnDefinitions="4*,*">
@@ -267,6 +241,7 @@
 													<Border Background="{Binding IsFromMeeting, Converter={StaticResource MessageBubbleColorConverter}}"
                                                             CornerRadius="7"
                                                             Padding="10,6"
+                                                            MinHeight="64"
                                                             UseLayoutRounding="True"
                                                             BoxShadow="0 1 3 0 #22000000">
 														<!-- Grid to position synthesizing indicator in top-right -->
@@ -431,7 +406,7 @@
 																</TextBlock>
 																<TextBlock Text="Listening..."
                                                                            Foreground="#90CAF9"
-                                                                           FontSize="12"
+                                                                           FontSize="13"
                                                                            FontStyle="Italic"
                                                                            VerticalAlignment="Center"/>
 															</StackPanel>
@@ -460,13 +435,8 @@
 											</Border>
 										</Grid>
 										</DataTemplate>
-									</ListBox.ItemTemplate>
-								</ListBox>
-
-								<!-- Bottom spacer to ensure last message is always visible -->
-								<!--<Panel Height="80"/>-->
-							</StackPanel>
-						</ScrollViewer>
+                             </ListBox.ItemTemplate>
+                        </ListBox>
 					</Grid>
 				</Border>
 
