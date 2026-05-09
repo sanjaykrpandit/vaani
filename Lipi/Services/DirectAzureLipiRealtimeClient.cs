@@ -27,6 +27,7 @@ public class DirectAzureLipiRealtimeClient : ILipiRealtimeClient
     private string _sessionId = string.Empty;
     private string _sourceLanguage = string.Empty;
     private string _region = string.Empty;
+    private int? _currentInputDeviceNumber;
     private List<string> _targetLanguages = [];
     private DateTime _tokenExpiresAtUtc = DateTime.MinValue;
     private int _remainingTrailingSilenceChunks;
@@ -153,7 +154,7 @@ public class DirectAzureLipiRealtimeClient : ILipiRealtimeClient
         _recognizer.Canceled += (_, e) =>
         {
             if (e.Reason == CancellationReason.Error)
-                ErrorReceived?.Invoke(e.ErrorDetails);
+                ErrorReceived?.Invoke($"Direct Azure speech error: {e.ErrorDetails}");
         };
 
         await _recognizer.StartContinuousRecognitionAsync();
@@ -181,6 +182,19 @@ public class DirectAzureLipiRealtimeClient : ILipiRealtimeClient
         ResetSilenceFilterState();
         LogDiagnostics("Direct Azure realtime stopped");
         RunningStateChanged?.Invoke(false);
+    }
+
+    public Task SwitchInputDeviceAsync(int inputDeviceNumber)
+    {
+        if (_currentInputDeviceNumber == inputDeviceNumber && _waveIn != null)
+            return Task.CompletedTask;
+
+        _currentInputDeviceNumber = inputDeviceNumber;
+
+        if (_pushStream != null)
+            StartCapture(inputDeviceNumber);
+
+        return Task.CompletedTask;
     }
 
     private async Task PersistRecognizedAsync(string transcript, Dictionary<string, string> translations, DateTime recognizedAtUtc)
@@ -238,6 +252,7 @@ public class DirectAzureLipiRealtimeClient : ILipiRealtimeClient
     private void StartCapture(int inputDeviceNumber)
     {
         StopCapture();
+        _currentInputDeviceNumber = inputDeviceNumber;
 
         _waveIn = new WaveInEvent
         {
@@ -287,6 +302,7 @@ public class DirectAzureLipiRealtimeClient : ILipiRealtimeClient
         try { _waveIn?.StopRecording(); } catch { }
         _waveIn?.Dispose();
         _waveIn = null;
+        _currentInputDeviceNumber = null;
         ResetSilenceFilterState();
     }
 

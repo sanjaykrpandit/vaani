@@ -18,5 +18,7 @@ public interface ILipiRealtimeClient : IDisposable
         IEnumerable<string> targetLanguages,
         int inputDeviceNumber);
 
+    Task SwitchInputDeviceAsync(int inputDeviceNumber);
+
     Task StopAsync();
 }

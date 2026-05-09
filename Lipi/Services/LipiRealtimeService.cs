@@ -20,6 +20,7 @@ public class LipiRealtimeService : ILipiRealtimeClient
     private CancellationTokenSource? _sendLoopCts;
     private Task? _sendLoopTask;
     private long _seq;
+    private int? _currentInputDeviceNumber;
     private int _remainingTrailingSilenceChunks;
     private bool _speechDetected;
     private long _capturedChunkCount;
@@ -145,7 +146,7 @@ public class LipiRealtimeService : ILipiRealtimeClient
 
         _connection.On<string, string>("ReceiveError", (code, message) =>
         {
-            ErrorReceived?.Invoke($"{code}: {message}");
+            ErrorReceived?.Invoke($"Server realtime error [{code}]: {message}");
         });
 
         _connection.On<string>("SessionStopped", _ =>
@@ -192,9 +193,23 @@ public class LipiRealtimeService : ILipiRealtimeClient
         RunningStateChanged?.Invoke(false);
     }
 
+    public Task SwitchInputDeviceAsync(int inputDeviceNumber)
+    {
+        if (_currentInputDeviceNumber == inputDeviceNumber && _waveIn != null)
+            return Task.CompletedTask;
+
+        _currentInputDeviceNumber = inputDeviceNumber;
+
+        if (!string.IsNullOrWhiteSpace(_lipiSessionId))
+            StartCapture(inputDeviceNumber);
+
+        return Task.CompletedTask;
+    }
+
     private void StartCapture(int inputDeviceNumber)
     {
         StopCapture();
+        _currentInputDeviceNumber = inputDeviceNumber;
 
         _waveIn = new WaveInEvent
         {
@@ -248,6 +263,7 @@ public class LipiRealtimeService : ILipiRealtimeClient
         try { _waveIn?.StopRecording(); } catch { }
         _waveIn?.Dispose();
         _waveIn = null;
+        _currentInputDeviceNumber = null;
         ResetSilenceFilterState();
     }
 

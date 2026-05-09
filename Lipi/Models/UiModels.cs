@@ -39,8 +39,11 @@ public class TranscriptBubble : ReactiveObject
 
 public class AudioInputDevice
 {
-    public int DeviceNumber { get; set; }
+    public string Id { get; set; } = string.Empty;
+    public int? DeviceNumber { get; set; }
     public string Name { get; set; } = string.Empty;
+    public bool IsDefault { get; set; }
+    public bool IsBluetoothOrHeadset { get; set; }
 }
 
 public enum LipiConnectionMode
