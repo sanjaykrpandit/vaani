@@ -25,12 +25,12 @@ public class MainViewModel : ReactiveObject, IDisposable
     private ConnectionModeOption? _selectedConnectionMode;
     private bool _isRunning;
     private bool _isSettingsVisible = true;
-    private bool _isHorizontal = false;
     private bool _isSubtitleMode;
     private bool _isSubtitleChromeVisible = true;
     private bool _showTranscriptText;
     private double _subtitleFontSize = 16;
     private double _subtitleBackgroundOpacity = 0.5;
+    private bool _useBlackSubtitleText;
     private string _subtitleTranslatedText = string.Empty;
     private string _subtitleTranscriptText = string.Empty;
     private string _status = "Ready";
@@ -96,12 +96,6 @@ public class MainViewModel : ReactiveObject, IDisposable
         }
     }
 
-    public bool IsHorizontal
-    {
-        get => _isHorizontal;
-        set => this.RaiseAndSetIfChanged(ref _isHorizontal, value);
-    }
-
     public bool IsSubtitleMode
     {
         get => _isSubtitleMode;
@@ -138,6 +132,7 @@ public class MainViewModel : ReactiveObject, IDisposable
 
             this.RaisePropertyChanged(nameof(IsHeaderVisible));
             this.RaisePropertyChanged(nameof(IsStatusRowVisible));
+            this.RaisePropertyChanged(nameof(HeaderChromeOpacity));
         }
     }
 
@@ -153,6 +148,28 @@ public class MainViewModel : ReactiveObject, IDisposable
 
             this.RaisePropertyChanged(nameof(TranscriptToggleText));
             this.RaisePropertyChanged(nameof(SubtitleTranscriptVisible));
+        }
+    }
+
+    public bool UseBlackSubtitleText
+    {
+        get => _useBlackSubtitleText;
+        set
+        {
+            if (_useBlackSubtitleText == value)
+                return;
+
+            this.RaiseAndSetIfChanged(ref _useBlackSubtitleText, value);
+            ApplySubtitleTheme();
+
+            this.RaisePropertyChanged(nameof(SubtitleBackgroundBrush));
+            this.RaisePropertyChanged(nameof(SubtitlePrimaryForeground));
+            this.RaisePropertyChanged(nameof(SubtitleSecondaryForeground));
+            this.RaisePropertyChanged(nameof(SubtitleRecognizingForeground));
+            this.RaisePropertyChanged(nameof(SubtitleTranscriptForeground));
+            this.RaisePropertyChanged(nameof(SubtitleColorButtonForeground));
+            this.RaisePropertyChanged(nameof(SubtitleColorButtonBackground));
+            this.RaisePropertyChanged(nameof(SubtitleColorButtonBorderBrush));
         }
     }
 
@@ -186,6 +203,7 @@ public class MainViewModel : ReactiveObject, IDisposable
             this.RaiseAndSetIfChanged(ref _subtitleTranslatedText, value);
 
             this.RaisePropertyChanged(nameof(HasSubtitleContent));
+            this.RaisePropertyChanged(nameof(ShowSubtitleTranslatedPlaceholder));
         }
     }
 
@@ -211,15 +229,26 @@ public class MainViewModel : ReactiveObject, IDisposable
 
     public bool IsHeaderVisible => !IsSubtitleMode || IsSubtitleChromeVisible;
     public bool IsStatusRowVisible => !IsSubtitleMode || IsSubtitleChromeVisible;
+    public double HeaderChromeOpacity => IsHeaderVisible ? 1d : 0d;
     public bool IsBubbleListVisible => !IsSubtitleMode;
     public bool IsSettingsPanelVisible => !IsSubtitleMode && IsSettingsVisible;
     public string HeaderPanelBackground => IsSubtitleMode ? "#7A000000" : "Transparent";
     public bool HasSubtitleContent => SubtitleLanguageLines.Count > 0 || !string.IsNullOrWhiteSpace(SubtitleTranscriptText);
     public bool HasSubtitleTranslations => SubtitleTranslations.Count > 0;
     public bool HasSubtitleLanguageLines => SubtitleLanguageLines.Count > 0;
+    public bool ShowSubtitleTranslatedPlaceholder => !HasSubtitleLanguageLines && !string.IsNullOrWhiteSpace(SubtitleTranslatedText);
     public bool SubtitleTranscriptVisible => ShowTranscriptText && !string.IsNullOrWhiteSpace(SubtitleTranscriptText);
     public double SubtitleTranscriptFontSize => Math.Max(14, Math.Round(SubtitleFontSize * 0.55, MidpointRounding.AwayFromZero));
-    public string SubtitleBackgroundBrush => $"#{(int)Math.Round(SubtitleBackgroundOpacity * 255, MidpointRounding.AwayFromZero):X2}161616";
+    public string SubtitleBackgroundBrush => UseBlackSubtitleText
+        ? "#00161616"
+        : $"#{(int)Math.Round(SubtitleBackgroundOpacity * 255, MidpointRounding.AwayFromZero):X2}161616";
+    public string SubtitlePrimaryForeground => UseBlackSubtitleText ? "#FF4D4D4D" : "White";
+    public string SubtitleSecondaryForeground => UseBlackSubtitleText ? "#F04D4D4D" : "#F0FFFFFF";
+    public string SubtitleRecognizingForeground => UseBlackSubtitleText ? "#CC4D4D4D" : "#CCFFFFFF";
+    public string SubtitleTranscriptForeground => UseBlackSubtitleText ? "#E64D4D4D" : "#E6FFFFFF";
+    public string SubtitleColorButtonForeground => UseBlackSubtitleText ? "#FF4D4D4D" : "White";
+    public string SubtitleColorButtonBackground => UseBlackSubtitleText ? "#FFF5F5F5" : "#CC111111";
+    public string SubtitleColorButtonBorderBrush => UseBlackSubtitleText ? "#66000000" : "#66FFFFFF";
     public string SubtitleModeButtonText => IsSubtitleMode ? "Exit Sub" : "Sub Title";
     public string TranscriptToggleText => ShowTranscriptText ? "Hide Txt" : "Transcript";
     public string StartStopBackground => IsRunning ? "#66C62828" : "#6643A047";
@@ -243,7 +272,6 @@ public class MainViewModel : ReactiveObject, IDisposable
     public string StartStopText => IsRunning ? "Stop" : "Start";
 
     public ICommand StartStopCommand { get; }
-    public ICommand ToggleOrientationCommand { get; }
     public ICommand ShowSettingsCommand { get; }
     public ICommand ToggleSubtitleModeCommand { get; }
     public ICommand IncreaseSubtitleFontCommand { get; }
@@ -251,10 +279,12 @@ public class MainViewModel : ReactiveObject, IDisposable
     public ICommand IncreaseSubtitleBackgroundOpacityCommand { get; }
     public ICommand DecreaseSubtitleBackgroundOpacityCommand { get; }
     public ICommand ToggleTranscriptVisibilityCommand { get; }
+    public ICommand ToggleSubtitleTextColorCommand { get; }
 
     public MainViewModel(LipiSessionContext session)
     {
         _session = session;
+        var wasRunning = IsRunning;
 
         _subtitleInactivityTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(10) };
         _subtitleInactivityTimer.Tick += (_, _) => ClearSubtitleState();
@@ -265,10 +295,9 @@ public class MainViewModel : ReactiveObject, IDisposable
         ((ReactiveCommand<Unit, Unit>)StartStopCommand).ThrownExceptions.Subscribe(ex =>
         {
             Status = $"Error: {ex.Message}";
-            IsSettingsVisible = true;
+            ResetToDefaultView();
         });
         
-        ToggleOrientationCommand = ReactiveCommand.Create(() => IsHorizontal = !IsHorizontal);
         ShowSettingsCommand = ReactiveCommand.Create(() =>
         {
             if (IsSubtitleMode)
@@ -282,11 +311,17 @@ public class MainViewModel : ReactiveObject, IDisposable
         IncreaseSubtitleBackgroundOpacityCommand = ReactiveCommand.Create(() => SubtitleBackgroundOpacity += 0.05);
         DecreaseSubtitleBackgroundOpacityCommand = ReactiveCommand.Create(() => SubtitleBackgroundOpacity -= 0.05);
         ToggleTranscriptVisibilityCommand = ReactiveCommand.Create(() => ShowTranscriptText = !ShowTranscriptText);
+        ToggleSubtitleTextColorCommand = ReactiveCommand.Create(() => UseBlackSubtitleText = !UseBlackSubtitleText);
 
         this.WhenAnyValue(x => x.IsRunning).Subscribe(_ =>
         {
             this.RaisePropertyChanged(nameof(StartStopText));
             this.RaisePropertyChanged(nameof(StartStopBackground));
+
+            if (wasRunning && !IsRunning)
+                ResetToDefaultView();
+
+            wasRunning = IsRunning;
         });
 
         _audioInputDeviceService.DevicesChanged += OnInputDevicesChanged;
@@ -500,12 +535,15 @@ public class MainViewModel : ReactiveObject, IDisposable
         _currentRecognizingBubble = null;
         _activeTargetLanguages.Clear();
         ClearSubtitleState();
+        ShowTranscriptText = false;
+        SubtitleTranslatedText = "Ready to translate";
 
         var startSession = await _authService.StartSessionAsync(_session.MeetingId, _session.SessionToken);
         if (!startSession.Success || !startSession.SessionId.HasValue)
         {
             Status = startSession.Message ?? "Unable to start session.";
             IsSettingsVisible = true;
+            ClearSubtitleState();
             return;
         }
 
@@ -536,6 +574,7 @@ public class MainViewModel : ReactiveObject, IDisposable
             selectedTargets,
             inputDeviceNumber.Value);
 
+        IsSubtitleMode = true;
         Status = "Live";
     }
 
@@ -544,12 +583,8 @@ public class MainViewModel : ReactiveObject, IDisposable
         if (_realtimeClient != null)
             await _realtimeClient.StopAsync();
 
-        if (IsSubtitleMode)
-            IsSubtitleMode = false;
-
-        IsSettingsVisible = true;
         Status = "Stopped";
-        ClearSubtitleState();
+        ResetToDefaultView();
     }
 
     private ILipiRealtimeClient CreateRealtimeClient() =>
@@ -588,7 +623,10 @@ public class MainViewModel : ReactiveObject, IDisposable
         Dispatcher.UIThread.Post(() => _ = HandleRealtimeErrorAsync(message));
 
     private void OnRealtimeRunningStateChanged(bool running) =>
-        Dispatcher.UIThread.Post(() => IsRunning = running);
+        Dispatcher.UIThread.Post(() =>
+        {
+            IsRunning = running;
+        });
 
     private void OnRecognizing(string transcript, Dictionary<string, string> translations)
     {
@@ -649,6 +687,7 @@ public class MainViewModel : ReactiveObject, IDisposable
 
         this.RaisePropertyChanged(nameof(HasSubtitleLanguageLines));
         this.RaisePropertyChanged(nameof(HasSubtitleContent));
+        this.RaisePropertyChanged(nameof(ShowSubtitleTranslatedPlaceholder));
         RestartSubtitleInactivityTimer();
     }
 
@@ -670,6 +709,7 @@ public class MainViewModel : ReactiveObject, IDisposable
         RefreshSubtitleTranslations(translations);
         this.RaisePropertyChanged(nameof(HasSubtitleLanguageLines));
         this.RaisePropertyChanged(nameof(HasSubtitleContent));
+        this.RaisePropertyChanged(nameof(ShowSubtitleTranslatedPlaceholder));
         RestartSubtitleInactivityTimer();
     }
 
@@ -701,6 +741,7 @@ public class MainViewModel : ReactiveObject, IDisposable
         this.RaisePropertyChanged(nameof(HasSubtitleTranslations));
         this.RaisePropertyChanged(nameof(HasSubtitleLanguageLines));
         this.RaisePropertyChanged(nameof(HasSubtitleContent));
+        this.RaisePropertyChanged(nameof(ShowSubtitleTranslatedPlaceholder));
     }
 
     private void RefreshSubtitleTranslations(Dictionary<string, string> translations)
@@ -724,6 +765,17 @@ public class MainViewModel : ReactiveObject, IDisposable
         this.RaisePropertyChanged(nameof(HasSubtitleTranslations));
     }
 
+    private void ApplySubtitleTheme()
+    {
+        foreach (var line in SubtitleLanguageLines)
+        {
+            line.SubtitleBackgroundBrush = SubtitleBackgroundBrush;
+            line.PrimaryForeground = SubtitlePrimaryForeground;
+            line.SecondaryForeground = SubtitleSecondaryForeground;
+            line.RecognizingForeground = SubtitleRecognizingForeground;
+        }
+    }
+
     private void EnsureSubtitleLanguageLines()
     {
         foreach (var target in _activeTargetLanguages)
@@ -736,9 +788,14 @@ public class MainViewModel : ReactiveObject, IDisposable
                 LanguageCode = target.Code,
                 LanguageName = target.DisplayName,
                 DisplayFontSize = SubtitleFontSize,
-                SubtitleBackgroundBrush = SubtitleBackgroundBrush
+                SubtitleBackgroundBrush = SubtitleBackgroundBrush,
+                PrimaryForeground = SubtitlePrimaryForeground,
+                SecondaryForeground = SubtitleSecondaryForeground,
+                RecognizingForeground = SubtitleRecognizingForeground
             });
         }
+
+        ApplySubtitleTheme();
     }
 
     private string FormatRealtimeErrorMessage(string message)
@@ -789,13 +846,8 @@ public class MainViewModel : ReactiveObject, IDisposable
             }
 
             IsRunning = false;
-
-            if (IsSubtitleMode)
-                IsSubtitleMode = false;
-
-            IsSettingsVisible = true;
             _currentRecognizingBubble = null;
-            ClearSubtitleState();
+            ResetToDefaultView();
             Status = formattedMessage;
         }
         finally
@@ -808,10 +860,20 @@ public class MainViewModel : ReactiveObject, IDisposable
     {
         this.RaisePropertyChanged(nameof(IsHeaderVisible));
         this.RaisePropertyChanged(nameof(IsStatusRowVisible));
+        this.RaisePropertyChanged(nameof(HeaderChromeOpacity));
         this.RaisePropertyChanged(nameof(IsBubbleListVisible));
         this.RaisePropertyChanged(nameof(IsSettingsPanelVisible));
         this.RaisePropertyChanged(nameof(HeaderPanelBackground));
         this.RaisePropertyChanged(nameof(SubtitleModeButtonText));
+    }
+
+    private void ResetToDefaultView()
+    {
+        if (IsSubtitleMode)
+            IsSubtitleMode = false;
+
+        IsSettingsVisible = true;
+        ClearSubtitleState();
     }
 
     private TranscriptBubble CreateBubble(bool isRecognizing)

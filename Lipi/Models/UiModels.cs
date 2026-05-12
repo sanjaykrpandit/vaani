@@ -98,6 +98,9 @@ public class SubtitleLanguageLine : ReactiveObject
     private bool _isLatestRecognizing;
     private double _displayFontSize = 24;
     private string _subtitleBackgroundBrush = "#80161616";
+    private string _primaryForeground = "White";
+    private string _secondaryForeground = "#F0FFFFFF";
+    private string _recognizingForeground = "#CCFFFFFF";
 
     public string LanguageCode { get; set; } = string.Empty;
     public string LanguageName { get; set; } = string.Empty;
@@ -148,13 +151,37 @@ public class SubtitleLanguageLine : ReactiveObject
     public double DisplayFontSize
     {
         get => _displayFontSize;
-        set => this.RaiseAndSetIfChanged(ref _displayFontSize, value);
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _displayFontSize, value);
+            this.RaisePropertyChanged(nameof(DisplayLineHeight));
+        }
     }
+
+    public double DisplayLineHeight => Math.Max(28, Math.Round(DisplayFontSize * 1.9, MidpointRounding.AwayFromZero));
 
     public string SubtitleBackgroundBrush
     {
         get => _subtitleBackgroundBrush;
         set => this.RaiseAndSetIfChanged(ref _subtitleBackgroundBrush, value);
+    }
+
+    public string PrimaryForeground
+    {
+        get => _primaryForeground;
+        set => this.RaiseAndSetIfChanged(ref _primaryForeground, value);
+    }
+
+    public string SecondaryForeground
+    {
+        get => _secondaryForeground;
+        set => this.RaiseAndSetIfChanged(ref _secondaryForeground, value);
+    }
+
+    public string RecognizingForeground
+    {
+        get => _recognizingForeground;
+        set => this.RaiseAndSetIfChanged(ref _recognizingForeground, value);
     }
 
     public bool HasOlderRecognizedText => !string.IsNullOrWhiteSpace(OlderRecognizedText);

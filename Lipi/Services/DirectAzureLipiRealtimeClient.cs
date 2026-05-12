@@ -391,19 +391,23 @@ public class DirectAzureLipiRealtimeClient : ILipiRealtimeClient
 
     private async Task StopTokenRefreshAsync()
     {
-        if (_tokenRefreshCts == null)
+        var tokenRefreshCts = _tokenRefreshCts;
+        var tokenRefreshTask = _tokenRefreshTask;
+
+        if (tokenRefreshCts == null)
             return;
 
-        try { _tokenRefreshCts.Cancel(); } catch { }
+        _tokenRefreshCts = null;
+        _tokenRefreshTask = null;
 
-        if (_tokenRefreshTask != null)
+        try { tokenRefreshCts.Cancel(); } catch { }
+
+        if (tokenRefreshTask != null)
         {
-            try { await _tokenRefreshTask; } catch (OperationCanceledException) { } catch { }
+            try { await tokenRefreshTask; } catch (OperationCanceledException) { } catch { }
         }
 
-        _tokenRefreshTask = null;
-        _tokenRefreshCts.Dispose();
-        _tokenRefreshCts = null;
+        tokenRefreshCts.Dispose();
     }
 
     private async Task RunTokenRefreshLoopAsync(CancellationToken cancellationToken)

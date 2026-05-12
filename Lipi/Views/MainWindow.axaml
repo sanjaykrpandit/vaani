@@ -5,8 +5,8 @@
         xmlns:vm="using:Lipi.ViewModels"
         x:Class="Lipi.Views.MainWindow"
         x:DataType="vm:MainViewModel"
-        Width="720" Height="320"
-        MinWidth="260" MinHeight="320"
+        Width="350" Height="600"
+        MinWidth="250" MinHeight="600"
         TransparencyLevelHint="Transparent"
         Background="#AA000000"
         SystemDecorations="BorderOnly"
@@ -106,8 +106,14 @@
 			  Padding="6"
               CornerRadius="6"
               Background="{Binding HeaderPanelBackground}"
-              IsVisible="{Binding IsHeaderVisible}">
-        <Grid RowDefinitions="Auto,Auto">
+              Opacity="{Binding HeaderChromeOpacity}"
+              IsHitTestVisible="{Binding IsHeaderVisible}">
+        <Border.Transitions>
+          <Transitions>
+            <DoubleTransition Property="Opacity" Duration="0:0:0.18"/>
+          </Transitions>
+        </Border.Transitions>
+        <Grid RowDefinitions="Auto,Auto"  PointerPressed="DragArea_OnPointerPressed">
 
       <!-- ── Header drag area ── -->
       <Grid x:Name="HeaderDragArea" Grid.Row="0"
@@ -122,18 +128,19 @@
 
         <Border Grid.Column="0"
                 IsVisible="{Binding IsSubtitleMode}"
-                Margin="0,0,6,0"
-                Height="22"
+                Margin="0,0,4,0"
+                Height="22"				
                 Padding="1,0"
                 CornerRadius="4"
                 BorderBrush="#44FFFFFF"
                 BorderThickness="1"
+				MinWidth="32"
                 Background="#22FFFFFF">
           <StackPanel Orientation="Horizontal" Spacing="1" VerticalAlignment="Center">
             <Button Content="◀"
                     Click="SubtitleNarrowButton_OnClick"
                     Width="18" Height="18" Padding="0"
-                    FontSize="8"
+                    FontSize="7"
                     HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                     ToolTip.Tip="Narrow subtitle window (−5%)"
                     Foreground="White"
@@ -141,7 +148,7 @@
             <Button Content="▶"
                     Click="SubtitleWideButton_OnClick"
                     Width="18" Height="18" Padding="0"
-                    FontSize="8"
+                    FontSize="7"
                     HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                     ToolTip.Tip="Widen subtitle window (+5%)"
                     Foreground="White"
@@ -149,16 +156,7 @@
           </StackPanel>
         </Border>
 
-        <Button Grid.Column="1" Content="{Binding SubtitleModeButtonText}"
-                Command="{Binding ToggleSubtitleModeCommand}"
-                IsVisible="{Binding IsRunning}"
-                Margin="2,0" Height="22" MinWidth="34" Padding="6,0"
-                FontSize="11"
-                HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
-                ToolTip.Tip="Subtitle mode"
-                Foreground="White"
-                BorderThickness="0" CornerRadius="4"/>
-        <Border Grid.Column="2"
+        <Border Grid.Column="1"
                 IsVisible="{Binding IsSubtitleMode}"
                 Margin="2,0"
                 Height="22"
@@ -170,26 +168,40 @@
           <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
             <Button Content="A"
                     Command="{Binding DecreaseSubtitleFontCommand}"
-                    Width="24" Height="20" Padding="0"
+                    Width="20" Height="20" Padding="0"
                     FontSize="9"
                     FontWeight="SemiBold"
                     HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
-                    ToolTip.Tip="Decrease subtitle font"
+                    ToolTip.Tip="Decrease font"
                     Foreground="White"
                     BorderBrush="#66BFD7FF"
                     BorderThickness="1" CornerRadius="3"/>
             <Button Content="A"
                     Command="{Binding IncreaseSubtitleFontCommand}"
-                    Width="24" Height="20" Padding="0"
+                    Width="20" Height="20" Padding="0"
                     FontSize="12"
                     FontWeight="Bold"
                     HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
-                    ToolTip.Tip="Increase subtitle font"
+                    ToolTip.Tip="Increase font"
                     Foreground="White"
                     BorderBrush="#66BFD7FF"
                     BorderThickness="1" CornerRadius="3"/>
           </StackPanel>
         </Border>
+        <Button Grid.Column="2" Content="A"
+                Command="{Binding ToggleSubtitleTextColorCommand}"
+                IsVisible="{Binding IsSubtitleMode}"
+                Margin="2,0" Height="22" Width="20" Padding="0"
+                FontSize="10"
+                FontWeight="Bold"
+                HorizontalContentAlignment="Center"
+                VerticalContentAlignment="Center"
+                ToolTip.Tip="Toggle subtitle text color"
+                Foreground="{Binding SubtitleColorButtonForeground}"
+                Background="{Binding SubtitleColorButtonBackground}"
+                BorderBrush="{Binding SubtitleColorButtonBorderBrush}"
+                BorderThickness="1"
+                CornerRadius="4"/>
         <Border Grid.Column="3"
                 IsVisible="{Binding IsSubtitleMode}"
                 Margin="2,0"
@@ -202,7 +214,7 @@
           <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
             <Button Content="−"
                     Command="{Binding DecreaseSubtitleBackgroundOpacityCommand}"
-                    Width="24" Height="20" Padding="0"
+                    Width="20" Height="20" Padding="0"
                     FontSize="10"
                     HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                     ToolTip.Tip="Decrease subtitle background opacity"
@@ -211,7 +223,7 @@
                     BorderThickness="1" CornerRadius="3"/>
             <Button Content="+"
                     Command="{Binding IncreaseSubtitleBackgroundOpacityCommand}"
-                    Width="24" Height="20" Padding="0"
+                    Width="20" Height="20" Padding="0"
                     FontSize="10"
                     HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                     ToolTip.Tip="Increase subtitle background opacity"
@@ -223,35 +235,36 @@
         <Button Grid.Column="4" Content="{Binding TranscriptToggleText}"
                 Command="{Binding ToggleTranscriptVisibilityCommand}"
                 IsVisible="{Binding IsSubtitleMode}"
-                Margin="2,0" Height="22" MinWidth="64" Padding="6,0"
+                Margin="2,0" Height="22" MinWidth="50" Padding="2,0"
                 FontSize="11"
                 HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                 ToolTip.Tip="Show or hide transcript"
                 Foreground="White"
                 BorderThickness="0" CornerRadius="4"/>
-        <Button Grid.Column="5" Content="⇄"
-                Command="{Binding ToggleOrientationCommand}"
-                IsVisible="{Binding !IsSubtitleMode}"
-                Margin="2,0" Height="22" Width="24" Padding="0"
-                FontSize="11"
-                HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
-                ToolTip.Tip="Toggle view"
-                Foreground="White"
-                BorderThickness="0" CornerRadius="4"/>
-        <Button Grid.Column="6" Content="⚙"
+        <Button Grid.Column="5" Content="⚙"
                 Command="{Binding ShowSettingsCommand}"
                 IsVisible="{Binding !IsSubtitleMode}"
-                Margin="2,0" Height="22" Width="24" Padding="0"
+                Margin="2,0" Height="22" Width="20" Padding="0"
                 FontSize="11"
                 HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                 ToolTip.Tip="Settings"
                 Foreground="White"
                 BorderThickness="0" CornerRadius="4"/>
+        <Button Grid.Column="6" Content="{Binding SubtitleModeButtonText}"
+                Command="{Binding ToggleSubtitleModeCommand}"
+                IsVisible="{Binding IsRunning}"
+                Margin="2,0" Height="22" MinWidth="40" Padding="2,0"
+                FontSize="10"
+                HorizontalContentAlignment="Center"
+                VerticalContentAlignment="Center"
+                ToolTip.Tip="Subtitle mode"
+                Foreground="White"
+                BorderThickness="0" CornerRadius="4"/>
         <Button Grid.Column="7"
                 Content="{Binding StartStopText}"
                 Command="{Binding StartStopCommand}"
-                Margin="2,0,10,0" Height="22" MinWidth="50" Padding="6,0"
-                FontSize="11"
+                Margin="2,0,4,0" Height="22" MinWidth="40" Padding="2,0"
+                FontSize="10"
                 HorizontalContentAlignment="Center"
                 VerticalContentAlignment="Center"
                 Foreground="White"
@@ -261,16 +274,16 @@
                 CornerRadius="4"/>
         <Button Grid.Column="8" Content="—"
                 Click="MinimizeButton_OnClick"
-                Margin="2,0" Height="22" Width="24" Padding="0"
-                FontSize="11"
+                Margin="2,0" Height="22" Width="22" Padding="0"
+                FontSize="10"
                 HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                 ToolTip.Tip="Minimize"
                 Foreground="White"
                 BorderThickness="0" CornerRadius="4"/>
         <Button Grid.Column="9" Content="✕"
                 Click="CloseButton_OnClick"
-                Margin="2,0" Height="22" Width="24" Padding="0"
-                FontSize="11"
+                Margin="2,0" Height="22" Width="22" Padding="0"
+                FontSize="10"
                 HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                 ToolTip.Tip="Close"
                  Foreground="White"
@@ -278,14 +291,14 @@
       </Grid>
 
       <Border x:Name="StatusRow" Grid.Row="1"
-              IsVisible="{Binding IsStatusRowVisible}"
               CornerRadius="6"
-              Padding="4,2"
+              Padding="4,4"
               Background="Transparent"
               BorderBrush="#22FFFFFF"
-              BorderThickness="0,1,0,0">
+              BorderThickness="0,1,0,0"
+		      PointerPressed="DragArea_OnPointerPressed">
         <TextBlock Text="{Binding Status}"
-                   FontSize="10"
+                   FontSize="12"
                    Foreground="#F2FFFFFF"/>
       </Border>
         </Grid>
@@ -326,6 +339,7 @@
                                  Margin="4,0,0,0"
                                  Text="{Binding Transcript}"
                                  TextWrapping="Wrap"
+                                 FontFamily="Segoe UI, Yu Gothic UI, Meiryo, Nirmala UI, Mangal"
                                  FontSize="12"
                                  FontStyle="Italic"
                                  LineHeight="22"
@@ -353,6 +367,7 @@
                                          Margin="6,0,0,0"
                                          Text="{Binding Text}"
                                          TextWrapping="Wrap"
+                                         FontFamily="Segoe UI, Yu Gothic UI, Meiryo, Nirmala UI, Mangal"
                                          FontSize="14"
                                          FontWeight="Bold"
                                          Foreground="White"/>
@@ -387,73 +402,39 @@
                                        PlatformTransparencyCompensationLevel="0"/>
         </ExperimentalAcrylicBorder.Material>
         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-          <Grid RowDefinitions="Auto,Auto,Auto">
+          <Grid RowDefinitions="Auto,Auto,Auto,Auto">
 
-            <!-- Horizontal layout: source language + mic side by side -->
-            <Grid Grid.Row="0" ColumnDefinitions="*,*" IsVisible="{Binding IsHorizontal}">
-              <Border Grid.Column="0" Classes="settings-section" CornerRadius="6" Padding="6" Margin="0,0,4,0">
-                <StackPanel Spacing="4" HorizontalAlignment="Stretch">
-                  <TextBlock Classes="settings-label" Text="Speaking language"/>
-                  <ComboBox HorizontalAlignment="Stretch"
-                            ItemsSource="{Binding SourceLanguages}"
-                            SelectedItem="{Binding SelectedSourceLanguage}">
-                    <ComboBox.ItemTemplate>
-                      <DataTemplate>
-                        <TextBlock Text="{Binding DisplayName}"/>
-                      </DataTemplate>
-                    </ComboBox.ItemTemplate>
-                  </ComboBox>
-                </StackPanel>
-              </Border>
-              <Border Grid.Column="1" Classes="settings-section" CornerRadius="6" Padding="6" Margin="4,0,0,0">
-                <StackPanel Spacing="4" HorizontalAlignment="Stretch">
-                  <TextBlock Classes="settings-label" Text="Microphone"/>
-                  <ComboBox HorizontalAlignment="Stretch"
-                            ItemsSource="{Binding InputDevices}"
-                            SelectedItem="{Binding SelectedInputDevice}">
-                    <ComboBox.ItemTemplate>
-                      <DataTemplate>
-                        <TextBlock Text="{Binding Name}"/>
-                      </DataTemplate>
-                    </ComboBox.ItemTemplate>
-                  </ComboBox>
-                </StackPanel>
-              </Border>
-            </Grid>
+            <Border Grid.Row="0" Classes="settings-section" CornerRadius="6" Padding="8">
+              <StackPanel Spacing="6" HorizontalAlignment="Stretch">
+                <TextBlock Classes="settings-label" Text="Speaking language"/>
+                <ComboBox HorizontalAlignment="Stretch"
+                          ItemsSource="{Binding SourceLanguages}"
+                          SelectedItem="{Binding SelectedSourceLanguage}">
+                  <ComboBox.ItemTemplate>
+                    <DataTemplate>
+                      <TextBlock Text="{Binding DisplayName}"/>
+                    </DataTemplate>
+                  </ComboBox.ItemTemplate>
+                </ComboBox>
+              </StackPanel>
+            </Border>
 
-            <!-- Vertical layout: source language + mic stacked -->
-            <StackPanel Grid.Row="0" Spacing="8" IsVisible="{Binding !IsHorizontal}">
-              <Border Classes="settings-section" CornerRadius="6" Padding="8">
-                <StackPanel Spacing="6" HorizontalAlignment="Stretch">
-                  <TextBlock Classes="settings-label" Text="Speaking language"/>
-                  <ComboBox HorizontalAlignment="Stretch"
-                            ItemsSource="{Binding SourceLanguages}"
-                            SelectedItem="{Binding SelectedSourceLanguage}">
-                    <ComboBox.ItemTemplate>
-                      <DataTemplate>
-                        <TextBlock Text="{Binding DisplayName}"/>
-                      </DataTemplate>
-                    </ComboBox.ItemTemplate>
-                  </ComboBox>
-                </StackPanel>
-              </Border>
-              <Border Classes="settings-section" CornerRadius="6" Padding="8">
-                <StackPanel Spacing="6" HorizontalAlignment="Stretch">
-                  <TextBlock Classes="settings-label" Text="Microphone"/>
-                  <ComboBox HorizontalAlignment="Stretch"
-                            ItemsSource="{Binding InputDevices}"
-                            SelectedItem="{Binding SelectedInputDevice}">
-                    <ComboBox.ItemTemplate>
-                      <DataTemplate>
-                        <TextBlock Text="{Binding Name}"/>
-                      </DataTemplate>
-                    </ComboBox.ItemTemplate>
-                  </ComboBox>
-                </StackPanel>
-              </Border>
-            </StackPanel>
+            <Border Grid.Row="1" Classes="settings-section" CornerRadius="6" Padding="8" Margin="0,6,0,0">
+              <StackPanel Spacing="6" HorizontalAlignment="Stretch">
+                <TextBlock Classes="settings-label" Text="Microphone"/>
+                <ComboBox HorizontalAlignment="Stretch"
+                          ItemsSource="{Binding InputDevices}"
+                          SelectedItem="{Binding SelectedInputDevice}">
+                  <ComboBox.ItemTemplate>
+                    <DataTemplate>
+                      <TextBlock Text="{Binding Name}"/>
+                    </DataTemplate>
+                  </ComboBox.ItemTemplate>
+                </ComboBox>
+              </StackPanel>
+            </Border>
 
-            <Border Grid.Row="1" Classes="settings-section" CornerRadius="6" Padding="6"
+            <Border Grid.Row="2" Classes="settings-section" CornerRadius="6" Padding="6"
                     Margin="0,6,0,0">
               <StackPanel Spacing="6" HorizontalAlignment="Stretch">
                 <TextBlock Classes="settings-label" Text="Connection mode"/>
@@ -469,32 +450,14 @@
               </StackPanel>
             </Border>
 
-            <!-- Output languages — horizontal -->
-            <Border Grid.Row="2" Classes="settings-section" CornerRadius="6" Padding="6"
-                    Margin="0,6,0,0" IsVisible="{Binding IsHorizontal}" VerticalAlignment="Stretch">
+            <Border Grid.Row="3" Classes="settings-section" CornerRadius="6" Padding="6"
+                    Margin="0,6,0,0" VerticalAlignment="Stretch">
               <Grid RowDefinitions="Auto,Auto">
                 <TextBlock Grid.Row="0" Classes="settings-label" Text="Output languages"/>
                 <ItemsControl Grid.Row="1" Margin="0,4,0,0" ItemsSource="{Binding TargetLanguages}">
                   <ItemsControl.ItemTemplate>
                     <DataTemplate>
                       <Border CornerRadius="4" Padding="6" Margin="0,0,0,4" >
-                        <CheckBox Classes="settings-check" Content="{Binding DisplayName}" IsChecked="{Binding IsSelected}"/>
-                      </Border>
-                    </DataTemplate>
-                  </ItemsControl.ItemTemplate>
-                </ItemsControl>
-              </Grid>
-            </Border>
-
-            <!-- Output languages — vertical -->
-            <Border Grid.Row="2" Classes="settings-section" CornerRadius="6" Padding="6"
-                    Margin="0,6,0,0" IsVisible="{Binding !IsHorizontal}" VerticalAlignment="Stretch">
-              <Grid RowDefinitions="Auto,Auto">
-                <TextBlock Grid.Row="0" Classes="settings-label" Text="Output languages"/>
-                <ItemsControl Grid.Row="1" Margin="0,3,0,0" ItemsSource="{Binding TargetLanguages}">
-                  <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                      <Border CornerRadius="4" Padding="4" Margin="0,0,0,4">
                         <CheckBox Classes="settings-check" Content="{Binding DisplayName}" IsChecked="{Binding IsSelected}"/>
                       </Border>
                     </DataTemplate>
@@ -510,26 +473,28 @@
 		
 	  <Grid x:Name="SubtitleGridPanel" Grid.Row="1"
 				  IsVisible="{Binding IsSubtitleMode}"
-				  Margin="0,0,0,18"
+				  Margin="0,0,0,0"
 				  VerticalAlignment="Bottom"
 				  HorizontalAlignment="Stretch">
 				<StackPanel HorizontalAlignment="Center"
 							MaxWidth="1100"
-							Spacing="8">
+							Spacing="4">
 					<Border IsVisible="{Binding SubtitleTranscriptVisible}"
                           Background="{Binding SubtitleBackgroundBrush}"
-							CornerRadius="10"
-							Padding="18,10,18,12"
+							CornerRadius="6"
+                            Padding="6,1,6,1"
 							HorizontalAlignment="Stretch"
 							Margin="0,0,0,2">
 						<TextBlock Text="{Binding SubtitleTranscriptText}"
 								   FontSize="{Binding SubtitleTranscriptFontSize}"
-								   Foreground="#E6FFFFFF"
+                                   FontFamily="Segoe UI, Yu Gothic UI, Meiryo, Nirmala UI, Mangal"
+                                   Foreground="{Binding SubtitleTranscriptForeground}"
 								   TextWrapping="Wrap"
+                                   LineHeight="24"
 								   TextAlignment="Left"
 								   HorizontalAlignment="Stretch"
 								   FlowDirection="LeftToRight"
-								   Margin="0,2"/>
+                                   Margin="0,4,0,2"/>
 					</Border>
 
 					<ItemsControl ItemsSource="{Binding SubtitleLanguageLines}"
@@ -537,46 +502,55 @@
                                   HorizontalAlignment="Stretch">
 						<ItemsControl.ItemsPanel>
 							<ItemsPanelTemplate>
-								<StackPanel Orientation="Vertical" Spacing="8"/>
+								<StackPanel Orientation="Vertical" Spacing="6"/>
 							</ItemsPanelTemplate>
 						</ItemsControl.ItemsPanel>
 						<ItemsControl.ItemTemplate>
                      <DataTemplate x:DataType="models:SubtitleLanguageLine">
                               <Border Background="{Binding SubtitleBackgroundBrush}"
                                         BorderBrush="#556B6B6B"
-                                        BorderThickness="1"
-										CornerRadius="10"
-										Padding="18,12,18,14"
+                                        BorderThickness="0"
+										CornerRadius="6"
+										Padding="8,8,8,8"
                                         HorizontalAlignment="Stretch">
-                                    <StackPanel Spacing="6">
+                                    <StackPanel Spacing="3">
                                         <TextBlock Text="{Binding OlderRecognizedText}"
                                                    IsVisible="{Binding HasOlderRecognizedText}"
                                                    FontSize="{Binding DisplayFontSize}"
+                                                   FontFamily="Segoe UI, Yu Gothic UI, Meiryo, Nirmala UI, Mangal"
                                                    FontWeight="Bold"
-                                                   Foreground="#F0FFFFFF"
+                                                   Foreground="{Binding SecondaryForeground}"
                                                    TextWrapping="Wrap"
+                                                   LineHeight="{Binding DisplayLineHeight}"
                                                    TextAlignment="Left"
                                                    HorizontalAlignment="Stretch"
+                                                   VerticalAlignment="Center"
                                                    FlowDirection="LeftToRight"
                                                    Margin="0,2,0,0"/>
                                         <TextBlock Text="{Binding LatestText}"
                                                    IsVisible="{Binding IsLatestRecognized}"
                                                    FontSize="{Binding DisplayFontSize}"
+                                                   FontFamily="Segoe UI, Yu Gothic UI, Meiryo, Nirmala UI, Mangal"
                                                    FontWeight="Bold"
-                                                   Foreground="White"
+                                                   Foreground="{Binding PrimaryForeground}"
                                                    TextWrapping="Wrap"
+                                                   LineHeight="{Binding DisplayLineHeight}"
                                                    TextAlignment="Left"
                                                    HorizontalAlignment="Stretch"
+                                                   VerticalAlignment="Center"
                                                    FlowDirection="LeftToRight"
                                                    Margin="0,2,0,0"/>
                                         <TextBlock Text="{Binding LatestText}"
                                                    IsVisible="{Binding IsLatestRecognizing}"
                                                    FontSize="{Binding DisplayFontSize}"
+                                                   FontFamily="Segoe UI, Yu Gothic UI, Meiryo, Nirmala UI, Mangal"
                                                    FontStyle="Italic"
-                                                   Foreground="#CCFFFFFF"
+                                                   Foreground="{Binding RecognizingForeground}"
                                                    TextWrapping="Wrap"
+                                                   LineHeight="{Binding DisplayLineHeight}"
                                                    TextAlignment="Left"
                                                    HorizontalAlignment="Stretch"
+                                                   VerticalAlignment="Center"
                                                    FlowDirection="LeftToRight"
                                                    Margin="0,2,0,0"/>
                                     </StackPanel>
@@ -584,6 +558,26 @@
 							</DataTemplate>
 						</ItemsControl.ItemTemplate>
 					</ItemsControl>
+
+                    <Border IsVisible="{Binding ShowSubtitleTranslatedPlaceholder}"
+                          Background="{Binding SubtitleBackgroundBrush}"
+                          BorderBrush="#556B6B6B"
+                          BorderThickness="0"
+                            CornerRadius="6"
+                            Padding="16,10,16,12"
+                          HorizontalAlignment="Stretch">
+                        <TextBlock Text="{Binding SubtitleTranslatedText}"
+                                   FontSize="{Binding SubtitleFontSize}"
+                                   FontFamily="Segoe UI, Yu Gothic UI, Meiryo, Nirmala UI, Mangal"
+                                   FontWeight="Bold"
+                                   Foreground="{Binding SubtitlePrimaryForeground}"
+                                   TextWrapping="Wrap"
+                                   TextAlignment="Left"
+                                   HorizontalAlignment="Stretch"
+                                   FlowDirection="LeftToRight"
+                                   Margin="0,2,0,0"/>
+                    </Border>
+					
 				</StackPanel>
 			</Grid>
 	

@@ -16,35 +16,35 @@ namespace Lipi.Views;
 
 public partial class MainWindow : Window
 {
+    private const int BottomScreenMarginPx = 50;
     private MainViewModel? _vm;
     private ScrollViewer? _bubbleScrollViewer;
+    private Border? _headerPanel;
     private Grid? _headerDragArea;
     private Border? _statusRow;
-    private bool _hasLastOrientation;
-    private bool _lastIsHorizontal;
     private bool _lastIsSubtitleMode;
-    private (double Width, double Height)? _horizontalWindowSize;
-    private (double Width, double Height)? _verticalWindowSize;
+    private bool _isApplyingWindowLayout;
+    private (double Width, double Height)? _normalWindowSize;
     private (double Width, double Height)? _subtitleWindowSize;
-    private (double Width, double Height)? _normalWindowSizeBeforeSubtitle;
 
     public MainWindow()
     {
         InitializeComponent();
         _bubbleScrollViewer = this.FindControl<ScrollViewer>("BubbleScrollViewer");
+        _headerPanel = this.FindControl<Border>("HeaderPanel");
         _headerDragArea = this.FindControl<Grid>("HeaderDragArea");
         _statusRow = this.FindControl<Border>("StatusRow");
 
         Opened += (_, _) =>
         {
             AttachViewModelHandlers();
-            ApplyOrientationSize();
+            RefreshWindowLayout();
         };
 
         DataContextChanged += (_, _) =>
         {
             AttachViewModelHandlers();
-            ApplyOrientationSize();
+            RefreshWindowLayout();
         };
 
         SizeChanged += OnWindowSizeChanged;
@@ -98,12 +98,13 @@ public partial class MainWindow : Window
             return;
 
         var screen = Screens?.ScreenFromWindow(this) ?? Screens?.Primary;
-        if (screen == null) return;
+        if (screen == null)
+            return;
 
         var scaling = screen.Scaling <= 0 ? 1 : screen.Scaling;
         var workWidthDip = screen.WorkingArea.Width / scaling;
         var step = workWidthDip * stepFraction;
-        var minW = workWidthDip * 0.30;
+        var minW = 300d;
         var maxW = workWidthDip * 0.80;
 
         Width = Math.Clamp(Width + step, Math.Max(MinWidth, minW), maxW);
@@ -124,29 +125,25 @@ public partial class MainWindow : Window
         {
             _vm.PropertyChanged += OnViewModelPropertyChanged;
             _vm.Bubbles.CollectionChanged += OnBubblesCollectionChanged;
-
-            _hasLastOrientation = true;
-            _lastIsHorizontal = _vm.IsHorizontal;
         }
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(MainViewModel.IsHorizontal) or nameof(MainViewModel.IsSettingsVisible))
+        if (e.PropertyName == nameof(MainViewModel.IsSettingsVisible))
         {
-            ApplyOrientationSize();
-            Dispatcher.UIThread.Post(RefreshResponsiveLayout, DispatcherPriority.Render);
-            Dispatcher.UIThread.Post(() =>
-            {
-                RefreshResponsiveLayout();
-                UpdateLayout();
-            }, DispatcherPriority.Loaded);
+            RefreshWindowLayout();
         }
 
         if (e.PropertyName == nameof(MainViewModel.IsSubtitleMode))
         {
-            ApplyOrientationSize();
-            RefreshResponsiveLayout();
+            RefreshWindowLayout();
+        }
+
+        if (e.PropertyName == nameof(MainViewModel.IsRunning) && _vm?.IsRunning == false)
+        {
+            _normalWindowSize = GetDefaultWindowSize();
+            RefreshWindowLayout();
         }
     }
 
@@ -171,86 +168,47 @@ public partial class MainWindow : Window
         if (_vm == null)
             return;
 
-        if (_vm.IsSubtitleMode)
-        {
-            MinWidth = 620;
-            MinHeight = 200;
-            MaxHeight = 200;
+        _isApplyingWindowLayout = true;
 
-            if (!_lastIsSubtitleMode)
+        try
+        {
+            if (_vm.IsSubtitleMode)
             {
-                _normalWindowSizeBeforeSubtitle = (Width, Height);
-                _subtitleWindowSize = null; // reset so GetDefaultSubtitleSize() computes fresh center position
-            }
+                MinWidth = 370;
+                MinHeight = 200;
+                MaxHeight = 250;
 
-            var target = _subtitleWindowSize ?? GetDefaultSubtitleSize();
-            Width = Math.Max(target.Width, MinWidth);
-            Height = 200;
-            SystemDecorations = SystemDecorations.None;
-            Background = Brushes.Transparent;
-            MoveToBottomCenter();
+                if (!_lastIsSubtitleMode)
+                    _subtitleWindowSize = null;
 
-            _lastIsSubtitleMode = true;
-            _hasLastOrientation = true;
-            _lastIsHorizontal = _vm.IsHorizontal;
-            return;
-        }
-
-        if (_lastIsSubtitleMode && _normalWindowSizeBeforeSubtitle.HasValue)
-        {
-            Width = _normalWindowSizeBeforeSubtitle.Value.Width;
-            Height = _normalWindowSizeBeforeSubtitle.Value.Height;
-        }
-
-        // Always reposition to bottom-center when returning from subtitle mode
-        var exitingSubtitle = _lastIsSubtitleMode;
-
-        SystemDecorations = SystemDecorations.BorderOnly;
-        Background = new SolidColorBrush(Color.Parse("#AA000000"));
-        MaxHeight = double.PositiveInfinity;
-
-        var shouldMoveToDefaultPosition = false;
-
-        if (_vm.IsHorizontal)
-        {
-            MinWidth = 520;
-            MinHeight = 220;
-
-            var target = _horizontalWindowSize ?? GetDefaultHorizontalSize();
-
-            if (!_hasLastOrientation || !_lastIsHorizontal || _horizontalWindowSize == null)
-            {
-                Width = Math.Max(target.Width, MinWidth);
-                Height = Math.Max(target.Height, MinHeight);
-                shouldMoveToDefaultPosition = true;
-            }
-        }
-        else
-        {
-            MinWidth = 320;
-            MinHeight = 220;
-
-            var target = _verticalWindowSize ?? GetDefaultVerticalSize();
-
-            if (!_hasLastOrientation || _lastIsHorizontal || _verticalWindowSize == null)
-            {
-                Width = Math.Max(target.Width, MinWidth);
-                Height = Math.Max(target.Height, MinHeight);
-                shouldMoveToDefaultPosition = true;
-            }
-        }
-
-        if (shouldMoveToDefaultPosition || exitingSubtitle)
-        {
-            if (_vm.IsHorizontal)
+                var subtitleTarget = _subtitleWindowSize ?? GetDefaultSubtitleSize();
+                Width = Math.Max(subtitleTarget.Width, MinWidth);
+                Height = 200;
+                SystemDecorations = SystemDecorations.None;
+                Background = Brushes.Transparent;
                 MoveToBottomCenter();
-            else
-                MoveToBottomRight();
-        }
 
-        _hasLastOrientation = true;
-        _lastIsHorizontal = _vm.IsHorizontal;
-        _lastIsSubtitleMode = false;
+                _lastIsSubtitleMode = true;
+                return;
+            }
+
+            SystemDecorations = SystemDecorations.BorderOnly;
+            Background = new SolidColorBrush(Color.Parse("#AA000000"));
+            MaxHeight = double.PositiveInfinity;
+            MinWidth = 250;
+            MinHeight = 600;
+
+            var normalTarget = _normalWindowSize ?? GetDefaultWindowSize();
+            Width = Math.Max(normalTarget.Width, MinWidth);
+            Height = Math.Max(normalTarget.Height, MinHeight);
+            MoveToBottomCenter(BottomScreenMarginPx);
+
+            _lastIsSubtitleMode = false;
+        }
+        finally
+        {
+            _isApplyingWindowLayout = false;
+        }
     }
 
     private void RefreshResponsiveLayout()
@@ -258,6 +216,10 @@ public partial class MainWindow : Window
         InvalidateMeasure();
         InvalidateArrange();
         InvalidateVisual();
+
+        _headerPanel?.InvalidateMeasure();
+        _headerPanel?.InvalidateArrange();
+        _headerPanel?.InvalidateVisual();
 
         _bubbleScrollViewer?.InvalidateMeasure();
         _bubbleScrollViewer?.InvalidateArrange();
@@ -269,9 +231,41 @@ public partial class MainWindow : Window
 
     }
 
+    private void RefreshWindowLayout()
+    {
+        ApplyOrientationSize();
+        RefreshResponsiveLayout();
+        UpdateLayout();
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            ApplyOrientationSize();
+            RefreshResponsiveLayout();
+            UpdateLayout();
+        }, DispatcherPriority.Render);
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            ApplyOrientationSize();
+            RefreshResponsiveLayout();
+            UpdateLayout();
+        }, DispatcherPriority.Loaded);
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (_vm?.IsSubtitleMode == false)
+            {
+                _normalWindowSize = GetDefaultWindowSize();
+                ApplyOrientationSize();
+                RefreshResponsiveLayout();
+                UpdateLayout();
+            }
+        }, DispatcherPriority.ApplicationIdle);
+    }
+
     private void OnWindowSizeChanged(object? sender, SizeChangedEventArgs e)
     {
-        if (_vm == null || (!e.WidthChanged && !e.HeightChanged))
+        if (_vm == null || _isApplyingWindowLayout || (!e.WidthChanged && !e.HeightChanged))
             return;
 
         if (_vm.IsSubtitleMode)
@@ -282,48 +276,20 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (_vm.IsHorizontal)
-            _horizontalWindowSize = (Width, Height);
-        else
-            _verticalWindowSize = (Width, Height);
+        _normalWindowSize = (Width, Height);
     }
 
-    private (double Width, double Height) GetDefaultHorizontalSize()
+    private (double Width, double Height) GetDefaultWindowSize()
     {
-        return (620, 300);
-    }
-
-    private (double Width, double Height) GetDefaultVerticalSize()
-    {
-        return (300, 620);
+        return (350, 600);
     }
 
     private (double Width, double Height) GetDefaultSubtitleSize()
     {
-        var screen = Screens?.ScreenFromWindow(this) ?? Screens?.Primary;
-        if (screen == null)
-            return (900, 200);
-
-        var scaling = screen.Scaling <= 0 ? 1 : screen.Scaling;
-        var workWidthDip = screen.WorkingArea.Width / scaling;
-        return (Math.Clamp(workWidthDip * 0.78, 700, workWidthDip * 0.92), 200);    }
-
-    private void MoveToBottomCenter()
-    {
-        var screen = Screens?.ScreenFromWindow(this) ?? Screens?.Primary;
-        if (screen == null)
-            return;
-
-        var scaling = screen.Scaling <= 0 ? 1 : screen.Scaling;
-        var widthPx = (int)Math.Round(Width * scaling);
-        var heightPx = (int)Math.Round(Height * scaling);
-        var marginPx = (int)Math.Round(20 * scaling);
-        var x = screen.WorkingArea.X + Math.Max(0, (screen.WorkingArea.Width - widthPx) / 2);
-        var y = screen.WorkingArea.Y + Math.Max(0, screen.WorkingArea.Height - heightPx - marginPx);
-        Position = new PixelPoint(x, y);
+        return (600, 200);
     }
 
-    private void MoveToBottomRight()
+    private void MoveToBottomCenter(double bottomMarginDip = 0)
     {
         var screen = Screens?.ScreenFromWindow(this) ?? Screens?.Primary;
         if (screen == null)
@@ -332,9 +298,9 @@ public partial class MainWindow : Window
         var scaling = screen.Scaling <= 0 ? 1 : screen.Scaling;
         var widthPx = (int)Math.Round(Width * scaling);
         var heightPx = (int)Math.Round(Height * scaling);
-        var marginPx = (int)Math.Round(20 * scaling);
-        var x = screen.WorkingArea.X + Math.Max(0, screen.WorkingArea.Width - widthPx - marginPx);
-        var y = screen.WorkingArea.Y + Math.Max(0, screen.WorkingArea.Height - heightPx - marginPx);
+        var bottomMarginPx = (int)Math.Round(bottomMarginDip * scaling);
+        var x = screen.WorkingArea.X + Math.Max(0, (screen.WorkingArea.Width - widthPx) / 2);
+        var y = screen.WorkingArea.Y + Math.Max(0, screen.WorkingArea.Height - heightPx - bottomMarginPx);
         Position = new PixelPoint(x, y);
     }
 
