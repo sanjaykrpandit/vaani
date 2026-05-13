@@ -60,8 +60,8 @@ public class MeetingLoginViewModel : ReactiveObject, IDisposable
         // If Program.MeetingId was provided (from args or ClickOnce), pre-fill and lock the field
         if (!string.IsNullOrWhiteSpace(Program.MeetingId))
         {
-            //MeetingId = Program.MeetingId;
-            //IsMeetingIdEditable = false;
+            MeetingId = Program.MeetingId;
+            IsMeetingIdEditable = false;
         }
     }
 
