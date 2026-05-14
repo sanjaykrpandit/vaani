@@ -11,6 +11,7 @@ import Thanks from './pages/Thanks'
 import ProtectedRoute from './components/ProtectedRoute'
 import LanguageList from './components/LanguageList'
 import UserList from './components/UserList'
+import DictionaryList from './components/DictionaryList'
 import './App.css'
 
 function App() {
@@ -75,6 +76,14 @@ function App() {
         element={
           <ProtectedRoute>
             <UserList />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/dictionary"
+        element={
+          <ProtectedRoute>
+            <DictionaryList />
           </ProtectedRoute>
         }
       />

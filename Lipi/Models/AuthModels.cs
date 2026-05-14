@@ -100,3 +100,36 @@ public class LipiDirectTranscriptBatchResponse
     public string? ErrorCode { get; set; }
     public string? Message { get; set; }
 }
+
+public class LipiDirectConversationalRewriteRequest
+{
+    public string MeetingId { get; set; } = string.Empty;
+    public string SessionId { get; set; } = string.Empty;
+    public string SourceLanguage { get; set; } = string.Empty;
+    public Dictionary<string, string> Translations { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+}
+
+public class LipiDirectConversationalRewriteResponse
+{
+    public bool Success { get; set; }
+    public Dictionary<string, string> Translations { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public string? ErrorCode { get; set; }
+    public string? Message { get; set; }
+}
+
+public class ConversationalDictionaryEntryDto
+{
+    public string FormalText { get; set; } = string.Empty;
+    public string ConversationalText { get; set; } = string.Empty;
+    public string MatchMode { get; set; } = "Contains";
+}
+
+public class LipiDirectDictionaryResponse
+{
+    public bool Success { get; set; }
+    public string DictionaryVersion { get; set; } = string.Empty;
+    public DateTime GeneratedAtUtc { get; set; }
+    public Dictionary<string, List<ConversationalDictionaryEntryDto>> Entries { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public string? ErrorCode { get; set; }
+    public string? Message { get; set; }
+}

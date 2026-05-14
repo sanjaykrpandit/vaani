@@ -52,6 +52,10 @@ public class RealtimeConfig
     public int DirectSegmentationSilenceTimeoutMs { get; set; } = 700;
     public int DirectAudioBufferMilliseconds { get; set; } = 50;
     public bool DirectDisableClientSilenceFilter { get; set; } = true;
+    public bool DirectEnableConversationalRewrite { get; set; } = true;
+    public bool DirectRecognizingRewriteEnabled { get; set; } = true;
+    public int DirectRecognizingRewriteMinIntervalMs { get; set; } = 300;
+    public int DirectRecognizingRewriteMinTextLength { get; set; } = 10;
 }
 
 public class AuthenticationConfig

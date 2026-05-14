@@ -40,6 +40,15 @@ public class DirectAzureLipiRealtimeClient : ILipiRealtimeClient
     private long _persistedRecognitionCount;
     private long _tokenRefreshCount;
     private long _tokenRefreshFailureCount;
+    private long _rewriteHitCount;
+
+    // Client-side conversational dictionary: locale ? ordered rules
+    private Dictionary<string, List<(string Formal, string Conversational, string MatchMode)>> _conversationalDictionary = new(StringComparer.OrdinalIgnoreCase);
+    private string _dictionaryVersion = string.Empty;
+
+    // Recognizing throttle state
+    private string _lastRecognizingText = string.Empty;
+    private DateTime _lastRecognizingRewriteAt = DateTime.MinValue;
 
     public DirectAzureLipiRealtimeClient(MeetingAuthenticationService authService)
     {
@@ -93,6 +102,8 @@ public class DirectAzureLipiRealtimeClient : ILipiRealtimeClient
         _tokenExpiresAtUtc = directAccess.ExpiresAtUtc;
         ResetDiagnostics();
 
+        await LoadConversationalDictionaryAsync();
+
         var config = SpeechTranslationConfig.FromAuthorizationToken(directAccess.SpeechToken, directAccess.Region);
         config.SpeechRecognitionLanguage = sourceLanguage;
         config.OutputFormat = OutputFormat.Detailed;
@@ -133,6 +144,18 @@ public class DirectAzureLipiRealtimeClient : ILipiRealtimeClient
                 return;
 
             var translations = _moderationEngine.ModerateTranslations(BuildTranslations(e.Result.Translations));
+
+            if (_realtimeConfig.DirectEnableConversationalRewrite &&
+                _realtimeConfig.DirectRecognizingRewriteEnabled &&
+                originalText.Length >= _realtimeConfig.DirectRecognizingRewriteMinTextLength &&
+                !originalText.Equals(_lastRecognizingText, StringComparison.Ordinal) &&
+                (DateTime.UtcNow - _lastRecognizingRewriteAt).TotalMilliseconds >= _realtimeConfig.DirectRecognizingRewriteMinIntervalMs)
+            {
+                _lastRecognizingText = originalText;
+                _lastRecognizingRewriteAt = DateTime.UtcNow;
+                translations = ApplyConversationalRewrite(translations);
+            }
+
             RecognizingReceived?.Invoke(moderatedOriginal.Text, translations);
         };
 
@@ -146,9 +169,18 @@ public class DirectAzureLipiRealtimeClient : ILipiRealtimeClient
             if (string.IsNullOrWhiteSpace(moderatedTranscript.Text))
                 return;
 
-            var translations = _moderationEngine.ModerateTranslations(BuildTranslations(e.Result.Translations));
-            RecognizedReceived?.Invoke(moderatedTranscript.Text, translations);
-            _ = PersistRecognizedAsync(moderatedTranscript.Text, translations, DateTime.UtcNow);
+            var baseTranslations = BuildTranslations(e.Result.Translations);
+
+            _ = Task.Run(async () =>
+            {
+                var translations = _realtimeConfig.DirectEnableConversationalRewrite
+                    ? ApplyConversationalRewrite(baseTranslations)
+                    : baseTranslations;
+
+                var moderatedTranslations = _moderationEngine.ModerateTranslations(translations);
+                RecognizedReceived?.Invoke(moderatedTranscript.Text, moderatedTranslations);
+                await PersistRecognizedAsync(moderatedTranscript.Text, moderatedTranslations, DateTime.UtcNow);
+            });
         };
 
         _recognizer.Canceled += (_, e) =>
@@ -247,6 +279,77 @@ public class DirectAzureLipiRealtimeClient : ILipiRealtimeClient
         }
 
         return result;
+    }
+
+    private Dictionary<string, string> ApplyConversationalRewrite(Dictionary<string, string> translations)
+    {
+        if (_conversationalDictionary.Count == 0)
+            return translations;
+
+        var result = new Dictionary<string, string>(translations, StringComparer.OrdinalIgnoreCase);
+        foreach (var locale in result.Keys.ToList())
+        {
+            if (!_conversationalDictionary.TryGetValue(locale, out var rules))
+                continue;
+
+            var text = result[locale];
+            foreach (var (formal, conversational, matchMode) in rules)
+            {
+                var replaced = matchMode switch
+                {
+                    "Exact" => text.Equals(formal, StringComparison.OrdinalIgnoreCase)
+                        ? conversational
+                        : text,
+                    "StartsWith" => text.StartsWith(formal, StringComparison.OrdinalIgnoreCase)
+                        ? conversational + text[formal.Length..]
+                        : text,
+                    _ => text.Replace(formal, conversational, StringComparison.Ordinal)
+                };
+
+                if (!replaced.Equals(text, StringComparison.Ordinal))
+                {
+                    Interlocked.Increment(ref _rewriteHitCount);
+                    text = replaced;
+                }
+            }
+
+            result[locale] = text.Trim();
+        }
+
+        return result;
+    }
+
+    private async Task LoadConversationalDictionaryAsync()
+    {
+        if (!_realtimeConfig.DirectEnableConversationalRewrite || _targetLanguages.Count == 0)
+            return;
+
+        try
+        {
+            var response = await _authService.GetConversationalDictionaryAsync(_targetLanguages, _sessionToken);
+            if (!response.Success || response.Entries.Count == 0)
+            {
+                LogDiagnostics("Conversational dictionary not loaded — server returned empty or failure");
+                return;
+            }
+
+            var dict = new Dictionary<string, List<(string, string, string)>>(StringComparer.OrdinalIgnoreCase);
+            foreach (var locale in response.Entries)
+            {
+                dict[locale.Key] = locale.Value
+                    .Where(e => !string.IsNullOrWhiteSpace(e.FormalText) && !string.IsNullOrWhiteSpace(e.ConversationalText))
+                    .Select(e => (e.FormalText.Trim(), e.ConversationalText.Trim(), e.MatchMode?.Trim() ?? "Contains"))
+                    .ToList();
+            }
+
+            _conversationalDictionary = dict;
+            _dictionaryVersion = response.DictionaryVersion;
+            LogDiagnostics($"Conversational dictionary loaded v={_dictionaryVersion} locales={_conversationalDictionary.Count} entries={_conversationalDictionary.Values.Sum(l => l.Count)}");
+        }
+        catch (Exception ex)
+        {
+            LogDiagnostics($"Conversational dictionary load failed: {ex.Message}");
+        }
     }
 
     private void StartCapture(int inputDeviceNumber)
@@ -377,6 +480,7 @@ public class DirectAzureLipiRealtimeClient : ILipiRealtimeClient
         Interlocked.Exchange(ref _persistedRecognitionCount, 0);
         Interlocked.Exchange(ref _tokenRefreshCount, 0);
         Interlocked.Exchange(ref _tokenRefreshFailureCount, 0);
+        Interlocked.Exchange(ref _rewriteHitCount, 0);
     }
 
     private void EnsureTokenRefreshStarted()
@@ -472,7 +576,7 @@ public class DirectAzureLipiRealtimeClient : ILipiRealtimeClient
         if (!_audioCaptureConfig.EnableDiagnostics)
             return;
 
-        var payload = $"[DirectAzureLipiRealtimeClient] {message} | captured={Interlocked.Read(ref _capturedChunkCount)} sent={Interlocked.Read(ref _sentChunkCount)} silenceDropped={Interlocked.Read(ref _silenceDroppedChunkCount)} preRollFlushed={Interlocked.Read(ref _preRollFlushedChunkCount)} persisted={Interlocked.Read(ref _persistedRecognitionCount)} tokenRefreshes={Interlocked.Read(ref _tokenRefreshCount)} tokenRefreshFailures={Interlocked.Read(ref _tokenRefreshFailureCount)}";
+        var payload = $"[DirectAzureLipiRealtimeClient] {message} | captured={Interlocked.Read(ref _capturedChunkCount)} sent={Interlocked.Read(ref _sentChunkCount)} silenceDropped={Interlocked.Read(ref _silenceDroppedChunkCount)} preRollFlushed={Interlocked.Read(ref _preRollFlushedChunkCount)} persisted={Interlocked.Read(ref _persistedRecognitionCount)} tokenRefreshes={Interlocked.Read(ref _tokenRefreshCount)} tokenRefreshFailures={Interlocked.Read(ref _tokenRefreshFailureCount)} rewriteHits={Interlocked.Read(ref _rewriteHitCount)} dictVersion={_dictionaryVersion}";
         Debug.WriteLine(payload);
     }
 

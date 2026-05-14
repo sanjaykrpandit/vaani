@@ -51,6 +51,26 @@ public class LipiDirectController : ControllerBase
         }
     }
 
+    [HttpGet("dictionary")]
+    [ProducesResponseType(typeof(LipiDirectDictionaryResponse), StatusCodes.Status200OK)]
+    public async Task<ActionResult<LipiDirectDictionaryResponse>> GetConversationalDictionary([FromQuery] string languages)
+    {
+        try
+        {
+            var languageList = (languages ?? string.Empty)
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .ToList();
+
+            var response = await _lipiDirectAccessService.GetConversationalDictionaryAsync(languageList, GetJwtToken());
+            return Ok(response);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error in Lipi direct dictionary endpoint.");
+            return Ok(new LipiDirectDictionaryResponse { Success = false, ErrorCode = "INTERNAL_ERROR", Message = "Unexpected error loading dictionary." });
+        }
+    }
+
     private string GetJwtToken()
     {
         if (Request.Headers.TryGetValue("Authorization", out var auth) &&

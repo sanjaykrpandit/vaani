@@ -18,6 +18,7 @@ public class VaaniDbContext : DbContext
     public DbSet<AdminUser> AdminUsers { get; set; }
     public DbSet<AzureSubscription> AzureSubscriptions { get; set; }
     public DbSet<Language> Languages { get; set; }
+    public DbSet<ConversationalDictionaryEntry> ConversationalDictionary { get; set; }
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -140,6 +141,26 @@ public class VaaniDbContext : DbContext
             entity.Property(e => e.LanguageName).HasColumnName("language_name").IsRequired().HasMaxLength(100);
             entity.Property(e => e.LanguageMaleNeural).HasColumnName("language_male_neural").IsRequired().HasMaxLength(100);
             entity.Property(e => e.LanguageFemaleNeural).HasColumnName("language_female_neural").IsRequired().HasMaxLength(100);
+            entity.Property(e => e.IsActive).HasColumnName("is_active").HasDefaultValue(true);
+            entity.Property(e => e.CreatedBy).HasColumnName("created_by").IsRequired().HasMaxLength(100);
+            entity.Property(e => e.UpdatedBy).HasColumnName("updated_by").IsRequired().HasMaxLength(100);
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("CURRENT_TIMESTAMP");
+            entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
+        });
+
+        // ConversationalDictionaryEntry configuration
+        modelBuilder.Entity<ConversationalDictionaryEntry>(entity =>
+        {
+            entity.ToTable("conversational_dictionary");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.LanguageCode);
+            entity.HasIndex(e => new { e.LanguageCode, e.IsActive });
+
+            entity.Property(e => e.Id).HasColumnName("id");
+            entity.Property(e => e.LanguageCode).HasColumnName("language_code").IsRequired().HasMaxLength(10);
+            entity.Property(e => e.FormalText).HasColumnName("formal_text").IsRequired().HasMaxLength(500);
+            entity.Property(e => e.ConversationalText).HasColumnName("conversational_text").IsRequired().HasMaxLength(500);
+            entity.Property(e => e.MatchMode).HasColumnName("match_mode").IsRequired().HasMaxLength(20).HasDefaultValue("Contains");
             entity.Property(e => e.IsActive).HasColumnName("is_active").HasDefaultValue(true);
             entity.Property(e => e.CreatedBy).HasColumnName("created_by").IsRequired().HasMaxLength(100);
             entity.Property(e => e.UpdatedBy).HasColumnName("updated_by").IsRequired().HasMaxLength(100);

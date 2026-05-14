@@ -161,6 +161,71 @@ public class LipiDirectAccessService : ILipiDirectAccessService
     private static LipiDirectTranscriptBatchResponse FailTranscript(string code, string message) =>
         new() { Success = false, ErrorCode = code, Message = message };
 
+    public async Task<LipiDirectDictionaryResponse> GetConversationalDictionaryAsync(IReadOnlyList<string> languages, string jwtToken)
+    {
+        try
+        {
+            var (isValid, _, _) = _jwtTokenService.ValidateToken(jwtToken);
+            if (!isValid)
+                return new LipiDirectDictionaryResponse { Success = false, ErrorCode = "INVALID_TOKEN", Message = "Invalid or expired access token." };
+
+            if (languages == null || languages.Count == 0)
+                return new LipiDirectDictionaryResponse { Success = false, ErrorCode = "INVALID_REQUEST", Message = "At least one language is required." };
+
+            var normalizedLanguages = languages
+                .Where(l => !string.IsNullOrWhiteSpace(l))
+                .Select(l => l.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            using var scope = _scopeFactory.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<VaaniDbContext>();
+
+            var entries = await dbContext.ConversationalDictionary
+                .Where(e => e.IsActive && normalizedLanguages.Contains(e.LanguageCode))
+                .OrderBy(e => e.LanguageCode)
+                .ThenBy(e => e.Id)
+                .Select(e => new { e.LanguageCode, e.FormalText, e.ConversationalText, e.MatchMode })
+                .ToListAsync();
+
+            var grouped = new Dictionary<string, List<ConversationalDictionaryEntryDto>>(StringComparer.OrdinalIgnoreCase);
+            foreach (var entry in entries)
+            {
+                if (!grouped.TryGetValue(entry.LanguageCode, out var list))
+                {
+                    list = [];
+                    grouped[entry.LanguageCode] = list;
+                }
+
+                list.Add(new ConversationalDictionaryEntryDto
+                {
+                    FormalText = entry.FormalText,
+                    ConversationalText = entry.ConversationalText,
+                    MatchMode = entry.MatchMode
+                });
+            }
+
+            var version = Convert.ToBase64String(
+                System.Security.Cryptography.MD5.HashData(
+                    System.Text.Encoding.UTF8.GetBytes(
+                        string.Join("|", entries.Select(e => $"{e.LanguageCode}:{e.FormalText}:{e.ConversationalText}")))));
+
+            return new LipiDirectDictionaryResponse
+            {
+                Success = true,
+                DictionaryVersion = version,
+                GeneratedAtUtc = DateTime.UtcNow,
+                Entries = grouped,
+                Message = $"Dictionary loaded for {grouped.Count} language(s)."
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed loading conversational dictionary for languages {Languages}", string.Join(",", languages));
+            return new LipiDirectDictionaryResponse { Success = false, ErrorCode = "INTERNAL_ERROR", Message = "Failed to load dictionary." };
+        }
+    }
+
     private (string Transcript, Dictionary<string, string> Translations, DateTime RecognizedAtUtc)? ModerateTranscriptEntry(
         LipiDirectTranscriptEntryDto entry,
         string? sourceLanguage)

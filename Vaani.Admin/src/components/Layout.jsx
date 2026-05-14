@@ -72,6 +72,13 @@ function Layout({ children }) {
           >
             👥 Users
           </button>
+
+          <button
+            className="btn btn-xsm"
+            onClick={() => navigate('/dictionary')}
+          >
+            📖 Dictionary
+          </button>
         </nav>
       </div>
 

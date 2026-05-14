@@ -1,0 +1,65 @@
+.dict-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+  font-size: 0.9rem;
+}
+
+.dict-filter-select {
+  padding: 4px 10px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  min-width: 160px;
+}
+
+.dict-badge {
+  display: inline-block;
+  background: #e8f0fe;
+  color: #1a73e8;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.dict-mode {
+  display: inline-block;
+  background: #f3f4f6;
+  color: #374151;
+  border-radius: 4px;
+  padding: 2px 7px;
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
+.dict-text {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dict-conversational {
+  color: #047857;
+  font-style: italic;
+}
+
+.dict-meta {
+  font-size: 0.78rem;
+  color: #9ca3af;
+}
+
+.dict-empty {
+  padding: 32px;
+  text-align: center;
+  color: #6b7280;
+}
+
+.dict-disabled {
+  background: #f3f4f6;
+  color: #6b7280;
+  cursor: not-allowed;
+}

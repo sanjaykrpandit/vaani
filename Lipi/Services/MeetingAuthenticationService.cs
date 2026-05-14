@@ -121,6 +121,26 @@ public class MeetingAuthenticationService
             ?? new LipiDirectTranscriptBatchResponse { Success = false, Message = "Invalid transcript persistence response." };
     }
 
+    public async Task<LipiDirectDictionaryResponse> GetConversationalDictionaryAsync(
+        IReadOnlyList<string> languages,
+        string sessionToken,
+        CancellationToken cancellationToken = default)
+    {
+        var query = string.Join(",", languages
+            .Where(l => !string.IsNullOrWhiteSpace(l))
+            .Select(l => Uri.EscapeDataString(l.Trim())));
+
+        var httpRequest = new HttpRequestMessage(HttpMethod.Get, $"/api/lipi/direct/dictionary?languages={query}");
+        httpRequest.Headers.Add("Authorization", $"Bearer {sessionToken}");
+
+        var response = await _httpClient.SendAsync(httpRequest, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+            return new LipiDirectDictionaryResponse { Success = false, Message = "Failed to load conversational dictionary." };
+
+        return await response.Content.ReadFromJsonAsync<LipiDirectDictionaryResponse>(cancellationToken: cancellationToken)
+            ?? new LipiDirectDictionaryResponse { Success = false, Message = "Invalid dictionary response." };
+    }
+
     public static string GetDeviceId()
     {
         var combined = $"{Environment.MachineName}_{Environment.UserName}";
