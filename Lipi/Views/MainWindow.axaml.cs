@@ -175,8 +175,8 @@ public partial class MainWindow : Window
             if (_vm.IsSubtitleMode)
             {
                 MinWidth = 370;
-                MinHeight = 200;
-                MaxHeight = 250;
+                MinHeight = 250;
+                MaxHeight = 350;
 
                 if (!_lastIsSubtitleMode)
                     _subtitleWindowSize = null;
