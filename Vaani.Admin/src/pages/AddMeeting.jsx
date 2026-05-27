@@ -159,7 +159,7 @@ function AddMeeting() {
             )}
           </div>
 
-          <div className="form-group">
+          {/* <div className="form-group">
             <label className="checkbox-label">
               <input
                 type="checkbox"
@@ -201,7 +201,7 @@ function AddMeeting() {
                 />
               </div>
             </>
-          )}
+          )} */}
 
           <div className="form-row">
             <div className="form-group">

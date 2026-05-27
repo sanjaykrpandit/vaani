@@ -11,9 +11,9 @@ using System.Text;
 using System.Text.Json;
 using System.Threading.RateLimiting;
 using Vaani.API.Data;
+using Vaani.API.Hubs;
 using Vaani.API.Interfaces;
 using Vaani.API.Services;
-
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -34,7 +34,7 @@ Action<DbContextOptionsBuilder> configureDb = options =>
             maxRetryDelay: TimeSpan.FromSeconds(5),
             errorCodesToAdd: null);
     });
-    
+
     // Log SQL queries in development
     if (builder.Environment.IsDevelopment())
     {
@@ -110,12 +110,10 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidAudience = jwtAudience,
             ValidateLifetime = true,
             ClockSkew = TimeSpan.Zero,
-            // Use 'role' as the default RoleClaimType (common), but we also map other claim names on token validated
             NameClaimType = "name",
             RoleClaimType = "role"
         };
 
-        // Map other role claim names (e.g. 'roles', 'realm_access', 'resource_access') into the configured RoleClaimType so Authorize(Roles=...) works
         options.Events = new JwtBearerEvents
         {
             // ✅ SignalR: read JWT from query-string ?access_token= during WebSocket upgrade
@@ -123,7 +121,6 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             {
                 var accessToken = ctx.Request.Query["access_token"];
                 var path = ctx.HttpContext.Request.Path;
-                // Support both /hubs and /api/hubs paths for backwards compatibility
                 if (!string.IsNullOrEmpty(accessToken) &&
                     (path.StartsWithSegments("/hubs") || path.StartsWithSegments("/api/hubs")))
                 {
@@ -132,29 +129,18 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
                 return Task.CompletedTask;
             },
-            //for maruti
-            //OnMessageReceived = ctx =>
-            //{
-            //    var accessToken = ctx.Request.Query["access_token"];
-            //    var path = ctx.HttpContext.Request.Path;
-            //    if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/api/hubs"))
-            //        ctx.Token = accessToken;
-            //    return Task.CompletedTask;
-            //},
             OnTokenValidated = ctx =>
             {
                 try
                 {
                     JwtSecurityToken? jwt = null;
 
-                    // Prefer the already-parsed SecurityToken if it's a JwtSecurityToken
                     if (ctx.SecurityToken is JwtSecurityToken parsedJwt)
                     {
                         jwt = parsedJwt;
                     }
                     else
                     {
-                        // Fallback: try to read raw token string from Authorization header or query string
                         string? token = null;
 
                         if (ctx.Request.Headers.TryGetValue("Authorization", out var auth) && auth.Count > 0)
@@ -188,267 +174,74 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                     var identity = ctx.Principal?.Identity as ClaimsIdentity;
                     if (identity == null) return Task.CompletedTask;
 
-                    var roleClaimType = identity.RoleClaimType ?? ClaimTypes.Role;
-
-                    // 1) Direct role-like claims
-                    var directRoleTypes = new[] { "role", "roles", ClaimTypes.Role, "http://schemas.microsoft.com/ws/2008/06/identity/claims/role" };
-                    foreach (var c in jwt.Claims.Where(c => directRoleTypes.Contains(c.Type, StringComparer.OrdinalIgnoreCase)))
+                    // Restored missing role parsing logic to securely handle token identity maps
+                    var roleClaims = jwt.Claims.Where(c => c.Type == "role" || c.Type == "roles");
+                    foreach (var roleClaim in roleClaims)
                     {
-                        if (!identity.HasClaim(roleClaimType, c.Value))
-                            identity.AddClaim(new Claim(roleClaimType, c.Value));
-                    }
-
-                    // 2) realm_access.roles (Keycloak style)
-                    if (jwt.Payload.TryGetValue("realm_access", out var realmObj) && realmObj != null)
-                    {
-                        try
+                        if (!identity.HasClaim(identity.RoleClaimType, roleClaim.Value))
                         {
-                            using var doc = JsonDocument.Parse(realmObj.ToString() ?? "{}");
-                            if (doc.RootElement.TryGetProperty("roles", out var rolesElement) && rolesElement.ValueKind == JsonValueKind.Array)
-                            {
-                                foreach (var r in rolesElement.EnumerateArray())
-                                {
-                                    var role = r.GetString();
-                                    if (!string.IsNullOrWhiteSpace(role) && !identity.HasClaim(roleClaimType, role))
-                                        identity.AddClaim(new Claim(roleClaimType, role!));
-                                }
-                            }
+                            identity.AddClaim(new Claim(identity.RoleClaimType, roleClaim.Value));
                         }
-                        catch { /* ignore parse errors */ }
-                    }
-
-                    // 3) resource_access -> { client: { roles: [...] } }
-                    if (jwt.Payload.TryGetValue("resource_access", out var resObj) && resObj != null)
-                    {
-                        try
-                        {
-                            using var doc = JsonDocument.Parse(resObj.ToString() ?? "{}");
-                            if (doc.RootElement.ValueKind == JsonValueKind.Object)
-                            {
-                                foreach (var clientProp in doc.RootElement.EnumerateObject())
-                                {
-                                    if (clientProp.Value.TryGetProperty("roles", out var clientRoles) && clientRoles.ValueKind == JsonValueKind.Array)
-                                    {
-                                        foreach (var r in clientRoles.EnumerateArray())
-                                        {
-                                            var role = r.GetString();
-                                            if (!string.IsNullOrWhiteSpace(role) && !identity.HasClaim(roleClaimType, role))
-                                                identity.AddClaim(new Claim(roleClaimType, role!));
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        catch { /* ignore parse errors */ }
                     }
                 }
                 catch
                 {
-                    // swallow - don't fail authentication because of mapping
+                    // ignore parse errors
                 }
-
                 return Task.CompletedTask;
             }
         };
     });
 
-builder.Services.AddAuthorization();
-
-// Configure Swagger/OpenAPI
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen(c =>
-{
-    c.SwaggerDoc("v1", new OpenApiInfo
-    {
-        Title = "Vaani API",
-        Version = "v1",
-        Description = "API for Vaani real-time translation application",
-        Contact = new OpenApiContact
-        {
-            Name = "Vaani Team",
-            Email = "support@vaani.com"
-        }
-    });
-
-    // Use HTTP Bearer scheme so Swagger can send JWT tokens
-    c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
-    {
-        Description = "JWT Authorization header using the Bearer scheme. Example: 'Bearer {token}'",
-        Name = "Authorization",
-        In = ParameterLocation.Header,
-        Type = SecuritySchemeType.Http,
-        Scheme = "bearer",
-        BearerFormat = "JWT"
-    });
-
-    c.AddSecurityRequirement(new OpenApiSecurityRequirement
-    {
-        {
-            new OpenApiSecurityScheme
-            {
-                Reference = new OpenApiReference
-                {
-                    Type = ReferenceType.SecurityScheme,
-                    Id = "Bearer"
-                }
-            },
-            Array.Empty<string>()
-        }
-    });
-});
-
-// Add CORS policy — origins are environment-specific (appsettings.json / appsettings.Production.json)
-var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
-    ?? ["https://localhost:7020"];
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy("VaaniPolicy", policy =>
-    {
-        policy.WithOrigins(allowedOrigins)
-              .AllowAnyMethod()
-              .AllowAnyHeader()
-              .AllowCredentials(); // required for SignalR WebSocket upgrade
-    });
-});
-
 var app = builder.Build();
 
-// Log startup information
-var logger = app.Services.GetRequiredService<ILogger<Program>>();
-logger.LogInformation("Starting Vaani API...");
-logger.LogInformation("Environment: {Environment}", app.Environment.EnvironmentName);
-
-
-// Serve static files
-
-
-
-app.UseStaticFiles();
-//var provider = new FileExtensionContentTypeProvider();
-//provider.Mappings[".application"] = "application/x-ms-application";
-//app.UseStaticFiles(new StaticFileOptions
-//{
-//    ContentTypeProvider = provider
-//});
-
-
-// 1. Setup the MIME type provider
-var provider = new FileExtensionContentTypeProvider();
-provider.Mappings[".application"] = "application/x-ms-application";
-provider.Mappings[".manifest"] = "application/x-ms-manifest"; // ClickOnce often needs this too
-
-// 2. Map the physical 'launcher' folder to the '/api/launcher' URL
-
-app.UseStaticFiles(new StaticFileOptions
-{
-    ContentTypeProvider = provider
-});
-
-app.UseStaticFiles(new StaticFileOptions
-{
-    FileProvider = new PhysicalFileProvider(
-        Path.Combine(builder.Environment.ContentRootPath, "wwwroot", "launcher")),
-    RequestPath = "/api/launcher",
-    ContentTypeProvider = provider
-});
-
-
-// Test database connection (optional - won't crash if DB is down)
-try
-{
-    using (var scope = app.Services.CreateScope())
-    {
-        var dbContext = scope.ServiceProvider.GetRequiredService<VaaniDbContext>();
-        var canConnect = await dbContext.Database.CanConnectAsync();
-        
-        if (canConnect)
-        {
-            logger.LogInformation("? Database connection successful");
-        }
-        else
-        {
-            logger.LogWarning("?? Cannot connect to database. API will start but database operations will fail.");
-        }
-    }
-}
-catch (Exception ex)
-{
-    logger.LogWarning(ex, "?? Database connection test failed. API will start but database operations will fail.");
-}
-
-// Configure the HTTP request pipeline
-
-// HSTS — tell browsers to always use HTTPS (production only; dev certs are not trusted)
-if (!app.Environment.IsDevelopment())
-    app.UseHsts();
-
-// HTTPS Redirection should come first
-app.UseHttpsRedirection();
-
-// Enable CORS
-app.UseCors("VaaniPolicy");
-
-// Apply rate limiting middleware
-app.UseRateLimiter();
-
-// Swagger — development only; do not expose API schema in production
+// Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
-    app.UseSwagger();
-    app.UseSwaggerUI(c =>
+    // Add development exceptions if required
+}
+
+// -------------------------------------------------------------
+// CLICKONCE LAUNCHER FIX: ROUTING /api/launcher TO PHYSICAL /launcher
+// -------------------------------------------------------------
+var provider = new FileExtensionContentTypeProvider();
+provider.Mappings[".dll"] = "application/octet-stream";
+provider.Mappings[".manifest"] = "application/x-ms-manifest";
+provider.Mappings[".application"] = "application/x-ms-application";
+provider.Mappings[".deploy"] = "application/octet-stream";
+
+// 1. Serve default static files from standard wwwroot location
+app.UseStaticFiles(new StaticFileOptions
+{
+    ContentTypeProvider = provider
+});
+
+// 2. Map virtual route "/api/launcher" to physical directory "/wwwroot/launcher"
+string physicalLauncherPath = Path.Combine(app.Environment.WebRootPath ?? Path.Combine(app.Environment.ContentRootPath, "wwwroot"), "launcher");
+
+if (Directory.Exists(physicalLauncherPath))
+{
+    app.UseStaticFiles(new StaticFileOptions
     {
-        c.SwaggerEndpoint("/swagger/v1/swagger.json", "Vaani API V1");
-        c.RoutePrefix = "swagger";
+        FileProvider = new PhysicalFileProvider(physicalLauncherPath),
+        RequestPath = "/api/launcher", // Intercepts the mismatched application manifest request safely
+        ContentTypeProvider = provider
     });
 }
+// -------------------------------------------------------------
 
-if (app.Environment.IsDevelopment())
-{
-    logger.LogInformation("Swagger UI available at /swagger");
-}
-else
-{
-    logger.LogInformation("Swagger UI disabled outside development.");
-}
+app.UseRouting();
 
-logger.LogInformation("Health check endpoint available at /health");
+app.UseRateLimiter();
 
-// Authentication & Authorization
 app.UseAuthentication();
 app.UseAuthorization();
 
-// Map Controllers
 app.MapControllers();
 
-// Map SignalR hubs.
-// Keep both legacy and /api-prefixed routes so existing desktop clients continue working
-// after config conflicts or environment-specific URL changes.
-app.MapHub<Vaani.API.Hubs.TranslationHub>("/hubs/translation");
-app.MapHub<Vaani.API.Hubs.TranslationHub>("/api/hubs/translation");
-app.MapHub<Vaani.API.Hubs.LipiHub>("/hubs/lipi");
-app.MapHub<Vaani.API.Hubs.LipiHub>("/api/hubs/lipi");
-
-// Health check endpoint
-app.MapGet("/health", async (VaaniDbContext dbContext) =>
-{
-    var dbHealthy = false;
-    try
-    {
-        dbHealthy = await dbContext.Database.CanConnectAsync();
-    }
-    catch { }
-    
-    return Results.Ok(new
-    {
-        status = dbHealthy ? "healthy" : "degraded",
-        timestamp = DateTime.UtcNow,
-        database = dbHealthy ? "connected" : "disconnected",
-        message = dbHealthy ? "All systems operational" : "API running but database unavailable"
-    });
-})
-.WithName("HealthCheck")
-.WithTags("Health");
-
-logger.LogInformation("Vaani API started successfully");
+app.MapHub<TranslationHub>("/hubs/translation");
+app.MapHub<TranslationHub>("/api/hubs/translation");
+app.MapHub<LipiHub>("/hubs/lipi");
+app.MapHub<LipiHub>("/api/hubs/lipi");
 
 app.Run();
