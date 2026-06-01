@@ -50,9 +50,12 @@ public partial class MainWindow : Window
         SizeChanged += OnWindowSizeChanged;
         PointerMoved += OnWindowPointerMoved;
         PointerExited += OnWindowPointerExited;
+        PropertyChanged += OnWindowPropertyChanged;
 
         Closed += (_, _) =>
         {
+            PropertyChanged -= OnWindowPropertyChanged;
+
             if (_vm != null)
             {
                 _vm.PropertyChanged -= OnViewModelPropertyChanged;
@@ -83,6 +86,12 @@ public partial class MainWindow : Window
 
     private void MinimizeButton_OnClick(object? sender, RoutedEventArgs e)
     {
+        if (_vm?.IsRunning == true)
+        {
+            EnsureWindowVisibleForActiveTranslation();
+            return;
+        }
+
         WindowState = WindowState.Minimized;
     }
 
@@ -140,10 +149,26 @@ public partial class MainWindow : Window
             RefreshWindowLayout();
         }
 
-        if (e.PropertyName == nameof(MainViewModel.IsRunning) && _vm?.IsRunning == false)
+        if (e.PropertyName == nameof(MainViewModel.IsRunning))
         {
+            UpdateWindowTopmostState();
+
+            if (_vm?.IsRunning == true)
+            {
+                EnsureWindowVisibleForActiveTranslation();
+                return;
+            }
+
             _normalWindowSize = GetDefaultWindowSize();
             RefreshWindowLayout();
+        }
+    }
+
+    private void OnWindowPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
+    {
+        if (e.Property == WindowStateProperty && WindowState == WindowState.Minimized && _vm?.IsRunning == true)
+        {
+            Dispatcher.UIThread.Post(EnsureWindowVisibleForActiveTranslation, DispatcherPriority.Input);
         }
     }
 
@@ -186,7 +211,7 @@ public partial class MainWindow : Window
                 Height = 200;
                 SystemDecorations = SystemDecorations.None;
                 Background = Brushes.Transparent;
-                MoveToBottomCenter();
+                MoveToBottomCenter(BottomScreenMarginPx);
 
                 _lastIsSubtitleMode = true;
                 return;
@@ -233,6 +258,7 @@ public partial class MainWindow : Window
 
     private void RefreshWindowLayout()
     {
+        UpdateWindowTopmostState();
         ApplyOrientationSize();
         RefreshResponsiveLayout();
         UpdateLayout();
@@ -261,6 +287,24 @@ public partial class MainWindow : Window
                 UpdateLayout();
             }
         }, DispatcherPriority.ApplicationIdle);
+    }
+
+    private void UpdateWindowTopmostState()
+    {
+        Topmost = _vm?.IsRunning == true && _vm.IsSubtitleMode;
+    }
+
+    private void EnsureWindowVisibleForActiveTranslation()
+    {
+        if (_vm?.IsRunning != true)
+            return;
+
+        if (WindowState == WindowState.Minimized)
+            WindowState = WindowState.Normal;
+
+        UpdateWindowTopmostState();
+        RefreshWindowLayout();
+        Activate();
     }
 
     private void OnWindowSizeChanged(object? sender, SizeChangedEventArgs e)

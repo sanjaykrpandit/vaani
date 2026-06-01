@@ -57,6 +57,7 @@ builder.Services.AddScoped<IAzureSubscriptionService, AzureSubscriptionService>(
 builder.Services.AddScoped<ILanguageService, LanguageService>();
 builder.Services.AddScoped<ILipiDirectAccessService, LipiDirectAccessService>();
 builder.Services.AddScoped<IConversationalDictionaryService, ConversationalDictionaryService>();
+builder.Services.AddHttpClient<IConversationalRewriteFallbackService, ConversationalRewriteFallbackService>();
 // Register translation service (singleton - manages long-lived per-session Azure SDK instances)
 builder.Services.AddSingleton<ITranslationService, TranslationService>();
 builder.Services.AddSingleton<ILipiTranslationService, LipiTranslationService>();

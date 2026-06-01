@@ -53,6 +53,9 @@ public class RealtimeConfig
     public int DirectAudioBufferMilliseconds { get; set; } = 50;
     public bool DirectDisableClientSilenceFilter { get; set; } = true;
     public bool DirectEnableConversationalRewrite { get; set; } = true;
+    public string DirectConversationalRewriteDomain { get; set; } = "general";
+    public bool DirectGenericCleanupEnabled { get; set; } = true;
+    public bool DirectAiFallbackEnabled { get; set; } = false;
     public bool DirectRecognizingRewriteEnabled { get; set; } = true;
     public int DirectRecognizingRewriteMinIntervalMs { get; set; } = 300;
     public int DirectRecognizingRewriteMinTextLength { get; set; } = 10;

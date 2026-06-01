@@ -1,14 +1,11 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 using Vaani.API.Interfaces;
 using Vaani.API.Models.DTOs;
-using System.Security.Claims;
 
 namespace Vaani.API.Controllers;
 
-/// <summary>
-/// Admin controller for managing the conversational dictionary
-/// </summary>
 [ApiController]
 [Route("api/admin/conversationaldictionary")]
 [Authorize(Roles = "admin")]
@@ -25,134 +22,80 @@ public class AdminConversationalDictionaryController : ControllerBase
         _logger = logger;
     }
 
-    /// <summary>
-    /// Get all dictionary entries, optionally filtered by language code
-    /// </summary>
-    /// <param name="languageCode">Optional ISO language code (e.g. hi-IN, mr-IN)</param>
+    /// <summary>Get all entries with optional language filter and pagination</summary>
     [HttpGet]
     [ProducesResponseType(typeof(ConversationalDictionaryListResponse), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    public async Task<ActionResult<ConversationalDictionaryListResponse>> GetAll([FromQuery] string? languageCode)
+    public async Task<ActionResult<ConversationalDictionaryListResponse>> GetAll(
+        [FromQuery] string? languageCode,
+        [FromQuery] string? domain,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 50)
     {
-        try
-        {
-            var result = await _dictionaryService.GetAllAsync(languageCode);
-            return Ok(result);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error retrieving conversational dictionary entries");
-            return StatusCode(StatusCodes.Status500InternalServerError, new { message = "An error occurred." });
-        }
+        var result = await _dictionaryService.GetAllAsync(languageCode, domain, page, pageSize);
+        return Ok(result);
     }
 
-    /// <summary>
-    /// Get a single dictionary entry by ID
-    /// </summary>
+    /// <summary>Get a single entry by ID</summary>
     [HttpGet("{id:int}")]
     [ProducesResponseType(typeof(ConversationalDictionaryActionResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<ConversationalDictionaryActionResponse>> GetById(int id)
     {
-        try
-        {
-            var result = await _dictionaryService.GetByIdAsync(id);
-            if (!result.Success && result.ErrorCode == "NOT_FOUND")
-                return NotFound(result);
+        var result = await _dictionaryService.GetByIdAsync(id);
+        if (!result.Success && result.ErrorCode == "NOT_FOUND")
+            return NotFound(result);
 
-            return Ok(result);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error retrieving conversational dictionary entry {Id}", id);
-            return StatusCode(StatusCodes.Status500InternalServerError, new { message = "An error occurred." });
-        }
+        return Ok(result);
     }
 
-    /// <summary>
-    /// Add a new conversational dictionary entry
-    /// </summary>
+    /// <summary>Create a new dictionary entry</summary>
     [HttpPost]
     [ProducesResponseType(typeof(ConversationalDictionaryActionResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<ConversationalDictionaryActionResponse>> Create(
         [FromBody] CreateConversationalDictionaryRequest request)
     {
-        try
-        {
-            var adminUserId = GetAdminUserId();
-            var result = await _dictionaryService.CreateAsync(request, adminUserId);
+        // [ApiController] enforces [Required]/[MaxLength]/[RegularExpression] — returns 400 before reaching here
+        var result = await _dictionaryService.CreateAsync(request, GetAdminUserId());
 
-            if (!result.Success)
-                return BadRequest(result);
+        if (!result.Success)
+            return BadRequest(result);
 
-            return CreatedAtAction(nameof(GetById), new { id = result.Item!.Id }, result);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error creating conversational dictionary entry");
-            return StatusCode(StatusCodes.Status500InternalServerError, new { message = "An error occurred." });
-        }
+        return CreatedAtAction(nameof(GetById), new { id = result.Item!.Id }, result);
     }
 
-    /// <summary>
-    /// Update an existing conversational dictionary entry
-    /// </summary>
+    /// <summary>Update an existing dictionary entry</summary>
     [HttpPut("{id:int}")]
     [ProducesResponseType(typeof(ConversationalDictionaryActionResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<ConversationalDictionaryActionResponse>> Update(
         int id,
         [FromBody] UpdateConversationalDictionaryRequest request)
     {
-        try
-        {
-            var adminUserId = GetAdminUserId();
-            var result = await _dictionaryService.UpdateAsync(id, request, adminUserId);
+        var result = await _dictionaryService.UpdateAsync(id, request, GetAdminUserId());
 
-            if (!result.Success && result.ErrorCode == "NOT_FOUND")
-                return NotFound(result);
+        if (!result.Success && result.ErrorCode == "NOT_FOUND")
+            return NotFound(result);
 
-            if (!result.Success)
-                return BadRequest(result);
+        if (!result.Success)
+            return BadRequest(result);
 
-            return Ok(result);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error updating conversational dictionary entry {Id}", id);
-            return StatusCode(StatusCodes.Status500InternalServerError, new { message = "An error occurred." });
-        }
+        return Ok(result);
     }
 
-    /// <summary>
-    /// Delete a conversational dictionary entry
-    /// </summary>
+    /// <summary>Soft-delete a dictionary entry (sets IsActive = false)</summary>
     [HttpDelete("{id:int}")]
     [ProducesResponseType(typeof(ConversationalDictionaryActionResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<ConversationalDictionaryActionResponse>> Delete(int id)
     {
-        try
-        {
-            var adminUserId = GetAdminUserId();
-            var result = await _dictionaryService.DeleteAsync(id, adminUserId);
+        var result = await _dictionaryService.DeleteAsync(id, GetAdminUserId());
 
-            if (!result.Success && result.ErrorCode == "NOT_FOUND")
-                return NotFound(result);
+        if (!result.Success && result.ErrorCode == "NOT_FOUND")
+            return NotFound(result);
 
-            return Ok(result);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error deleting conversational dictionary entry {Id}", id);
-            return StatusCode(StatusCodes.Status500InternalServerError, new { message = "An error occurred." });
-        }
+        return Ok(result);
     }
 
     private string GetAdminUserId() =>

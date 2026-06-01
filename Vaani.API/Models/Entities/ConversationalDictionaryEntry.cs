@@ -4,6 +4,7 @@ public class ConversationalDictionaryEntry
 {
     public int Id { get; set; }
     public string LanguageCode { get; set; } = string.Empty;
+    public string Domain { get; set; } = "general";
     public string FormalText { get; set; } = string.Empty;
     public string ConversationalText { get; set; } = string.Empty;
     public string MatchMode { get; set; } = "Contains"; // Exact | Contains | StartsWith

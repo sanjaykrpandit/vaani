@@ -16,9 +16,9 @@ public interface ILipiRealtimeClient : IDisposable
         string sessionId,
         string sourceLanguage,
         IEnumerable<string> targetLanguages,
-        int inputDeviceNumber);
+        AudioCaptureSelection captureSelection);
 
-    Task SwitchInputDeviceAsync(int inputDeviceNumber);
+    Task SwitchCaptureDeviceAsync(AudioCaptureSelection captureSelection);
 
     Task StopAsync();
 }

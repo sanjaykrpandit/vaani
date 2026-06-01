@@ -16,11 +16,15 @@ public class MainViewModel : ReactiveObject, IDisposable
     private readonly MeetingAuthenticationService _authService = new();
     private readonly LipiSessionContext _session;
     private readonly AudioInputDeviceService _audioInputDeviceService = new();
+    private readonly AudioOutputDeviceService _audioOutputDeviceService = new();
     private readonly SemaphoreSlim _inputDeviceRefreshLock = new(1, 1);
     private ILipiRealtimeClient? _realtimeClient;
     private HashSet<string> _knownInputDeviceIds = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> _knownOutputDeviceIds = new(StringComparer.OrdinalIgnoreCase);
 
     private AudioInputDevice? _selectedInputDevice;
+    private AudioOutputDevice? _selectedOutputDevice;
+    private AudioSourceOption? _selectedAudioSourceMode;
     private SelectableLanguage? _selectedSourceLanguage;
     private ConnectionModeOption? _selectedConnectionMode;
     private bool _isRunning;
@@ -37,12 +41,19 @@ public class MainViewModel : ReactiveObject, IDisposable
     private bool _enforcingSelection;
     private bool _isHandlingRealtimeError;
     private bool _isRefreshingInputDevices;
+    private bool _isRefreshingOutputDevices;
     private bool _autoSelectInputDevice = true;
+    private bool _autoSelectOutputDevice = true;
     private TranscriptBubble? _currentRecognizingBubble;
     private readonly List<LanguageInfo> _activeTargetLanguages = [];
     private readonly DispatcherTimer _subtitleInactivityTimer;
+    private string? _activeSessionId;
+    private string? _lastReportedErrorFingerprint;
+    private DateTime _lastReportedErrorAtUtc = DateTime.MinValue;
 
     public ObservableCollection<AudioInputDevice> InputDevices { get; } = [];
+    public ObservableCollection<AudioOutputDevice> OutputDevices { get; } = [];
+    public ObservableCollection<AudioSourceOption> AudioSourceModes { get; } = [];
     public ObservableCollection<ConnectionModeOption> ConnectionModes { get; } = [];
     public ObservableCollection<SelectableLanguage> SourceLanguages { get; } = [];
     public ObservableCollection<SelectableLanguage> TargetLanguages { get; } = [];
@@ -62,6 +73,71 @@ public class MainViewModel : ReactiveObject, IDisposable
 
             if (!_isRefreshingInputDevices && value != null)
                 _autoSelectInputDevice = false;
+
+            this.RaisePropertyChanged(nameof(SelectedAudioDevice));
+
+            if (!_isRefreshingInputDevices && IsRunning && SelectedAudioSourceMode?.Mode == AudioSourceMode.Microphone)
+                _ = TrySwitchActiveAudioDeviceAsync();
+        }
+    }
+
+    public AudioOutputDevice? SelectedOutputDevice
+    {
+        get => _selectedOutputDevice;
+        set
+        {
+            if (_selectedOutputDevice == value)
+                return;
+
+            this.RaiseAndSetIfChanged(ref _selectedOutputDevice, value);
+
+            if (!_isRefreshingOutputDevices && value != null)
+                _autoSelectOutputDevice = false;
+
+            this.RaisePropertyChanged(nameof(SelectedAudioDevice));
+
+            if (!_isRefreshingOutputDevices && IsRunning && SelectedAudioSourceMode?.Mode == AudioSourceMode.Speaker)
+                _ = TrySwitchActiveAudioDeviceAsync();
+        }
+    }
+
+    public AudioSourceOption? SelectedAudioSourceMode
+    {
+        get => _selectedAudioSourceMode;
+        set
+        {
+            if (_selectedAudioSourceMode == value)
+                return;
+
+            this.RaiseAndSetIfChanged(ref _selectedAudioSourceMode, value);
+            this.RaisePropertyChanged(nameof(AvailableAudioDevices));
+            this.RaisePropertyChanged(nameof(SelectedAudioDevice));
+            this.RaisePropertyChanged(nameof(AudioDeviceLabel));
+
+            EnsureSelectedAudioDeviceForCurrentSource();
+
+            if (IsRunning)
+                _ = TrySwitchActiveAudioDeviceAsync();
+        }
+    }
+
+    public IEnumerable<IAudioDeviceOption> AvailableAudioDevices => SelectedAudioSourceMode?.Mode == AudioSourceMode.Speaker
+        ? OutputDevices.Cast<IAudioDeviceOption>()
+        : InputDevices.Cast<IAudioDeviceOption>();
+
+    public IAudioDeviceOption? SelectedAudioDevice
+    {
+        get => SelectedAudioSourceMode?.Mode == AudioSourceMode.Speaker
+            ? SelectedOutputDevice
+            : SelectedInputDevice;
+        set
+        {
+            if (SelectedAudioSourceMode?.Mode == AudioSourceMode.Speaker)
+                SelectedOutputDevice = value as AudioOutputDevice;
+            else
+                SelectedInputDevice = value as AudioInputDevice;
+
+            this.RaisePropertyChanged(nameof(SelectedAudioDevice));
         }
     }
 
@@ -270,6 +346,9 @@ public class MainViewModel : ReactiveObject, IDisposable
     }
 
     public string StartStopText => IsRunning ? "Stop" : "Start";
+    public string AudioDeviceLabel => SelectedAudioSourceMode?.Mode == AudioSourceMode.Speaker
+        ? "Speaker / System Audio"
+        : "Microphone";
 
     public ICommand StartStopCommand { get; }
     public ICommand ShowSettingsCommand { get; }
@@ -325,10 +404,20 @@ public class MainViewModel : ReactiveObject, IDisposable
         });
 
         _audioInputDeviceService.DevicesChanged += OnInputDevicesChanged;
+        _audioOutputDeviceService.DevicesChanged += OnInputDevicesChanged;
 
         LoadFromApiSession();
+        LoadAudioSourceModes();
         LoadConnectionModes();
         _ = RefreshInputDevicesAsync();
+    }
+
+    private void LoadAudioSourceModes()
+    {
+        AudioSourceModes.Clear();
+        AudioSourceModes.Add(new AudioSourceOption { Mode = AudioSourceMode.Microphone, DisplayName = "Microphone" });
+        AudioSourceModes.Add(new AudioSourceOption { Mode = AudioSourceMode.Speaker, DisplayName = "Speaker / System Audio" });
+        SelectedAudioSourceMode = AudioSourceModes.FirstOrDefault(a => a.Mode == AudioSourceMode.Microphone) ?? AudioSourceModes.FirstOrDefault();
     }
 
     private void LoadConnectionModes()
@@ -399,12 +488,22 @@ public class MainViewModel : ReactiveObject, IDisposable
         {
             var previousSelectedId = SelectedInputDevice?.Id;
             var knownIds = new HashSet<string>(_knownInputDeviceIds, StringComparer.OrdinalIgnoreCase);
+            var previousSelectedOutputId = SelectedOutputDevice?.Id;
+            var knownOutputIds = new HashSet<string>(_knownOutputDeviceIds, StringComparer.OrdinalIgnoreCase);
 
             var devices = _audioInputDeviceService
                 .GetInputDevices()
                 .OrderByDescending(d => d.IsDefault && d.IsBluetoothOrHeadset)
                 .ThenByDescending(d => d.IsBluetoothOrHeadset)
                 .ThenByDescending(d => d.IsDefault)
+                .ThenBy(d => d.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var outputDevices = _audioOutputDeviceService
+                .GetOutputDevices()
+                .OrderByDescending(d => d.IsDefault && d.IsBluetoothOrHeadset)
+                .ThenByDescending(d => d.IsDefault)
+                .ThenByDescending(d => d.IsBluetoothOrHeadset)
                 .ThenBy(d => d.Name, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
@@ -438,7 +537,32 @@ public class MainViewModel : ReactiveObject, IDisposable
             if (nextSelection == null)
                 nextSelection = PickPreferredInputDevice(devices, previousSelectedId);
 
+            var preferredOutput = outputDevices.FirstOrDefault(d => d.IsDefault)
+                ?? outputDevices.FirstOrDefault(d => d.IsBluetoothOrHeadset);
+
+            var nextOutputSelection = preferredOutput != null
+                ? outputDevices.FirstOrDefault(d => string.Equals(d.Id, preferredOutput.Id, StringComparison.OrdinalIgnoreCase))
+                : null;
+
+            var restoredPreviousOutputSelection = !string.IsNullOrWhiteSpace(previousSelectedOutputId)
+                ? outputDevices.FirstOrDefault(d => string.Equals(d.Id, previousSelectedOutputId, StringComparison.OrdinalIgnoreCase))
+                : null;
+
+            if (restoredPreviousOutputSelection == null && !string.IsNullOrWhiteSpace(previousSelectedOutputId))
+                _autoSelectOutputDevice = true;
+
+            if (nextOutputSelection == null && !_autoSelectOutputDevice)
+                nextOutputSelection = restoredPreviousOutputSelection;
+
+            if (nextOutputSelection == null)
+                nextOutputSelection = PickPreferredOutputDevice(outputDevices, previousSelectedOutputId);
+
             _knownInputDeviceIds = devices
+                .Select(d => d.Id)
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            _knownOutputDeviceIds = outputDevices
                 .Select(d => d.Id)
                 .Where(id => !string.IsNullOrWhiteSpace(id))
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -446,11 +570,16 @@ public class MainViewModel : ReactiveObject, IDisposable
             await Dispatcher.UIThread.InvokeAsync(() =>
             {
                 _isRefreshingInputDevices = true;
+                _isRefreshingOutputDevices = true;
                 try
                 {
                     InputDevices.Clear();
                     foreach (var device in devices)
                         InputDevices.Add(device);
+
+                    OutputDevices.Clear();
+                    foreach (var device in outputDevices)
+                        OutputDevices.Add(device);
 
                     if (nextSelection == null)
                     {
@@ -461,17 +590,33 @@ public class MainViewModel : ReactiveObject, IDisposable
                     {
                         SelectedInputDevice = InputDevices.FirstOrDefault(d => string.Equals(d.Id, nextSelection.Id, StringComparison.OrdinalIgnoreCase));
                     }
+
+                    if (nextOutputSelection == null)
+                    {
+                        SelectedOutputDevice = null;
+                        _autoSelectOutputDevice = true;
+                    }
+                    else
+                    {
+                        SelectedOutputDevice = OutputDevices.FirstOrDefault(d => string.Equals(d.Id, nextOutputSelection.Id, StringComparison.OrdinalIgnoreCase));
+                    }
                 }
                 finally
                 {
                     _isRefreshingInputDevices = false;
+                    _isRefreshingOutputDevices = false;
                 }
 
-                if (SelectedInputDevice == null)
+                this.RaisePropertyChanged(nameof(AvailableAudioDevices));
+                this.RaisePropertyChanged(nameof(SelectedAudioDevice));
+
+                if (SelectedAudioSourceMode?.Mode == AudioSourceMode.Speaker && SelectedOutputDevice == null)
+                    Status = "No active speaker output detected.";
+                else if (SelectedInputDevice == null)
                     Status = "No active microphone detected.";
             });
 
-            await TrySwitchActiveInputDeviceAsync();
+            await TrySwitchActiveAudioDeviceAsync();
         }
         finally
         {
@@ -489,16 +634,26 @@ public class MainViewModel : ReactiveObject, IDisposable
 
     private async Task StartAsync()
     {
-        if (SelectedInputDevice == null)
+        if (SelectedAudioSourceMode?.Mode == AudioSourceMode.Speaker)
         {
-            Status = "Select an input audio device.";
+            if (SelectedOutputDevice == null)
+            {
+                Status = "Select a speaker output device.";
+                return;
+            }
+        }
+        else if (SelectedInputDevice == null)
+        {
+            Status = "Select a microphone.";
             return;
         }
 
-        var inputDeviceNumber = await ResolveSelectedInputDeviceNumberAsync();
-        if (!inputDeviceNumber.HasValue)
+        var captureSelection = await ResolveSelectedAudioCaptureSelectionAsync();
+        if (captureSelection == null)
         {
-            Status = "Selected microphone is no longer available. Reconnect it or choose another device.";
+            Status = SelectedAudioSourceMode?.Mode == AudioSourceMode.Speaker
+                ? "Selected speaker is no longer available. Choose another output device."
+                : "Selected microphone is no longer available. Reconnect it or choose another device.";
             IsSettingsVisible = true;
             return;
         }
@@ -547,6 +702,8 @@ public class MainViewModel : ReactiveObject, IDisposable
             return;
         }
 
+        _activeSessionId = startSession.SessionId.Value.ToString();
+
         foreach (var code in selectedTargets)
         {
             var lang = _session.AvailableLanguages.FirstOrDefault(l => l.Code.Equals(code, StringComparison.OrdinalIgnoreCase));
@@ -569,13 +726,13 @@ public class MainViewModel : ReactiveObject, IDisposable
             _session.HubUrl,
             _session.SessionToken,
             _session.MeetingId,
-            startSession.SessionId.Value.ToString(),
+            _activeSessionId,
             SelectedSourceLanguage.Code,
             selectedTargets,
-            inputDeviceNumber.Value);
+            captureSelection);
 
         IsSubtitleMode = true;
-        Status = "Live";
+        Status = BuildLiveStatus();
     }
 
     private async Task StopAsync()
@@ -824,6 +981,7 @@ public class MainViewModel : ReactiveObject, IDisposable
     private async Task HandleRealtimeErrorAsync(string message)
     {
         var formattedMessage = FormatRealtimeErrorMessage(message);
+        _ = ReportClientErrorAsync("CLIENT_RUNTIME_ERROR", formattedMessage);
 
         if (_isHandlingRealtimeError)
         {
@@ -874,6 +1032,45 @@ public class MainViewModel : ReactiveObject, IDisposable
 
         IsSettingsVisible = true;
         ClearSubtitleState();
+        _activeSessionId = null;
+    }
+
+    private async Task ReportClientErrorAsync(string errorCode, string message)
+    {
+        if (string.IsNullOrWhiteSpace(_session.SessionToken) ||
+            string.IsNullOrWhiteSpace(_session.MeetingId) ||
+            string.IsNullOrWhiteSpace(message))
+        {
+            return;
+        }
+
+        var fingerprint = $"{errorCode}|{message.Trim()}|{SelectedConnectionMode?.Mode}|{_activeSessionId}";
+        var now = DateTime.UtcNow;
+        if (string.Equals(_lastReportedErrorFingerprint, fingerprint, StringComparison.Ordinal) &&
+            now - _lastReportedErrorAtUtc < TimeSpan.FromSeconds(15))
+        {
+            return;
+        }
+
+        _lastReportedErrorFingerprint = fingerprint;
+        _lastReportedErrorAtUtc = now;
+
+        try
+        {
+            await _authService.ReportClientErrorAsync(new LipiDirectClientErrorReportRequest
+            {
+                MeetingId = _session.MeetingId,
+                SessionId = _activeSessionId,
+                SourceLanguage = SelectedSourceLanguage?.Code ?? _session.SourceLanguage,
+                ConnectionMode = SelectedConnectionMode?.Mode.ToString(),
+                ErrorCode = errorCode,
+                Message = message.Trim(),
+                OccurredAtUtc = now
+            }, _session.SessionToken);
+        }
+        catch
+        {
+        }
     }
 
     private TranscriptBubble CreateBubble(bool isRecognizing)
@@ -916,6 +1113,57 @@ public class MainViewModel : ReactiveObject, IDisposable
         _ = RefreshInputDevicesAsync();
     }
 
+    private void EnsureSelectedAudioDeviceForCurrentSource()
+    {
+        if (SelectedAudioSourceMode?.Mode == AudioSourceMode.Speaker)
+        {
+            if (SelectedOutputDevice != null)
+                return;
+
+            var preferredOutput = PickPreferredOutputDevice(OutputDevices.ToList(), previousSelectedId: null);
+            if (preferredOutput != null)
+            {
+                _isRefreshingOutputDevices = true;
+                try
+                {
+                    SelectedOutputDevice = OutputDevices.FirstOrDefault(d => string.Equals(d.Id, preferredOutput.Id, StringComparison.OrdinalIgnoreCase)) ?? preferredOutput;
+                }
+                finally
+                {
+                    _isRefreshingOutputDevices = false;
+                }
+
+                this.RaisePropertyChanged(nameof(SelectedAudioDevice));
+                return;
+            }
+
+            _ = RefreshInputDevicesAsync();
+            return;
+        }
+
+        if (SelectedInputDevice != null)
+            return;
+
+        var preferredInput = PickPreferredInputDevice(InputDevices.ToList(), previousSelectedId: null);
+        if (preferredInput != null)
+        {
+            _isRefreshingInputDevices = true;
+            try
+            {
+                SelectedInputDevice = InputDevices.FirstOrDefault(d => string.Equals(d.Id, preferredInput.Id, StringComparison.OrdinalIgnoreCase)) ?? preferredInput;
+            }
+            finally
+            {
+                _isRefreshingInputDevices = false;
+            }
+
+            this.RaisePropertyChanged(nameof(SelectedAudioDevice));
+            return;
+        }
+
+        _ = RefreshInputDevicesAsync();
+    }
+
     private bool TryPromotePreferredDeviceToDefault(IReadOnlyList<AudioInputDevice> devices, string? preferredDeviceId)
     {
         var preferredDevice = !string.IsNullOrWhiteSpace(preferredDeviceId)
@@ -935,6 +1183,15 @@ public class MainViewModel : ReactiveObject, IDisposable
             ?? devices.FirstOrDefault(d => d.IsDefault)
             ?? devices.FirstOrDefault(d => !string.IsNullOrWhiteSpace(previousSelectedId) && string.Equals(d.Id, previousSelectedId, StringComparison.OrdinalIgnoreCase))
             ?? devices.FirstOrDefault(d => d.DeviceNumber.HasValue)
+            ?? devices.FirstOrDefault();
+    }
+
+    private static AudioOutputDevice? PickPreferredOutputDevice(IReadOnlyList<AudioOutputDevice> devices, string? previousSelectedId)
+    {
+        return devices.FirstOrDefault(d => d.IsDefault && d.IsBluetoothOrHeadset)
+            ?? devices.FirstOrDefault(d => d.IsDefault)
+            ?? devices.FirstOrDefault(d => d.IsBluetoothOrHeadset)
+            ?? devices.FirstOrDefault(d => !string.IsNullOrWhiteSpace(previousSelectedId) && string.Equals(d.Id, previousSelectedId, StringComparison.OrdinalIgnoreCase))
             ?? devices.FirstOrDefault();
     }
 
@@ -963,28 +1220,77 @@ public class MainViewModel : ReactiveObject, IDisposable
         return SelectedInputDevice?.DeviceNumber;
     }
 
-    private async Task TrySwitchActiveInputDeviceAsync()
+    private async Task<AudioCaptureSelection?> ResolveSelectedAudioCaptureSelectionAsync()
     {
-        if (!IsRunning || _realtimeClient == null || SelectedInputDevice == null)
-            return;
+        if (SelectedAudioSourceMode?.Mode == AudioSourceMode.Speaker)
+        {
+            if (!string.IsNullOrWhiteSpace(SelectedOutputDevice?.Id))
+            {
+                return new AudioCaptureSelection
+                {
+                    SourceMode = AudioSourceMode.Speaker,
+                    OutputDeviceId = SelectedOutputDevice.Id
+                };
+            }
+
+            await RefreshInputDevicesAsync();
+
+            return !string.IsNullOrWhiteSpace(SelectedOutputDevice?.Id)
+                ? new AudioCaptureSelection
+                {
+                    SourceMode = AudioSourceMode.Speaker,
+                    OutputDeviceId = SelectedOutputDevice.Id
+                }
+                : null;
+        }
+
+        if (SelectedInputDevice == null)
+            return null;
 
         var resolvedDeviceNumber = await ResolveSelectedInputDeviceNumberAsync();
 
-        if (!resolvedDeviceNumber.HasValue)
+        return resolvedDeviceNumber.HasValue
+            ? new AudioCaptureSelection
+            {
+                SourceMode = AudioSourceMode.Microphone,
+                InputDeviceNumber = resolvedDeviceNumber.Value
+            }
+            : null;
+    }
+
+    private async Task TrySwitchActiveAudioDeviceAsync()
+    {
+        if (!IsRunning || _realtimeClient == null)
+            return;
+
+        var selection = await ResolveSelectedAudioCaptureSelectionAsync();
+
+        if (selection == null)
         {
-            Status = "Microphone changed. No active fallback device is available.";
+            Status = SelectedAudioSourceMode?.Mode == AudioSourceMode.Speaker
+                ? "Speaker output changed. No active fallback device is available."
+                : "Microphone changed. No active fallback device is available.";
             return;
         }
 
         try
         {
-            await _realtimeClient.SwitchInputDeviceAsync(resolvedDeviceNumber.Value);
-            Status = $"Live - Mic: {SelectedInputDevice.Name}";
+            await _realtimeClient.SwitchCaptureDeviceAsync(selection);
+            Status = BuildLiveStatus();
         }
         catch (Exception ex)
         {
-            Status = $"Microphone switch failed: {ex.Message}";
+            Status = SelectedAudioSourceMode?.Mode == AudioSourceMode.Speaker
+                ? $"Speaker switch failed: {ex.Message}"
+                : $"Microphone switch failed: {ex.Message}";
         }
+    }
+
+    private string BuildLiveStatus()
+    {
+        return SelectedAudioSourceMode?.Mode == AudioSourceMode.Speaker
+            ? $"Live - Speaker: {SelectedOutputDevice?.Name ?? "Unknown"}"
+            : $"Live - Mic: {SelectedInputDevice?.Name ?? "Unknown"}";
     }
 
     public void Dispose()
@@ -995,6 +1301,8 @@ public class MainViewModel : ReactiveObject, IDisposable
 
         _audioInputDeviceService.DevicesChanged -= OnInputDevicesChanged;
         _audioInputDeviceService.Dispose();
+        _audioOutputDeviceService.DevicesChanged -= OnInputDevicesChanged;
+        _audioOutputDeviceService.Dispose();
         _inputDeviceRefreshLock.Dispose();
 
         if (_realtimeClient != null)

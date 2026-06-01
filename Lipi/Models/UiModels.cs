@@ -37,13 +37,47 @@ public class TranscriptBubble : ReactiveObject
     public ObservableCollection<TranslationLine> Translations { get; } = [];
 }
 
-public class AudioInputDevice
+public interface IAudioDeviceOption
+{
+    string Id { get; set; }
+    string Name { get; set; }
+    bool IsDefault { get; set; }
+}
+
+public class AudioInputDevice : IAudioDeviceOption
 {
     public string Id { get; set; } = string.Empty;
     public int? DeviceNumber { get; set; }
     public string Name { get; set; } = string.Empty;
     public bool IsDefault { get; set; }
     public bool IsBluetoothOrHeadset { get; set; }
+}
+
+public class AudioOutputDevice : IAudioDeviceOption
+{
+    public string Id { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public bool IsDefault { get; set; }
+    public bool IsBluetoothOrHeadset { get; set; }
+}
+
+public enum AudioSourceMode
+{
+    Microphone = 1,
+    Speaker = 2
+}
+
+public class AudioSourceOption
+{
+    public AudioSourceMode Mode { get; set; }
+    public string DisplayName { get; set; } = string.Empty;
+}
+
+public class AudioCaptureSelection
+{
+    public AudioSourceMode SourceMode { get; init; } = AudioSourceMode.Microphone;
+    public int? InputDeviceNumber { get; init; }
+    public string? OutputDeviceId { get; init; }
 }
 
 public enum LipiConnectionMode

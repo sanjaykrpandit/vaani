@@ -106,13 +106,34 @@ public class LipiDirectConversationalRewriteRequest
     public string MeetingId { get; set; } = string.Empty;
     public string SessionId { get; set; } = string.Empty;
     public string SourceLanguage { get; set; } = string.Empty;
+    public string Domain { get; set; } = "general";
+    public string? OriginalText { get; set; }
     public Dictionary<string, string> Translations { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }
 
 public class LipiDirectConversationalRewriteResponse
 {
     public bool Success { get; set; }
+    public bool Applied { get; set; }
     public Dictionary<string, string> Translations { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public string? ErrorCode { get; set; }
+    public string? Message { get; set; }
+}
+
+public class LipiDirectClientErrorReportRequest
+{
+    public string MeetingId { get; set; } = string.Empty;
+    public string? SessionId { get; set; }
+    public string? SourceLanguage { get; set; }
+    public string? ConnectionMode { get; set; }
+    public string? ErrorCode { get; set; }
+    public string Message { get; set; } = string.Empty;
+    public DateTime OccurredAtUtc { get; set; } = DateTime.UtcNow;
+}
+
+public class LipiDirectClientErrorReportResponse
+{
+    public bool Success { get; set; }
     public string? ErrorCode { get; set; }
     public string? Message { get; set; }
 }
@@ -122,6 +143,7 @@ public class ConversationalDictionaryEntryDto
     public string FormalText { get; set; } = string.Empty;
     public string ConversationalText { get; set; } = string.Empty;
     public string MatchMode { get; set; } = "Contains";
+    public string Domain { get; set; } = "general";
 }
 
 public class LipiDirectDictionaryResponse

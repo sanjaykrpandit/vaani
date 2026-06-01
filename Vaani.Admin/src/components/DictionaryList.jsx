@@ -8,6 +8,7 @@ const MATCH_MODES = ['Contains', 'Exact', 'StartsWith']
 
 const emptyForm = {
   languageCode: '',
+  domain: 'general',
   formalText: '',
   conversationalText: '',
   matchMode: 'Contains',
@@ -19,6 +20,7 @@ function DictionaryList() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [filterLanguage, setFilterLanguage] = useState('')
+  const [filterDomain, setFilterDomain] = useState('')
 
   const [languages, setLanguages] = useState([])
 
@@ -30,7 +32,7 @@ function DictionaryList() {
 
   useEffect(() => {
     loadEntries()
-  }, [filterLanguage])
+  }, [filterLanguage, filterDomain])
 
   useEffect(() => {
     languageService.getAllLanguages()
@@ -42,7 +44,7 @@ function DictionaryList() {
     try {
       setLoading(true)
       setError('')
-      const result = await dictionaryService.getAll(filterLanguage || undefined)
+      const result = await dictionaryService.getAll(filterLanguage || undefined, filterDomain || undefined)
       setEntries(result.items || [])
     } catch (err) {
       setError('Failed to load dictionary entries')
@@ -63,6 +65,7 @@ function DictionaryList() {
     setEditingEntry(entry)
     setForm({
       languageCode: entry.languageCode,
+        domain: entry.domain || 'general',
       formalText: entry.formalText,
       conversationalText: entry.conversationalText,
       matchMode: entry.matchMode,
@@ -100,6 +103,7 @@ function DictionaryList() {
       let result
       if (editingEntry) {
         result = await dictionaryService.update(editingEntry.id, {
+          domain: form.domain,
           formalText: form.formalText,
           conversationalText: form.conversationalText,
           matchMode: form.matchMode,
@@ -146,6 +150,13 @@ function DictionaryList() {
               </option>
             ))}
           </select>
+          <label>Domain:</label>
+          <input
+            value={filterDomain}
+            onChange={e => setFilterDomain(e.target.value)}
+            className="dict-filter-select"
+            placeholder="All / general / meeting"
+          />
         </div>
 
         {error && <div className="error-message">{error}</div>}
@@ -161,6 +172,7 @@ function DictionaryList() {
                 <thead>
                   <tr>
                     <th>Language</th>
+                    <th>Domain</th>
                     <th>Formal Text</th>
                     <th>Conversational Text</th>
                     <th>Match Mode</th>
@@ -173,6 +185,7 @@ function DictionaryList() {
                   {entries.map(entry => (
                     <tr key={entry.id}>
                       <td><span className="dict-badge">{entry.languageCode}</span></td>
+                      <td><span className="dict-domain">{entry.domain || 'general'}</span></td>
                       <td className="dict-text">{entry.formalText}</td>
                       <td className="dict-text dict-conversational">{entry.conversationalText}</td>
                       <td><span className="dict-mode">{entry.matchMode}</span></td>
@@ -220,6 +233,23 @@ function DictionaryList() {
                     <input value={editingEntry.languageCode} disabled className="dict-disabled" />
                   </div>
                 )}
+                <div className="form-group">
+                  <label>Domain</label>
+                  <input
+                    name="domain"
+                    value={form.domain}
+                    onChange={handleChange}
+                    placeholder="general"
+                    list="dictionary-domains"
+                  />
+                  <datalist id="dictionary-domains">
+                    <option value="general" />
+                    <option value="meeting" />
+                    <option value="medical" />
+                    <option value="legal" />
+                    <option value="training" />
+                  </datalist>
+                </div>
                 <div className="form-group">
                   <label>Formal Text *</label>
                   <input

@@ -20,94 +20,91 @@ public class ConversationalDictionaryService : IConversationalDictionaryService
         _logger = logger;
     }
 
-    public async Task<ConversationalDictionaryListResponse> GetAllAsync(string? languageCode)
+    public async Task<ConversationalDictionaryListResponse> GetAllAsync(string? languageCode, string? domain, int page = 1, int pageSize = 50)
     {
-        try
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 200);
+
+        var query = _dbContext.ConversationalDictionary.AsNoTracking();
+
+        if (!string.IsNullOrWhiteSpace(languageCode))
+            query = query.Where(e => e.LanguageCode == languageCode.Trim());
+
+        if (!string.IsNullOrWhiteSpace(domain))
+            query = query.Where(e => e.Domain == NormalizeDomain(domain));
+
+        var totalCount = await query.CountAsync();
+
+        var rawItems = await query
+            .OrderBy(e => e.LanguageCode)
+            .ThenBy(e => e.Domain)
+            .ThenBy(e => e.MatchMode == "Exact" ? 0 : e.MatchMode == "StartsWith" ? 1 : 2)
+            .ThenByDescending(e => e.FormalText.Length)
+            .ThenBy(e => e.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync();
+
+        return new ConversationalDictionaryListResponse
         {
-            var query = _dbContext.ConversationalDictionary.AsQueryable();
-
-            if (!string.IsNullOrWhiteSpace(languageCode))
-                query = query.Where(e => e.LanguageCode == languageCode.Trim());
-
-            var items = await query
-                .OrderBy(e => e.LanguageCode)
-                .ThenBy(e => e.Id)
-                .Select(e => MapToResponse(e))
-                .ToListAsync();
-
-            return new ConversationalDictionaryListResponse
-            {
-                Success = true,
-                Items = items,
-                TotalCount = items.Count
-            };
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error retrieving conversational dictionary entries");
-            return new ConversationalDictionaryListResponse { Success = false, Message = "Failed to retrieve entries." };
-        }
+            Success = true,
+            Items = rawItems.Select(MapToResponse).ToList(),
+            TotalCount = totalCount,
+            Page = page,
+            PageSize = pageSize,
+            TotalPages = (int)Math.Ceiling(totalCount / (double)pageSize)
+        };
     }
 
     public async Task<ConversationalDictionaryActionResponse> GetByIdAsync(int id)
     {
-        try
-        {
-            var entry = await _dbContext.ConversationalDictionary.FindAsync(id);
-            if (entry == null)
-                return Fail("NOT_FOUND", $"Entry with id={id} not found.");
+        var entry = await _dbContext.ConversationalDictionary.AsNoTracking()
+            .FirstOrDefaultAsync(e => e.Id == id);
 
-            return new ConversationalDictionaryActionResponse { Success = true, Item = MapToResponse(entry) };
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error retrieving conversational dictionary entry {Id}", id);
-            return Fail("INTERNAL_ERROR", "Failed to retrieve entry.");
-        }
+        if (entry == null)
+            return Fail("NOT_FOUND", $"Entry with id={id} not found.");
+
+        return new ConversationalDictionaryActionResponse { Success = true, Item = MapToResponse(entry) };
     }
 
     public async Task<ConversationalDictionaryActionResponse> CreateAsync(
         CreateConversationalDictionaryRequest request,
         string adminUserId)
     {
-        try
+        // DTO validation attributes already enforce [Required]/[MaxLength]/[RegularExpression] via [ApiController]
+        var duplicate = await _dbContext.ConversationalDictionary.AnyAsync(e =>
+            e.LanguageCode == request.LanguageCode.Trim() &&
+            e.Domain == NormalizeDomain(request.Domain) &&
+            e.FormalText == request.FormalText.Trim());
+
+        if (duplicate)
+            return Fail("DUPLICATE", $"An entry for '{request.LanguageCode}' in domain '{NormalizeDomain(request.Domain)}' with the same formal text already exists.");
+
+        var entry = new ConversationalDictionaryEntry
         {
-            var validationError = ValidateRequest(request.LanguageCode, request.FormalText, request.ConversationalText, request.MatchMode);
-            if (validationError != null)
-                return Fail("VALIDATION_ERROR", validationError);
+            LanguageCode = request.LanguageCode.Trim(),
+            Domain = NormalizeDomain(request.Domain),
+            FormalText = request.FormalText.Trim(),
+            ConversationalText = request.ConversationalText.Trim(),
+            MatchMode = NormalizeMatchMode(request.MatchMode),
+            IsActive = true,
+            CreatedBy = adminUserId,
+            UpdatedBy = adminUserId,
+            CreatedAt = DateTime.UtcNow
+        };
 
-            var duplicate = await _dbContext.ConversationalDictionary.AnyAsync(e =>
-                e.LanguageCode == request.LanguageCode.Trim() &&
-                e.FormalText == request.FormalText.Trim());
+        _dbContext.ConversationalDictionary.Add(entry);
+        await _dbContext.SaveChangesAsync();
 
-            if (duplicate)
-                return Fail("DUPLICATE", $"An entry for language '{request.LanguageCode}' with the same formal text already exists.");
+        _logger.LogInformation("Dictionary entry created: id={Id} lang={Lang} by={Admin}",
+            entry.Id, entry.LanguageCode, adminUserId);
 
-            var entry = new ConversationalDictionaryEntry
-            {
-                LanguageCode = request.LanguageCode.Trim(),
-                FormalText = request.FormalText.Trim(),
-                ConversationalText = request.ConversationalText.Trim(),
-                MatchMode = NormalizeMatchMode(request.MatchMode),
-                IsActive = true,
-                CreatedBy = adminUserId,
-                UpdatedBy = adminUserId,
-                CreatedAt = DateTime.UtcNow
-            };
-
-            _dbContext.ConversationalDictionary.Add(entry);
-            await _dbContext.SaveChangesAsync();
-
-            _logger.LogInformation("Conversational dictionary entry created: id={Id} lang={Lang} by={Admin}",
-                entry.Id, entry.LanguageCode, adminUserId);
-
-            return new ConversationalDictionaryActionResponse { Success = true, Item = MapToResponse(entry), Message = "Entry created." };
-        }
-        catch (Exception ex)
+        return new ConversationalDictionaryActionResponse
         {
-            _logger.LogError(ex, "Error creating conversational dictionary entry");
-            return Fail("INTERNAL_ERROR", "Failed to create entry.");
-        }
+            Success = true,
+            Item = MapToResponse(entry),
+            Message = "Entry created."
+        };
     }
 
     public async Task<ConversationalDictionaryActionResponse> UpdateAsync(
@@ -115,82 +112,69 @@ public class ConversationalDictionaryService : IConversationalDictionaryService
         UpdateConversationalDictionaryRequest request,
         string adminUserId)
     {
-        try
+        var entry = await _dbContext.ConversationalDictionary.FindAsync(id);
+        if (entry == null)
+            return Fail("NOT_FOUND", $"Entry with id={id} not found.");
+
+        var normalizedDomain = NormalizeDomain(request.Domain);
+        var duplicate = await _dbContext.ConversationalDictionary.AnyAsync(e =>
+            e.Id != id &&
+            e.LanguageCode == entry.LanguageCode &&
+            e.Domain == normalizedDomain &&
+            e.FormalText == request.FormalText.Trim());
+
+        if (duplicate)
+            return Fail("DUPLICATE", $"Another entry for '{entry.LanguageCode}' in domain '{normalizedDomain}' with the same formal text already exists.");
+
+        entry.Domain = normalizedDomain;
+        entry.FormalText = request.FormalText.Trim();
+        entry.ConversationalText = request.ConversationalText.Trim();
+        entry.MatchMode = NormalizeMatchMode(request.MatchMode);
+        entry.IsActive = request.IsActive;
+        entry.UpdatedBy = adminUserId;
+        entry.UpdatedAt = DateTime.UtcNow;
+
+        await _dbContext.SaveChangesAsync();
+
+        _logger.LogInformation("Dictionary entry updated: id={Id} by={Admin}", id, adminUserId);
+
+        return new ConversationalDictionaryActionResponse
         {
-            var validationError = ValidateRequest(null, request.FormalText, request.ConversationalText, request.MatchMode);
-            if (validationError != null)
-                return Fail("VALIDATION_ERROR", validationError);
-
-            var entry = await _dbContext.ConversationalDictionary.FindAsync(id);
-            if (entry == null)
-                return Fail("NOT_FOUND", $"Entry with id={id} not found.");
-
-            entry.FormalText = request.FormalText.Trim();
-            entry.ConversationalText = request.ConversationalText.Trim();
-            entry.MatchMode = NormalizeMatchMode(request.MatchMode);
-            entry.IsActive = request.IsActive;
-            entry.UpdatedBy = adminUserId;
-            entry.UpdatedAt = DateTime.UtcNow;
-
-            await _dbContext.SaveChangesAsync();
-
-            _logger.LogInformation("Conversational dictionary entry updated: id={Id} by={Admin}", id, adminUserId);
-
-            return new ConversationalDictionaryActionResponse { Success = true, Item = MapToResponse(entry), Message = "Entry updated." };
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error updating conversational dictionary entry {Id}", id);
-            return Fail("INTERNAL_ERROR", "Failed to update entry.");
-        }
+            Success = true,
+            Item = MapToResponse(entry),
+            Message = "Entry updated."
+        };
     }
 
     public async Task<ConversationalDictionaryActionResponse> DeleteAsync(int id, string adminUserId)
     {
-        try
-        {
-            var entry = await _dbContext.ConversationalDictionary.FindAsync(id);
-            if (entry == null)
-                return Fail("NOT_FOUND", $"Entry with id={id} not found.");
+        var entry = await _dbContext.ConversationalDictionary.FindAsync(id);
+        if (entry == null)
+            return Fail("NOT_FOUND", $"Entry with id={id} not found.");
 
-            _dbContext.ConversationalDictionary.Remove(entry);
-            await _dbContext.SaveChangesAsync();
+        // Soft delete — preserves audit history; clients skip inactive entries
+        entry.IsActive = false;
+        entry.UpdatedBy = adminUserId;
+        entry.UpdatedAt = DateTime.UtcNow;
 
-            _logger.LogInformation("Conversational dictionary entry deleted: id={Id} by={Admin}", id, adminUserId);
+        await _dbContext.SaveChangesAsync();
 
-            return new ConversationalDictionaryActionResponse { Success = true, Message = "Entry deleted." };
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error deleting conversational dictionary entry {Id}", id);
-            return Fail("INTERNAL_ERROR", "Failed to delete entry.");
-        }
-    }
+        _logger.LogInformation("Dictionary entry soft-deleted: id={Id} by={Admin}", id, adminUserId);
 
-    private static string? ValidateRequest(string? languageCode, string formalText, string conversationalText, string matchMode)
-    {
-        if (languageCode != null && string.IsNullOrWhiteSpace(languageCode))
-            return "LanguageCode is required.";
-
-        if (string.IsNullOrWhiteSpace(formalText))
-            return "FormalText is required.";
-
-        if (string.IsNullOrWhiteSpace(conversationalText))
-            return "ConversationalText is required.";
-
-        if (!ValidMatchModes.Contains(matchMode))
-            return $"MatchMode must be one of: {string.Join(", ", ValidMatchModes)}.";
-
-        return null;
+        return new ConversationalDictionaryActionResponse { Success = true, Message = "Entry deleted." };
     }
 
     private static string NormalizeMatchMode(string matchMode) =>
         ValidMatchModes.FirstOrDefault(m => m.Equals(matchMode, StringComparison.OrdinalIgnoreCase)) ?? "Contains";
 
+    private static string NormalizeDomain(string? domain) =>
+        string.IsNullOrWhiteSpace(domain) ? "general" : domain.Trim().ToLowerInvariant();
+
     private static ConversationalDictionaryItemResponse MapToResponse(ConversationalDictionaryEntry e) => new()
     {
         Id = e.Id,
         LanguageCode = e.LanguageCode,
+        Domain = e.Domain,
         FormalText = e.FormalText,
         ConversationalText = e.ConversationalText,
         MatchMode = e.MatchMode,

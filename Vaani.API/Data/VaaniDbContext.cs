@@ -155,9 +155,11 @@ public class VaaniDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => e.LanguageCode);
             entity.HasIndex(e => new { e.LanguageCode, e.IsActive });
+            entity.HasIndex(e => new { e.LanguageCode, e.Domain, e.IsActive });
 
             entity.Property(e => e.Id).HasColumnName("id");
             entity.Property(e => e.LanguageCode).HasColumnName("language_code").IsRequired().HasMaxLength(10);
+            entity.Property(e => e.Domain).HasColumnName("domain").IsRequired().HasMaxLength(50).HasDefaultValue("general");
             entity.Property(e => e.FormalText).HasColumnName("formal_text").IsRequired().HasMaxLength(500);
             entity.Property(e => e.ConversationalText).HasColumnName("conversational_text").IsRequired().HasMaxLength(500);
             entity.Property(e => e.MatchMode).HasColumnName("match_mode").IsRequired().HasMaxLength(20).HasDefaultValue("Contains");

@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Net.Http.Headers;
 using System.Text;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Vaani.API.Data;
 using Vaani.API.Interfaces;
@@ -16,17 +17,20 @@ public class LipiDirectAccessService : ILipiDirectAccessService
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IJwtTokenService _jwtTokenService;
+    private readonly IConversationalRewriteFallbackService _rewriteFallbackService;
     private readonly ILogger<LipiDirectAccessService> _logger;
     private readonly TextModerationEngine _moderation;
 
     public LipiDirectAccessService(
         IServiceScopeFactory scopeFactory,
         IJwtTokenService jwtTokenService,
+        IConversationalRewriteFallbackService rewriteFallbackService,
         ILogger<LipiDirectAccessService> logger,
         IConfiguration configuration)
     {
         _scopeFactory = scopeFactory;
         _jwtTokenService = jwtTokenService;
+        _rewriteFallbackService = rewriteFallbackService;
         _logger = logger;
         _moderation = new TextModerationEngine(configuration, _logger);
     }
@@ -161,7 +165,10 @@ public class LipiDirectAccessService : ILipiDirectAccessService
     private static LipiDirectTranscriptBatchResponse FailTranscript(string code, string message) =>
         new() { Success = false, ErrorCode = code, Message = message };
 
-    public async Task<LipiDirectDictionaryResponse> GetConversationalDictionaryAsync(IReadOnlyList<string> languages, string jwtToken)
+    private static LipiDirectClientErrorReportResponse FailClientError(string code, string message) =>
+        new() { Success = false, ErrorCode = code, Message = message };
+
+    public async Task<LipiDirectDictionaryResponse> GetConversationalDictionaryAsync(IReadOnlyList<string> languages, string? domain, string jwtToken)
     {
         try
         {
@@ -177,15 +184,18 @@ public class LipiDirectAccessService : ILipiDirectAccessService
                 .Select(l => l.Trim())
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
+            var normalizedDomain = string.IsNullOrWhiteSpace(domain) ? "general" : domain.Trim().ToLowerInvariant();
 
             using var scope = _scopeFactory.CreateScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<VaaniDbContext>();
 
             var entries = await dbContext.ConversationalDictionary
-                .Where(e => e.IsActive && normalizedLanguages.Contains(e.LanguageCode))
+                .Where(e => e.IsActive && normalizedLanguages.Contains(e.LanguageCode) && (e.Domain == normalizedDomain || e.Domain == "general"))
                 .OrderBy(e => e.LanguageCode)
+                .ThenBy(e => e.MatchMode == "Exact" ? 0 : e.MatchMode == "StartsWith" ? 1 : 2)
+                .ThenByDescending(e => e.FormalText.Length)
                 .ThenBy(e => e.Id)
-                .Select(e => new { e.LanguageCode, e.FormalText, e.ConversationalText, e.MatchMode })
+                .Select(e => new { e.LanguageCode, e.Domain, e.FormalText, e.ConversationalText, e.MatchMode })
                 .ToListAsync();
 
             var grouped = new Dictionary<string, List<ConversationalDictionaryEntryDto>>(StringComparer.OrdinalIgnoreCase);
@@ -199,6 +209,7 @@ public class LipiDirectAccessService : ILipiDirectAccessService
 
                 list.Add(new ConversationalDictionaryEntryDto
                 {
+                    Domain = entry.Domain,
                     FormalText = entry.FormalText,
                     ConversationalText = entry.ConversationalText,
                     MatchMode = entry.MatchMode
@@ -208,7 +219,7 @@ public class LipiDirectAccessService : ILipiDirectAccessService
             var version = Convert.ToBase64String(
                 System.Security.Cryptography.MD5.HashData(
                     System.Text.Encoding.UTF8.GetBytes(
-                        string.Join("|", entries.Select(e => $"{e.LanguageCode}:{e.FormalText}:{e.ConversationalText}")))));
+                        string.Join("|", entries.Select(e => $"{e.LanguageCode}:{e.Domain}:{e.MatchMode}:{e.FormalText}:{e.ConversationalText}")))));
 
             return new LipiDirectDictionaryResponse
             {
@@ -223,6 +234,221 @@ public class LipiDirectAccessService : ILipiDirectAccessService
         {
             _logger.LogError(ex, "Failed loading conversational dictionary for languages {Languages}", string.Join(",", languages));
             return new LipiDirectDictionaryResponse { Success = false, ErrorCode = "INTERNAL_ERROR", Message = "Failed to load dictionary." };
+        }
+    }
+
+    public async Task<LipiDirectConversationalRewriteResponse> RewriteTranslationsAsync(
+        LipiDirectConversationalRewriteRequest request,
+        string jwtToken,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var (isValid, tokenMeetingId, tokenDeviceId) = _jwtTokenService.ValidateToken(jwtToken);
+            if (!isValid || string.IsNullOrWhiteSpace(tokenMeetingId) || string.IsNullOrWhiteSpace(tokenDeviceId))
+            {
+                return new LipiDirectConversationalRewriteResponse
+                {
+                    Success = false,
+                    Applied = false,
+                    ErrorCode = "INVALID_TOKEN",
+                    Message = "Invalid or expired access token.",
+                    Translations = new Dictionary<string, string>(request.Translations ?? [], StringComparer.OrdinalIgnoreCase)
+                };
+            }
+
+            if (!tokenMeetingId.Equals(request.MeetingId, StringComparison.OrdinalIgnoreCase))
+            {
+                return new LipiDirectConversationalRewriteResponse
+                {
+                    Success = false,
+                    Applied = false,
+                    ErrorCode = "TOKEN_MEETING_MISMATCH",
+                    Message = "Token does not match requested meeting.",
+                    Translations = new Dictionary<string, string>(request.Translations ?? [], StringComparer.OrdinalIgnoreCase)
+                };
+            }
+
+            if (string.IsNullOrWhiteSpace(request.SessionId) || !int.TryParse(request.SessionId, out var sessionId))
+            {
+                return new LipiDirectConversationalRewriteResponse
+                {
+                    Success = false,
+                    Applied = false,
+                    ErrorCode = "INVALID_REQUEST",
+                    Message = "SessionId is required.",
+                    Translations = new Dictionary<string, string>(request.Translations ?? [], StringComparer.OrdinalIgnoreCase)
+                };
+            }
+
+            if (request.Translations == null || request.Translations.Count == 0)
+            {
+                return new LipiDirectConversationalRewriteResponse
+                {
+                    Success = true,
+                    Applied = false,
+                    Message = "No translations supplied for rewrite.",
+                    Translations = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                };
+            }
+
+            using var scope = _scopeFactory.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<VaaniDbContext>();
+            var session = await dbContext.Sessions.FirstOrDefaultAsync(
+                s => s.Id == sessionId
+                  && s.MeetingId == request.MeetingId.ToUpperInvariant()
+                  && s.DeviceId == tokenDeviceId,
+                cancellationToken);
+
+            if (session == null)
+            {
+                return new LipiDirectConversationalRewriteResponse
+                {
+                    Success = false,
+                    Applied = false,
+                    ErrorCode = "SESSION_ACCESS_DENIED",
+                    Message = "Session does not belong to token context.",
+                    Translations = new Dictionary<string, string>(request.Translations, StringComparer.OrdinalIgnoreCase)
+                };
+            }
+
+            var moderatedTranslations = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var pair in request.Translations)
+            {
+                var moderated = _moderation.ModerateText(pair.Value ?? string.Empty, [pair.Key]);
+                if (moderated.Blocked)
+                {
+                    return new LipiDirectConversationalRewriteResponse
+                    {
+                        Success = false,
+                        Applied = false,
+                        ErrorCode = "CONTENT_BLOCKED",
+                        Message = "Rewrite request blocked by content policy.",
+                        Translations = new Dictionary<string, string>(request.Translations, StringComparer.OrdinalIgnoreCase)
+                    };
+                }
+
+                moderatedTranslations[pair.Key] = moderated.Text;
+            }
+
+            return await _rewriteFallbackService.RewriteAsync(
+                request.SourceLanguage,
+                request.Domain,
+                request.OriginalText,
+                moderatedTranslations,
+                cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed conversational fallback rewrite for meeting {MeetingId}", request.MeetingId);
+            return new LipiDirectConversationalRewriteResponse
+            {
+                Success = false,
+                Applied = false,
+                ErrorCode = "INTERNAL_ERROR",
+                Message = "Failed to rewrite translations.",
+                Translations = new Dictionary<string, string>(request.Translations ?? [], StringComparer.OrdinalIgnoreCase)
+            };
+        }
+    }
+
+    public async Task<LipiDirectClientErrorReportResponse> ReportClientErrorAsync(
+        LipiDirectClientErrorReportRequest request,
+        string jwtToken,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var (isValid, tokenMeetingId, tokenDeviceId) = _jwtTokenService.ValidateToken(jwtToken);
+            if (!isValid || string.IsNullOrWhiteSpace(tokenMeetingId) || string.IsNullOrWhiteSpace(tokenDeviceId))
+                return FailClientError("INVALID_TOKEN", "Invalid or expired access token.");
+
+            if (string.IsNullOrWhiteSpace(request.MeetingId))
+                return FailClientError("INVALID_REQUEST", "MeetingId is required.");
+
+            if (!tokenMeetingId.Equals(request.MeetingId, StringComparison.OrdinalIgnoreCase))
+                return FailClientError("TOKEN_MEETING_MISMATCH", "Token does not match requested meeting.");
+
+            var message = request.Message?.Trim();
+            if (string.IsNullOrWhiteSpace(message))
+                return FailClientError("INVALID_REQUEST", "Message is required.");
+
+            int? sessionId = null;
+            if (!string.IsNullOrWhiteSpace(request.SessionId))
+            {
+                if (!int.TryParse(request.SessionId, out var parsedSessionId))
+                    return FailClientError("INVALID_REQUEST", "SessionId must be numeric.");
+
+                sessionId = parsedSessionId;
+            }
+
+            using var scope = _scopeFactory.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<VaaniDbContext>();
+
+            var sessionQuery = dbContext.Sessions.Where(s =>
+                s.MeetingId == request.MeetingId.ToUpperInvariant() &&
+                s.DeviceId == tokenDeviceId);
+
+            Session? session;
+            if (sessionId.HasValue)
+            {
+                session = await sessionQuery
+                    .FirstOrDefaultAsync(s => s.Id == sessionId.Value, cancellationToken);
+            }
+            else
+            {
+                session = await sessionQuery
+                    .Where(s => s.Status == "Active" || s.Status == "Initial")
+                    .OrderByDescending(s => s.StartedAt)
+                    .FirstOrDefaultAsync(cancellationToken);
+            }
+
+            if (session == null)
+                return FailClientError("SESSION_ACCESS_DENIED", "Session does not belong to token context.");
+
+            var occurredAtUtc = request.OccurredAtUtc == default
+                ? DateTime.UtcNow
+                : request.OccurredAtUtc.Kind == DateTimeKind.Unspecified
+                    ? DateTime.SpecifyKind(request.OccurredAtUtc, DateTimeKind.Utc)
+                    : request.OccurredAtUtc.ToUniversalTime();
+
+            var details = JsonSerializer.Serialize(new
+            {
+                request.SourceLanguage,
+                request.ConnectionMode,
+                request.ErrorCode,
+                Message = message,
+                OccurredAtUtc = occurredAtUtc
+            });
+
+            dbContext.SessionLogs.Add(new SessionLog
+            {
+                SessionId = session.Id,
+                EventType = "ClientError",
+                Timestamp = occurredAtUtc,
+                Details = details
+            });
+
+            await dbContext.SaveChangesAsync(cancellationToken);
+
+            _logger.LogWarning(
+                "Client error reported for session {SessionId} meeting {MeetingId} device {DeviceId}: {ErrorCode} {Message}",
+                session.Id,
+                session.MeetingId,
+                tokenDeviceId,
+                request.ErrorCode,
+                message);
+
+            return new LipiDirectClientErrorReportResponse
+            {
+                Success = true,
+                Message = "Client error recorded."
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed recording client error for meeting {MeetingId}", request.MeetingId);
+            return FailClientError("INTERNAL_ERROR", "Failed to record client error.");
         }
     }
 

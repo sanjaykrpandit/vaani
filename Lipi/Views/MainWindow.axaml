@@ -402,7 +402,7 @@
                                        PlatformTransparencyCompensationLevel="0"/>
         </ExperimentalAcrylicBorder.Material>
         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-          <Grid RowDefinitions="Auto,Auto,Auto,Auto">
+          <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto">
 
             <Border Grid.Row="0" Classes="settings-section" CornerRadius="6" Padding="8">
               <StackPanel Spacing="6" HorizontalAlignment="Stretch">
@@ -421,20 +421,35 @@
 
             <Border Grid.Row="1" Classes="settings-section" CornerRadius="6" Padding="8" Margin="0,6,0,0">
               <StackPanel Spacing="6" HorizontalAlignment="Stretch">
-                <TextBlock Classes="settings-label" Text="Microphone"/>
+                <TextBlock Classes="settings-label" Text="Audio Source"/>
                 <ComboBox HorizontalAlignment="Stretch"
-                          ItemsSource="{Binding InputDevices}"
-                          SelectedItem="{Binding SelectedInputDevice}">
+                          ItemsSource="{Binding AudioSourceModes}"
+                          SelectedItem="{Binding SelectedAudioSourceMode}">
                   <ComboBox.ItemTemplate>
                     <DataTemplate>
-                      <TextBlock Text="{Binding Name}"/>
+                      <TextBlock Text="{Binding DisplayName}"/>
                     </DataTemplate>
                   </ComboBox.ItemTemplate>
                 </ComboBox>
               </StackPanel>
             </Border>
 
-            <Border Grid.Row="2" Classes="settings-section" CornerRadius="6" Padding="6"
+            <Border Grid.Row="2" Classes="settings-section" CornerRadius="6" Padding="8" Margin="0,6,0,0">
+              <StackPanel Spacing="6" HorizontalAlignment="Stretch">
+                <TextBlock Classes="settings-label" Text="{Binding AudioDeviceLabel}"/>
+                <ComboBox HorizontalAlignment="Stretch"
+                          ItemsSource="{Binding AvailableAudioDevices}"
+                          SelectedItem="{Binding SelectedAudioDevice}">
+                  <ComboBox.ItemTemplate>
+                    <DataTemplate x:DataType="models:IAudioDeviceOption">
+                      <TextBlock Text="{ReflectionBinding Name}"/>
+                    </DataTemplate>
+                  </ComboBox.ItemTemplate>
+                </ComboBox>
+              </StackPanel>
+            </Border>
+
+            <Border Grid.Row="3" Classes="settings-section" CornerRadius="6" Padding="6"
                     Margin="0,6,0,0">
               <StackPanel Spacing="6" HorizontalAlignment="Stretch">
                 <TextBlock Classes="settings-label" Text="Connection mode"/>
@@ -450,7 +465,7 @@
               </StackPanel>
             </Border>
 
-            <Border Grid.Row="3" Classes="settings-section" CornerRadius="6" Padding="6"
+            <Border Grid.Row="4" Classes="settings-section" CornerRadius="6" Padding="6"
                     Margin="0,6,0,0" VerticalAlignment="Stretch">
               <Grid RowDefinitions="Auto,Auto">
                 <TextBlock Grid.Row="0" Classes="settings-label" Text="Output languages"/>

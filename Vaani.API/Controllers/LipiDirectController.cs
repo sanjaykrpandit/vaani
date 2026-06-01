@@ -53,7 +53,7 @@ public class LipiDirectController : ControllerBase
 
     [HttpGet("dictionary")]
     [ProducesResponseType(typeof(LipiDirectDictionaryResponse), StatusCodes.Status200OK)]
-    public async Task<ActionResult<LipiDirectDictionaryResponse>> GetConversationalDictionary([FromQuery] string languages)
+    public async Task<ActionResult<LipiDirectDictionaryResponse>> GetConversationalDictionary([FromQuery] string languages, [FromQuery] string? domain)
     {
         try
         {
@@ -61,13 +61,57 @@ public class LipiDirectController : ControllerBase
                 .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .ToList();
 
-            var response = await _lipiDirectAccessService.GetConversationalDictionaryAsync(languageList, GetJwtToken());
+            var response = await _lipiDirectAccessService.GetConversationalDictionaryAsync(languageList, domain, GetJwtToken());
             return Ok(response);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Unexpected error in Lipi direct dictionary endpoint.");
             return Ok(new LipiDirectDictionaryResponse { Success = false, ErrorCode = "INTERNAL_ERROR", Message = "Unexpected error loading dictionary." });
+        }
+    }
+
+    [HttpPost("rewrite")]
+    [ProducesResponseType(typeof(LipiDirectConversationalRewriteResponse), StatusCodes.Status200OK)]
+    public async Task<ActionResult<LipiDirectConversationalRewriteResponse>> RewriteTranslations([FromBody] LipiDirectConversationalRewriteRequest request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await _lipiDirectAccessService.RewriteTranslationsAsync(request, GetJwtToken(), cancellationToken);
+            return Ok(response);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error in Lipi direct rewrite endpoint.");
+            return Ok(new LipiDirectConversationalRewriteResponse
+            {
+                Success = false,
+                Applied = false,
+                Translations = request.Translations ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+                ErrorCode = "INTERNAL_ERROR",
+                Message = "Unexpected error rewriting translations."
+            });
+        }
+    }
+
+    [HttpPost("errors")]
+    [ProducesResponseType(typeof(LipiDirectClientErrorReportResponse), StatusCodes.Status200OK)]
+    public async Task<ActionResult<LipiDirectClientErrorReportResponse>> ReportClientError([FromBody] LipiDirectClientErrorReportRequest request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await _lipiDirectAccessService.ReportClientErrorAsync(request, GetJwtToken(), cancellationToken);
+            return Ok(response);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error in Lipi direct client error endpoint.");
+            return Ok(new LipiDirectClientErrorReportResponse
+            {
+                Success = false,
+                ErrorCode = "INTERNAL_ERROR",
+                Message = "Unexpected error recording client error."
+            });
         }
     }
 

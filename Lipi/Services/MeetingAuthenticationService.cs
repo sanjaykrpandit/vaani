@@ -123,6 +123,7 @@ public class MeetingAuthenticationService
 
     public async Task<LipiDirectDictionaryResponse> GetConversationalDictionaryAsync(
         IReadOnlyList<string> languages,
+        string? domain,
         string sessionToken,
         CancellationToken cancellationToken = default)
     {
@@ -130,7 +131,11 @@ public class MeetingAuthenticationService
             .Where(l => !string.IsNullOrWhiteSpace(l))
             .Select(l => Uri.EscapeDataString(l.Trim())));
 
-        var httpRequest = new HttpRequestMessage(HttpMethod.Get, $"/api/lipi/direct/dictionary?languages={query}");
+        var domainQuery = string.IsNullOrWhiteSpace(domain)
+            ? string.Empty
+            : $"&domain={Uri.EscapeDataString(domain.Trim())}";
+
+        var httpRequest = new HttpRequestMessage(HttpMethod.Get, $"/api/lipi/direct/dictionary?languages={query}{domainQuery}");
         httpRequest.Headers.Add("Authorization", $"Bearer {sessionToken}");
 
         var response = await _httpClient.SendAsync(httpRequest, cancellationToken);
@@ -139,6 +144,70 @@ public class MeetingAuthenticationService
 
         return await response.Content.ReadFromJsonAsync<LipiDirectDictionaryResponse>(cancellationToken: cancellationToken)
             ?? new LipiDirectDictionaryResponse { Success = false, Message = "Invalid dictionary response." };
+    }
+
+    public async Task<LipiDirectConversationalRewriteResponse> RewriteTranslationsAsync(
+        LipiDirectConversationalRewriteRequest request,
+        string sessionToken,
+        CancellationToken cancellationToken = default)
+    {
+        var httpRequest = new HttpRequestMessage(HttpMethod.Post, "/api/lipi/direct/rewrite")
+        {
+            Content = JsonContent.Create(request)
+        };
+        httpRequest.Headers.Add("Authorization", $"Bearer {sessionToken}");
+
+        var response = await _httpClient.SendAsync(httpRequest, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            return new LipiDirectConversationalRewriteResponse
+            {
+                Success = false,
+                Applied = false,
+                Translations = new Dictionary<string, string>(request.Translations, StringComparer.OrdinalIgnoreCase),
+                Message = "Failed to rewrite translations."
+            };
+        }
+
+        return await response.Content.ReadFromJsonAsync<LipiDirectConversationalRewriteResponse>(cancellationToken: cancellationToken)
+            ?? new LipiDirectConversationalRewriteResponse
+            {
+                Success = false,
+                Applied = false,
+                Translations = new Dictionary<string, string>(request.Translations, StringComparer.OrdinalIgnoreCase),
+                Message = "Invalid rewrite response."
+            };
+    }
+
+    public async Task<LipiDirectClientErrorReportResponse> ReportClientErrorAsync(
+        LipiDirectClientErrorReportRequest request,
+        string sessionToken,
+        CancellationToken cancellationToken = default)
+    {
+        var httpRequest = new HttpRequestMessage(HttpMethod.Post, "/api/lipi/direct/errors")
+        {
+            Content = JsonContent.Create(request)
+        };
+        httpRequest.Headers.Add("Authorization", $"Bearer {sessionToken}");
+
+        var response = await _httpClient.SendAsync(httpRequest, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            return new LipiDirectClientErrorReportResponse
+            {
+                Success = false,
+                ErrorCode = $"HTTP_{(int)response.StatusCode}",
+                Message = "Failed to report client error."
+            };
+        }
+
+        return await response.Content.ReadFromJsonAsync<LipiDirectClientErrorReportResponse>(cancellationToken: cancellationToken)
+            ?? new LipiDirectClientErrorReportResponse
+            {
+                Success = false,
+                ErrorCode = "INVALID_RESPONSE",
+                Message = "Invalid client error response."
+            };
     }
 
     public static string GetDeviceId()

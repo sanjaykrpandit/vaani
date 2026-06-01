@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using Lipi.Models;
 using Microsoft.AspNetCore.SignalR.Client;
+using NAudio.CoreAudioApi;
 using NAudio.Wave;
 
 namespace Lipi.Services;
@@ -16,11 +17,15 @@ public class LipiRealtimeService : ILipiRealtimeClient
     private readonly SemaphoreSlim _sendQueueSignal = new(0);
     private HubConnection? _connection;
     private WaveInEvent? _waveIn;
+    private WasapiLoopbackCapture? _loopbackCapture;
+    private MMDevice? _loopbackDevice;
     private string? _lipiSessionId;
     private CancellationTokenSource? _sendLoopCts;
     private Task? _sendLoopTask;
     private long _seq;
     private int? _currentInputDeviceNumber;
+    private string? _currentOutputDeviceId;
+    private AudioSourceMode _currentSourceMode = AudioSourceMode.Microphone;
     private int _remainingTrailingSilenceChunks;
     private bool _speechDetected;
     private long _capturedChunkCount;
@@ -47,7 +52,7 @@ public class LipiRealtimeService : ILipiRealtimeClient
         string sessionId,
         string sourceLanguage,
         IEnumerable<string> targetLanguages,
-        int inputDeviceNumber)
+        AudioCaptureSelection captureSelection)
     {
         if (_connection != null)
             await StopAsync();
@@ -88,8 +93,15 @@ public class LipiRealtimeService : ILipiRealtimeClient
                 ResetSilenceFilterState();
                 ResetDiagnostics();
                 EnsureSendLoopStarted();
-                StartCapture(inputDeviceNumber);
-                RunningStateChanged?.Invoke(true);
+                try
+                {
+                    StartCapture(captureSelection);
+                    RunningStateChanged?.Invoke(true);
+                }
+                catch (Exception ex)
+                {
+                    ErrorReceived?.Invoke($"Audio capture start failed: {ex.Message}");
+                }
             }
         });
 
@@ -193,27 +205,42 @@ public class LipiRealtimeService : ILipiRealtimeClient
         RunningStateChanged?.Invoke(false);
     }
 
-    public Task SwitchInputDeviceAsync(int inputDeviceNumber)
+    public Task SwitchCaptureDeviceAsync(AudioCaptureSelection captureSelection)
     {
-        if (_currentInputDeviceNumber == inputDeviceNumber && _waveIn != null)
+        var sameSelection = _currentSourceMode == captureSelection.SourceMode
+            && _currentInputDeviceNumber == captureSelection.InputDeviceNumber
+            && string.Equals(_currentOutputDeviceId, captureSelection.OutputDeviceId, StringComparison.OrdinalIgnoreCase);
+
+        if (sameSelection && ((_waveIn != null && captureSelection.SourceMode == AudioSourceMode.Microphone)
+            || (_loopbackCapture != null && captureSelection.SourceMode == AudioSourceMode.Speaker)))
             return Task.CompletedTask;
 
-        _currentInputDeviceNumber = inputDeviceNumber;
-
         if (!string.IsNullOrWhiteSpace(_lipiSessionId))
-            StartCapture(inputDeviceNumber);
+            StartCapture(captureSelection);
 
         return Task.CompletedTask;
     }
 
-    private void StartCapture(int inputDeviceNumber)
+    private void StartCapture(AudioCaptureSelection captureSelection)
     {
         StopCapture();
-        _currentInputDeviceNumber = inputDeviceNumber;
+
+        _currentSourceMode = captureSelection.SourceMode;
+        _currentInputDeviceNumber = captureSelection.InputDeviceNumber;
+        _currentOutputDeviceId = captureSelection.OutputDeviceId;
+
+        if (captureSelection.SourceMode == AudioSourceMode.Speaker)
+        {
+            StartLoopbackCapture(captureSelection.OutputDeviceId);
+            return;
+        }
+
+        if (!captureSelection.InputDeviceNumber.HasValue)
+            throw new InvalidOperationException("No microphone device selected.");
 
         _waveIn = new WaveInEvent
         {
-            DeviceNumber = inputDeviceNumber,
+            DeviceNumber = captureSelection.InputDeviceNumber.Value,
             WaveFormat = new WaveFormat(16000, 16, 1),
             BufferMilliseconds = 100
         };
@@ -258,12 +285,69 @@ public class LipiRealtimeService : ILipiRealtimeClient
         _waveIn.StartRecording();
     }
 
+    private void StartLoopbackCapture(string? outputDeviceId)
+    {
+        using var enumerator = new MMDeviceEnumerator();
+        _loopbackDevice = string.IsNullOrWhiteSpace(outputDeviceId)
+            ? enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Console)
+            : enumerator.GetDevice(outputDeviceId);
+
+        _currentOutputDeviceId = _loopbackDevice.ID;
+        _loopbackCapture = new WasapiLoopbackCapture(_loopbackDevice);
+        var captureFormat = _loopbackCapture.WaveFormat;
+
+        _loopbackCapture.DataAvailable += (_, e) =>
+        {
+            if (string.IsNullOrWhiteSpace(_lipiSessionId))
+                return;
+
+            var pcm = AudioPcmConverter.ToTarget16kHz(e.Buffer, e.BytesRecorded, captureFormat);
+            if (pcm.Length == 0)
+                return;
+
+            Interlocked.Increment(ref _capturedChunkCount);
+
+            try
+            {
+                var chunks = GetChunksToSend(pcm);
+                if (chunks.Count == 0)
+                {
+                    Interlocked.Increment(ref _silenceDroppedChunkCount);
+                    return;
+                }
+
+                if (_connection?.State != HubConnectionState.Connected && _audioCaptureConfig.DropAudioWhileDisconnected)
+                {
+                    Interlocked.Add(ref _disconnectedDroppedChunkCount, chunks.Count);
+                    return;
+                }
+
+                foreach (var chunk in chunks)
+                    EnqueueAudioChunk(chunk, DateTime.UtcNow);
+            }
+            catch
+            {
+            }
+        };
+
+        _loopbackCapture.StartRecording();
+    }
+
     private void StopCapture()
     {
         try { _waveIn?.StopRecording(); } catch { }
         _waveIn?.Dispose();
         _waveIn = null;
+
+        try { _loopbackCapture?.StopRecording(); } catch { }
+        _loopbackCapture?.Dispose();
+        _loopbackCapture = null;
+        _loopbackDevice?.Dispose();
+        _loopbackDevice = null;
+
         _currentInputDeviceNumber = null;
+        _currentOutputDeviceId = null;
+        _currentSourceMode = AudioSourceMode.Microphone;
         ResetSilenceFilterState();
     }
 

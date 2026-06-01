@@ -1,10 +1,12 @@
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Globalization;
+using System.Text.RegularExpressions;
 using Lipi.Models;
 using Microsoft.CognitiveServices.Speech;
 using Microsoft.CognitiveServices.Speech.Audio;
 using Microsoft.CognitiveServices.Speech.Translation;
+using NAudio.CoreAudioApi;
 using NAudio.Wave;
 
 namespace Lipi.Services;
@@ -18,6 +20,8 @@ public class DirectAzureLipiRealtimeClient : ILipiRealtimeClient
     private readonly Queue<byte[]> _preSpeechBuffer = new();
 
     private WaveInEvent? _waveIn;
+    private WasapiLoopbackCapture? _loopbackCapture;
+    private MMDevice? _loopbackDevice;
     private PushAudioInputStream? _pushStream;
     private TranslationRecognizer? _recognizer;
     private CancellationTokenSource? _tokenRefreshCts;
@@ -28,6 +32,8 @@ public class DirectAzureLipiRealtimeClient : ILipiRealtimeClient
     private string _sourceLanguage = string.Empty;
     private string _region = string.Empty;
     private int? _currentInputDeviceNumber;
+    private string? _currentOutputDeviceId;
+    private AudioSourceMode _currentSourceMode = AudioSourceMode.Microphone;
     private List<string> _targetLanguages = [];
     private DateTime _tokenExpiresAtUtc = DateTime.MinValue;
     private int _remainingTrailingSilenceChunks;
@@ -41,9 +47,16 @@ public class DirectAzureLipiRealtimeClient : ILipiRealtimeClient
     private long _tokenRefreshCount;
     private long _tokenRefreshFailureCount;
     private long _rewriteHitCount;
+    private long _rewriteMissCount;
 
     // Client-side conversational dictionary: locale ? ordered rules
-    private Dictionary<string, List<(string Formal, string Conversational, string MatchMode)>> _conversationalDictionary = new(StringComparer.OrdinalIgnoreCase);
+    private sealed record ConversationalRule(string Formal, string Conversational, string MatchMode, string Domain);
+
+    private static readonly Regex MultiWhitespaceRegex = new(@"\s+", RegexOptions.Compiled);
+    private static readonly Regex SpaceBeforePunctuationRegex = new(@"\s+([,.;:!?])", RegexOptions.Compiled);
+    private static readonly Regex RepeatedPunctuationRegex = new(@"([,.;:!?])\1+", RegexOptions.Compiled);
+
+    private Dictionary<string, List<ConversationalRule>> _conversationalDictionary = new(StringComparer.OrdinalIgnoreCase);
     private string _dictionaryVersion = string.Empty;
 
     // Recognizing throttle state
@@ -70,7 +83,7 @@ public class DirectAzureLipiRealtimeClient : ILipiRealtimeClient
         string sessionId,
         string sourceLanguage,
         IEnumerable<string> targetLanguages,
-        int inputDeviceNumber)
+        AudioCaptureSelection captureSelection)
     {
         await StopAsync();
 
@@ -153,7 +166,8 @@ public class DirectAzureLipiRealtimeClient : ILipiRealtimeClient
             {
                 _lastRecognizingText = originalText;
                 _lastRecognizingRewriteAt = DateTime.UtcNow;
-                translations = ApplyConversationalRewrite(translations);
+                var recognizingRuleMatched = false;
+                translations = ApplyConversationalRewrite(translations, out recognizingRuleMatched);
             }
 
             RecognizingReceived?.Invoke(moderatedOriginal.Text, translations);
@@ -173,9 +187,16 @@ public class DirectAzureLipiRealtimeClient : ILipiRealtimeClient
 
             _ = Task.Run(async () =>
             {
+                var anyRuleMatched = false;
                 var translations = _realtimeConfig.DirectEnableConversationalRewrite
-                    ? ApplyConversationalRewrite(baseTranslations)
+                    ? ApplyConversationalRewrite(baseTranslations, out anyRuleMatched)
                     : baseTranslations;
+
+                if (_realtimeConfig.DirectAiFallbackEnabled && !anyRuleMatched)
+                {
+                    Interlocked.Increment(ref _rewriteMissCount);
+                    translations = await ApplyFallbackRewriteAsync(moderatedTranscript.Text, translations);
+                }
 
                 var moderatedTranslations = _moderationEngine.ModerateTranslations(translations);
                 RecognizedReceived?.Invoke(moderatedTranscript.Text, moderatedTranslations);
@@ -192,7 +213,7 @@ public class DirectAzureLipiRealtimeClient : ILipiRealtimeClient
         await _recognizer.StartContinuousRecognitionAsync();
         ResetSilenceFilterState();
         EnsureTokenRefreshStarted();
-        StartCapture(inputDeviceNumber);
+        StartCapture(captureSelection);
         LogDiagnostics("Direct Azure realtime started");
         RunningStateChanged?.Invoke(true);
     }
@@ -216,15 +237,18 @@ public class DirectAzureLipiRealtimeClient : ILipiRealtimeClient
         RunningStateChanged?.Invoke(false);
     }
 
-    public Task SwitchInputDeviceAsync(int inputDeviceNumber)
+    public Task SwitchCaptureDeviceAsync(AudioCaptureSelection captureSelection)
     {
-        if (_currentInputDeviceNumber == inputDeviceNumber && _waveIn != null)
+        var sameSelection = _currentSourceMode == captureSelection.SourceMode
+            && _currentInputDeviceNumber == captureSelection.InputDeviceNumber
+            && string.Equals(_currentOutputDeviceId, captureSelection.OutputDeviceId, StringComparison.OrdinalIgnoreCase);
+
+        if (sameSelection && ((_waveIn != null && captureSelection.SourceMode == AudioSourceMode.Microphone)
+            || (_loopbackCapture != null && captureSelection.SourceMode == AudioSourceMode.Speaker)))
             return Task.CompletedTask;
 
-        _currentInputDeviceNumber = inputDeviceNumber;
-
         if (_pushStream != null)
-            StartCapture(inputDeviceNumber);
+            StartCapture(captureSelection);
 
         return Task.CompletedTask;
     }
@@ -281,42 +305,127 @@ public class DirectAzureLipiRealtimeClient : ILipiRealtimeClient
         return result;
     }
 
-    private Dictionary<string, string> ApplyConversationalRewrite(Dictionary<string, string> translations)
+    private Dictionary<string, string> ApplyConversationalRewrite(Dictionary<string, string> translations, out bool anyRuleMatched)
     {
+        anyRuleMatched = false;
         if (_conversationalDictionary.Count == 0)
-            return translations;
+            return ApplyGenericCleanup(translations);
 
         var result = new Dictionary<string, string>(translations, StringComparer.OrdinalIgnoreCase);
         foreach (var locale in result.Keys.ToList())
         {
             if (!_conversationalDictionary.TryGetValue(locale, out var rules))
-                continue;
-
-            var text = result[locale];
-            foreach (var (formal, conversational, matchMode) in rules)
             {
-                var replaced = matchMode switch
+                result[locale] = ApplyGenericCleanup(result[locale]);
+                continue;
+            }
+
+            var text = ApplyGenericCleanup(result[locale]);
+            foreach (var rule in rules)
+            {
+                var replaced = rule.MatchMode switch
                 {
-                    "Exact" => text.Equals(formal, StringComparison.OrdinalIgnoreCase)
-                        ? conversational
+                    "Exact" => text.Equals(rule.Formal, StringComparison.OrdinalIgnoreCase)
+                        ? rule.Conversational
                         : text,
-                    "StartsWith" => text.StartsWith(formal, StringComparison.OrdinalIgnoreCase)
-                        ? conversational + text[formal.Length..]
+                    "StartsWith" => text.StartsWith(rule.Formal, StringComparison.OrdinalIgnoreCase)
+                        ? rule.Conversational + text[rule.Formal.Length..]
                         : text,
-                    _ => text.Replace(formal, conversational, StringComparison.Ordinal)
+                    _ => text.Replace(rule.Formal, rule.Conversational, StringComparison.OrdinalIgnoreCase)
                 };
 
                 if (!replaced.Equals(text, StringComparison.Ordinal))
                 {
+                    anyRuleMatched = true;
                     Interlocked.Increment(ref _rewriteHitCount);
                     text = replaced;
                 }
             }
 
-            result[locale] = text.Trim();
+            result[locale] = ApplyGenericCleanup(text);
         }
 
         return result;
+    }
+
+    private Dictionary<string, string> ApplyGenericCleanup(Dictionary<string, string> translations)
+    {
+        if (!_realtimeConfig.DirectGenericCleanupEnabled || translations.Count == 0)
+            return translations;
+
+        return translations.ToDictionary(
+            pair => pair.Key,
+            pair => ApplyGenericCleanup(pair.Value),
+            StringComparer.OrdinalIgnoreCase);
+    }
+
+    private string ApplyGenericCleanup(string text)
+    {
+        if (!_realtimeConfig.DirectGenericCleanupEnabled || string.IsNullOrWhiteSpace(text))
+            return text;
+
+        var cleaned = text.Trim();
+        cleaned = MultiWhitespaceRegex.Replace(cleaned, " ");
+        cleaned = SpaceBeforePunctuationRegex.Replace(cleaned, "$1");
+        cleaned = RepeatedPunctuationRegex.Replace(cleaned, "$1");
+        cleaned = CollapseRepeatedWords(cleaned);
+        return cleaned.Trim();
+    }
+
+    private static string CollapseRepeatedWords(string text)
+    {
+        var parts = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length < 2)
+            return text;
+
+        var collapsed = new List<string>(parts.Length);
+        string? previous = null;
+        foreach (var part in parts)
+        {
+            if (previous != null && previous.Equals(part, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            collapsed.Add(part);
+            previous = part;
+        }
+
+        return string.Join(' ', collapsed);
+    }
+
+    private async Task<Dictionary<string, string>> ApplyFallbackRewriteAsync(string originalText, Dictionary<string, string> translations)
+    {
+        if (!_realtimeConfig.DirectAiFallbackEnabled ||
+            string.IsNullOrWhiteSpace(_sessionToken) ||
+            string.IsNullOrWhiteSpace(_meetingId) ||
+            string.IsNullOrWhiteSpace(_sessionId) ||
+            translations.Count == 0)
+        {
+            return translations;
+        }
+
+        try
+        {
+            var response = await _authService.RewriteTranslationsAsync(new LipiDirectConversationalRewriteRequest
+            {
+                MeetingId = _meetingId,
+                SessionId = _sessionId,
+                SourceLanguage = _sourceLanguage,
+                Domain = _realtimeConfig.DirectConversationalRewriteDomain,
+                OriginalText = originalText,
+                Translations = new Dictionary<string, string>(translations, StringComparer.OrdinalIgnoreCase)
+            }, _sessionToken);
+
+            if (!response.Success || !response.Applied || response.Translations.Count == 0)
+                return translations;
+
+            LogDiagnostics("Applied AI fallback conversational rewrite");
+            return ApplyGenericCleanup(response.Translations);
+        }
+        catch (Exception ex)
+        {
+            LogDiagnostics($"AI fallback rewrite failed: {ex.Message}");
+            return translations;
+        }
     }
 
     private async Task LoadConversationalDictionaryAsync()
@@ -326,19 +435,25 @@ public class DirectAzureLipiRealtimeClient : ILipiRealtimeClient
 
         try
         {
-            var response = await _authService.GetConversationalDictionaryAsync(_targetLanguages, _sessionToken);
+            var response = await _authService.GetConversationalDictionaryAsync(_targetLanguages, _realtimeConfig.DirectConversationalRewriteDomain, _sessionToken);
             if (!response.Success || response.Entries.Count == 0)
             {
                 LogDiagnostics("Conversational dictionary not loaded — server returned empty or failure");
                 return;
             }
 
-            var dict = new Dictionary<string, List<(string, string, string)>>(StringComparer.OrdinalIgnoreCase);
+            var dict = new Dictionary<string, List<ConversationalRule>>(StringComparer.OrdinalIgnoreCase);
             foreach (var locale in response.Entries)
             {
                 dict[locale.Key] = locale.Value
                     .Where(e => !string.IsNullOrWhiteSpace(e.FormalText) && !string.IsNullOrWhiteSpace(e.ConversationalText))
-                    .Select(e => (e.FormalText.Trim(), e.ConversationalText.Trim(), e.MatchMode?.Trim() ?? "Contains"))
+                    .Select(e => new ConversationalRule(
+                        e.FormalText.Trim(),
+                        e.ConversationalText.Trim(),
+                        e.MatchMode?.Trim() ?? "Contains",
+                        string.IsNullOrWhiteSpace(e.Domain) ? "general" : e.Domain.Trim()))
+                    .OrderBy(e => e.MatchMode.Equals("Exact", StringComparison.OrdinalIgnoreCase) ? 0 : e.MatchMode.Equals("StartsWith", StringComparison.OrdinalIgnoreCase) ? 1 : 2)
+                    .ThenByDescending(e => e.Formal.Length)
                     .ToList();
             }
 
@@ -352,14 +467,26 @@ public class DirectAzureLipiRealtimeClient : ILipiRealtimeClient
         }
     }
 
-    private void StartCapture(int inputDeviceNumber)
+    private void StartCapture(AudioCaptureSelection captureSelection)
     {
         StopCapture();
-        _currentInputDeviceNumber = inputDeviceNumber;
+
+        _currentSourceMode = captureSelection.SourceMode;
+        _currentInputDeviceNumber = captureSelection.InputDeviceNumber;
+        _currentOutputDeviceId = captureSelection.OutputDeviceId;
+
+        if (captureSelection.SourceMode == AudioSourceMode.Speaker)
+        {
+            StartLoopbackCapture(captureSelection.OutputDeviceId);
+            return;
+        }
+
+        if (!captureSelection.InputDeviceNumber.HasValue)
+            throw new InvalidOperationException("No microphone device selected.");
 
         _waveIn = new WaveInEvent
         {
-            DeviceNumber = inputDeviceNumber,
+            DeviceNumber = captureSelection.InputDeviceNumber.Value,
             WaveFormat = new WaveFormat(16000, 16, 1),
             BufferMilliseconds = Math.Clamp(_realtimeConfig.DirectAudioBufferMilliseconds, 20, 100)
         };
@@ -400,12 +527,72 @@ public class DirectAzureLipiRealtimeClient : ILipiRealtimeClient
         _waveIn.StartRecording();
     }
 
+    private void StartLoopbackCapture(string? outputDeviceId)
+    {
+        if (_pushStream == null)
+            return;
+
+        using var enumerator = new MMDeviceEnumerator();
+        _loopbackDevice = string.IsNullOrWhiteSpace(outputDeviceId)
+            ? enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Console)
+            : enumerator.GetDevice(outputDeviceId);
+
+        _currentOutputDeviceId = _loopbackDevice.ID;
+        _loopbackCapture = new WasapiLoopbackCapture(_loopbackDevice);
+        var captureFormat = _loopbackCapture.WaveFormat;
+
+        _loopbackCapture.DataAvailable += (_, e) =>
+        {
+            if (_pushStream == null)
+                return;
+
+            var pcm = AudioPcmConverter.ToTarget16kHz(e.Buffer, e.BytesRecorded, captureFormat);
+            if (pcm.Length == 0)
+                return;
+
+            Interlocked.Increment(ref _capturedChunkCount);
+
+            var chunks = GetChunksToSend(pcm);
+            if (chunks.Count == 0)
+            {
+                Interlocked.Increment(ref _silenceDroppedChunkCount);
+                return;
+            }
+
+            foreach (var chunk in chunks)
+            {
+                try
+                {
+                    _pushStream.Write(chunk, chunk.Length);
+                    var sent = Interlocked.Increment(ref _sentChunkCount);
+                    if (_audioCaptureConfig.EnableDiagnostics && sent % 100 == 0)
+                        LogDiagnostics($"Sent {sent} direct Azure audio chunks");
+                }
+                catch
+                {
+                    break;
+                }
+            }
+        };
+
+        _loopbackCapture.StartRecording();
+    }
+
     private void StopCapture()
     {
         try { _waveIn?.StopRecording(); } catch { }
         _waveIn?.Dispose();
         _waveIn = null;
+
+        try { _loopbackCapture?.StopRecording(); } catch { }
+        _loopbackCapture?.Dispose();
+        _loopbackCapture = null;
+        _loopbackDevice?.Dispose();
+        _loopbackDevice = null;
+
         _currentInputDeviceNumber = null;
+        _currentOutputDeviceId = null;
+        _currentSourceMode = AudioSourceMode.Microphone;
         ResetSilenceFilterState();
     }
 

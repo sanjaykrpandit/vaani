@@ -1,8 +1,10 @@
 import apiClient from './api'
 
 export const dictionaryService = {
-  getAll: async (languageCode) => {
-    const params = languageCode ? { languageCode } : {}
+  getAll: async (languageCode, domain) => {
+    const params = {}
+    if (languageCode) params.languageCode = languageCode
+    if (domain) params.domain = domain
     const response = await apiClient.get('/admin/conversationaldictionary', { params })
     return response.data
   },
