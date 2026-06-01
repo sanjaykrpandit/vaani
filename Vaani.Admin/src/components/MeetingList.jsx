@@ -135,14 +135,15 @@ function MeetingList({
                         className="btn btn-xsm btn-primary d-inline-flex align-items-center gap-2"
                         onClick={() => onLaunch(meeting.meetingId)}
                       >
-                        Launch
+                         Launch Audio
                         <img src={logo} alt="logo" height="10" />
                       </button>&nbsp;&nbsp;
                       <button
                         className="btn btn-xsm btn-secondary"
                         onClick={() => onLaunchVaaniTranslation(meeting.meetingId)}
                       >
-                        Launch Vaani Translation
+                        Launch Subtitle
+                         <img src={logo} alt="logo" height="10" />
                       </button>
                     </div>
                   )}

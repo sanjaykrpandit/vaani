@@ -54,7 +54,7 @@ function Dashboard() {
   const handleLaunch = (meetingId) => {
     const origin = window.location.origin
     const targetUrl =
-      `https://vaani-rtt-api.tryzent.com/launcher/Vaani.application` +
+      `http://20.198.120.78/api/launcher/Vaani.application` +
       `?meetingId=${meetingId}&origin=${encodeURIComponent(origin)}`
 
     const isEdge = /Edg\//.test(navigator.userAgent)
