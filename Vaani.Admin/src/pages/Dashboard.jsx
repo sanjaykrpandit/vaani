@@ -3,15 +3,18 @@ import { useNavigate } from 'react-router-dom'
 import Layout from '../components/Layout'
 import MeetingList from '../components/MeetingList'
 import { meetingService } from '../services/meetingService'
+import { useAuth } from '../context/AuthContext'
 import logo from '../Assets/logo.png'
 import analysis from '../Assets/analysis.png'
 
 function Dashboard() {
+  const { user } = useAuth()
   const [meetings, setMeetings] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [filter, setFilter] = useState('all')
   const navigate = useNavigate()
+  const isAdmin = user?.role === 'admin'
 
   useEffect(() => {
     loadMeetings()
@@ -51,34 +54,37 @@ function Dashboard() {
     navigate(`/meetings/${meetingId}/metrics`)
   }
 
-  const handleLaunch = (meetingId) => {
-    const origin = window.location.origin
-    const targetUrl =
-      `http://20.198.120.78/api/launcher/Vaani.application` +
-      `?meetingId=${meetingId}&origin=${encodeURIComponent(origin)}`
+  const launchApp = async (meetingId, appType = 'audio') => {
+    try {
+      const origin = window.location.origin
+      const links = await meetingService.getAppDownloadLinks()
+      const baseUrl = appType === 'subtitle' ? links.subtitleLink : links.link
 
-    const isEdge = /Edg\//.test(navigator.userAgent)
-    const launchUrl = isEdge ? targetUrl : `microsoft-edge:${targetUrl}`
+      if (!baseUrl) {
+        throw new Error('Application download link is not configured')
+      }
 
-    const win = window.open(launchUrl, '_blank')
-    if (win) {
-      setTimeout(() => window.close(), 1000)
+      const targetUrl = `${baseUrl}?meetingId=${meetingId}&origin=${encodeURIComponent(origin)}`
+
+      const isEdge = /Edg\//.test(navigator.userAgent)
+      const launchUrl = isEdge ? targetUrl : `microsoft-edge:${targetUrl}`
+
+      const win = window.open(launchUrl, '_blank')
+      if (win) {
+        setTimeout(() => window.close(), 1000)
+      }
+    } catch (err) {
+      alert('Failed to launch application')
+      console.error(err)
     }
   }
 
+  const handleLaunch = (meetingId) => {
+    launchApp(meetingId, 'audio')
+  }
+
   const handleLaunchVaaniTranslation = (meetingId) => {
-    const origin = window.location.origin
-    const targetUrl =
-      `http://20.198.120.78/api/launcher/translator/VaaniTranslator.application` +
-      `?meetingId=${meetingId}&origin=${encodeURIComponent(origin)}`
-
-    const isEdge = /Edg\//.test(navigator.userAgent)
-    const launchUrl = isEdge ? targetUrl : `microsoft-edge:${targetUrl}`
-
-    const win = window.open(launchUrl, '_blank')
-    if (win) {
-      setTimeout(() => window.close(), 1000)
-    }
+    launchApp(meetingId, 'subtitle')
   }
 
   /* 🔹 Status helpers */
@@ -180,6 +186,10 @@ function Dashboard() {
             onEdit={handleEdit}
             onDelete={handleDelete}
             onViewMetrics={handleViewMetrics}
+            canLaunch={isAdmin}
+            canViewMetrics={isAdmin}
+            canManageMeetings={isAdmin}
+            canGenerateLinks={isAdmin}
           />
         )}
       </div>

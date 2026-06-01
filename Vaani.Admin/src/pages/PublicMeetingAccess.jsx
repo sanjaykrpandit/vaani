@@ -10,6 +10,7 @@ function PublicMeetingAccess() {
   // State Management
   const [meetingId, setMeetingId] = useState('')
   const [token, setToken] = useState('')
+  const [appType, setAppType] = useState('audio')
   const [loading, setLoading] = useState(false)
   const [isAutoValidating, setIsAutoValidating] = useState(false) // Controls "Hidden" state
   const [error, setError] = useState('')
@@ -18,10 +19,11 @@ function PublicMeetingAccess() {
    * Core Validation Logic
    * Accepts direct arguments to handle the async nature of React state
    */
-  const handleValidate = useCallback(async (idToUse, tokenToUse) => {
+  const handleValidate = useCallback(async (idToUse, tokenToUse, appTypeToUse) => {
     // Fallback to state if arguments aren't provided (for manual button clicks)
     const mId = idToUse || meetingId
     const mToken = tokenToUse || token
+    const requestedAppType = appTypeToUse || appType || 'audio'
 
     if (!mId) {
       setError('Please enter your Meeting ID')
@@ -34,7 +36,7 @@ function PublicMeetingAccess() {
 
     try {
       // Pass the token as both the ID and the Token as requested
-      const data = await validateMeetingToken(mId, mToken)
+      const data = await validateMeetingToken(mId, mToken, requestedAppType)
 
       if (!data.isValid) {
         throw new Error('Meeting validation failed. Please check your meeting ID.')
@@ -46,6 +48,7 @@ function PublicMeetingAccess() {
         meetingName: data.meetingName,
         validUntil: data.validUntil,
         downloadLink: data.downloadLink,
+        appType: requestedAppType,
         accessToken: mToken,
         validatedAt: new Date().toISOString()
       }))
@@ -59,13 +62,16 @@ function PublicMeetingAccess() {
       setLoading(false)
       setIsAutoValidating(false) // "Unhide" the form so user can see error/fix ID
     }
-  }, [meetingId, token, navigate])
+  }, [meetingId, token, appType, navigate])
 
   /**
    * Auto-run on Page Load
    */
   useEffect(() => {
     const urlToken = searchParams.get('token')
+    const urlAppType = searchParams.get('appType') || 'audio'
+
+    setAppType(urlAppType)
 
     if (urlToken) {
       // 1. Pre-fill states for the UI
@@ -76,7 +82,7 @@ function PublicMeetingAccess() {
       setIsAutoValidating(true)
 
       // 3. Trigger validation using the token for BOTH parameters
-      handleValidate(urlToken, urlToken)
+      handleValidate(urlToken, urlToken, urlAppType)
     } else {
       // No token in URL? Just show the empty form
       setIsAutoValidating(false)

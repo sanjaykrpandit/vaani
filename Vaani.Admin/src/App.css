@@ -242,6 +242,37 @@
   align-items: center;
 }
 
+.launch-button-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.125rem;
+  white-space: nowrap;
+}
+
+.launch-button-group-combined {
+  width: 220px;
+  justify-content: space-between;
+}
+
+.launch-pair {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  background: var(--surface);
+  padding: 0.125rem;
+}
+
+.launch-cell {
+  white-space: nowrap;
+}
+
+.launch-cell .btn-xsm {
+  padding: 0.225rem 0.5rem;
+}
+
 /* Meeting Form */
 .page-container {
   max-width: 600px;

@@ -65,6 +65,14 @@ namespace Vaani.API.Migrations
                         .HasColumnType("character varying(255)")
                         .HasColumnName("password_hash");
 
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("admin")
+                        .HasColumnName("role");
+
                     b.Property<string>("UserId")
                         .IsRequired()
                         .HasMaxLength(50)

@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 using Vaani.API.Interfaces;
 using Vaani.API.Models.DTOs;
 
@@ -10,20 +11,17 @@ namespace Vaani.API.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/admin/[controller]")]
-[Authorize(Roles = "admin")]
+[Authorize(Roles = "admin,subadmin")]
 public class AdminMeetingsController : ControllerBase
 {
     private readonly IAdminService _adminService;
-    private readonly IJwtTokenService _jwtTokenService;
     private readonly ILogger<AdminMeetingsController> _logger;
 
     public AdminMeetingsController(
         IAdminService adminService,
-        IJwtTokenService jwtTokenService,
         ILogger<AdminMeetingsController> logger)
     {
         _adminService = adminService;
-        _jwtTokenService = jwtTokenService;
         _logger = logger;
     }
 
@@ -38,7 +36,7 @@ public class AdminMeetingsController : ControllerBase
     {
         try
         {
-            var meetings = await _adminService.GetAllMeetingsAsync();
+            var meetings = await _adminService.GetAllMeetingsAsync(GetCurrentUserId(), GetCurrentUserRole());
             return Ok(meetings);
         }
         catch (Exception ex)
@@ -62,7 +60,7 @@ public class AdminMeetingsController : ControllerBase
         try
         {          
 
-            var meeting = await _adminService.GetMeetingByIdAsync(meetingId);
+            var meeting = await _adminService.GetMeetingByIdAsync(meetingId, GetCurrentUserId(), GetCurrentUserRole());
 
             if (meeting == null)
             {
@@ -108,7 +106,7 @@ public class AdminMeetingsController : ControllerBase
                 return BadRequest(new { message = "ValidUntil must be after ValidFrom" });
             }
 
-            var meeting = await _adminService.CreateMeetingAsync(request);
+            var meeting = await _adminService.CreateMeetingAsync(request, GetCurrentUserId());
 
             if (meeting == null)
             {
@@ -147,7 +145,7 @@ public class AdminMeetingsController : ControllerBase
                 return BadRequest(new { message = "ValidUntil must be after ValidFrom" });
             }
 
-            var meeting = await _adminService.UpdateMeetingAsync(meetingId, request);
+            var meeting = await _adminService.UpdateMeetingAsync(meetingId, request, GetCurrentUserId(), GetCurrentUserRole());
 
             if (meeting == null)
             {
@@ -179,7 +177,7 @@ public class AdminMeetingsController : ControllerBase
         try
         {          
 
-            var result = await _adminService.DeleteMeetingAsync(meetingId);
+            var result = await _adminService.DeleteMeetingAsync(meetingId, GetCurrentUserId(), GetCurrentUserRole());
 
             if (!result)
             {
@@ -211,7 +209,7 @@ public class AdminMeetingsController : ControllerBase
         try
         {          
 
-            var metrics = await _adminService.GetSessionMetricsAsync(meetingId);
+            var metrics = await _adminService.GetSessionMetricsAsync(meetingId, GetCurrentUserId(), GetCurrentUserRole());
 
             if (metrics == null)
             {
@@ -240,7 +238,7 @@ public class AdminMeetingsController : ControllerBase
         try
         {          
 
-            var logs = await _adminService.GetSessionLogsAsync(sessionId);
+            var logs = await _adminService.GetSessionLogsAsync(sessionId, GetCurrentUserId(), GetCurrentUserRole());
             return Ok(logs);
         }
         catch (Exception ex)
@@ -263,7 +261,7 @@ public class AdminMeetingsController : ControllerBase
     {
         try
         {
-            var response = await _adminService.GenerateMeetingTokenAsync(meetingId);
+            var response = await _adminService.GenerateMeetingTokenAsync(meetingId, GetCurrentUserId(), GetCurrentUserRole());
 
             if (response == null)
             {
@@ -294,4 +292,14 @@ public class AdminMeetingsController : ControllerBase
 
     //    return isValid;
     //}
+
+    private string GetCurrentUserId()
+    {
+        return User.FindFirstValue("userId") ?? User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty;
+    }
+
+    private string GetCurrentUserRole()
+    {
+        return User.FindFirstValue(ClaimTypes.Role) ?? User.FindFirstValue("role") ?? "admin";
+    }
 }

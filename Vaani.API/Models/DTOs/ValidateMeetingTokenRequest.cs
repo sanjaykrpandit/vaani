@@ -7,4 +7,5 @@ public class ValidateMeetingTokenRequest
 {
     public string MeetingId { get; set; } = string.Empty;
     public string Token { get; set; } = string.Empty;
+    public string AppType { get; set; } = "audio";
 }

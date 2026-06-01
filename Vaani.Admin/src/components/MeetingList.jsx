@@ -9,45 +9,52 @@ function MeetingList({
   onDelete,
   onLaunch,
   onLaunchVaaniTranslation,
-  onViewMetrics
+  onViewMetrics,
+  canLaunch = true,
+  canViewMetrics = true,
+  canManageMeetings = true,
+  canGenerateLinks = true
 }) {
-  const [copyingId, setCopyingId] = useState(null)
+  const [copyingKey, setCopyingKey] = useState(null)
 
-  const handleCopyLink = async (meetingId) => {
-    try {
-      setCopyingId(meetingId);
-      // Generate token from backend
-      const token = await generateMeetingToken(meetingId);
-      // Create public access URL with only token parameter
-      const origin = window.location.origin;
-      const publicUrl = `${origin}/public-access?token=${token}`;
-
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        // Copy to clipboard using Clipboard API
-        await navigator.clipboard.writeText(publicUrl);
-      } else {
-        // Fallback: Use a temporary textarea element
-        const textarea = document.createElement('textarea');
-        textarea.value = publicUrl;
-        textarea.style.position = 'fixed'; // Prevent scrolling to bottom
-        textarea.style.opacity = '0';
-        document.body.appendChild(textarea);
-        textarea.focus();
-        textarea.select();
-        try {
-          document.execCommand('copy');
-        } finally {
-          document.body.removeChild(textarea);
-        }
-      }
-      // Show success feedback
-      setTimeout(() => setCopyingId(null), 2000);
-    } catch (error) {
-      console.error('Failed to copy link:', error);
-      alert('Failed to generate meeting link. Please try again.');
-      setCopyingId(null);
+  const copyToClipboard = async (value) => {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(value)
+      return
     }
-  };
+
+    const textarea = document.createElement('textarea')
+    textarea.value = value
+    textarea.style.position = 'fixed'
+    textarea.style.opacity = '0'
+    document.body.appendChild(textarea)
+    textarea.focus()
+    textarea.select()
+
+    try {
+      document.execCommand('copy')
+    } finally {
+      document.body.removeChild(textarea)
+    }
+  }
+
+  const handleCopyLink = async (meetingId, appType = 'audio') => {
+    const currentCopyKey = `${meetingId}-${appType}`
+
+    try {
+      setCopyingKey(currentCopyKey)
+      const token = await generateMeetingToken(meetingId)
+      const origin = window.location.origin
+      const publicUrl = `${origin}/public-access?token=${encodeURIComponent(token)}&appType=${appType}`
+
+      await copyToClipboard(publicUrl)
+      setTimeout(() => setCopyingKey(null), 2000)
+    } catch (error) {
+      console.error('Failed to copy link:', error)
+      alert('Failed to generate meeting link. Please try again.')
+      setCopyingKey(null)
+    }
+  }
 
 
   const formatDate = (dateString) => {
@@ -128,23 +135,45 @@ function MeetingList({
                 <td>{formatDate(meeting.validUntil)}</td>
 
                 {/* Launch */}
-                <td>
+                <td className="launch-cell">
                   {status === 'running' && meeting.isActive && (
-                    <div className="d-inline-flex align-items-center gap-2">
-                      <button
-                        className="btn btn-xsm btn-primary d-inline-flex align-items-center gap-2"
-                        onClick={() => onLaunch(meeting.meetingId)}
-                      >
-                         Launch Audio
-                        <img src={logo} alt="logo" height="10" />
-                      </button>&nbsp;&nbsp;
-                      <button
-                        className="btn btn-xsm btn-secondary"
-                        onClick={() => onLaunchVaaniTranslation(meeting.meetingId)}
-                      >
-                        Launch Subtitle
-                         <img src={logo} alt="logo" height="10" />
-                      </button>
+                    <div className="launch-button-group launch-button-group-combined">
+                      <div className="launch-pair">
+                        <button
+                          className="btn btn-xsm btn-primary"
+                          onClick={() => onLaunch(meeting.meetingId)}
+                          title="Audio"
+                        >
+                          Audio
+                          <img src={logo} alt="logo" height="10" />
+                        </button>
+                        <button
+                          className="btn btn-xsm"
+                          onClick={() => handleCopyLink(meeting.meetingId, 'audio')}
+                          title="Copy Audio Public Access Link"
+                          disabled={copyingKey === `${meeting.meetingId}-audio`}
+                        >
+                          {copyingKey === `${meeting.meetingId}-audio` ? '✓' : '🔗'}
+                        </button>
+                      </div>
+                      <div className="launch-pair">
+                        <button
+                          className="btn btn-xsm btn-secondary"
+                          onClick={() => onLaunchVaaniTranslation(meeting.meetingId)}
+                          title="Subtitle"
+                        >
+                          Subtitle
+                          <img src={logo} alt="logo" height="10" />
+                        </button>
+                        <button
+                          className="btn btn-xsm"
+                          onClick={() => handleCopyLink(meeting.meetingId, 'subtitle')}
+                          title="Copy Subtitle Public Access Link"
+                          disabled={copyingKey === `${meeting.meetingId}-subtitle`}
+                        >
+                          {copyingKey === `${meeting.meetingId}-subtitle` ? '✓' : '🔗'}
+                        </button>
+                      </div>
                     </div>
                   )}
 
@@ -165,26 +194,17 @@ function MeetingList({
 
                 {/* Actions */}
                 <td className="actions">
-                  <button
-                    className="btn btn-xsm"
-                    onClick={() => onViewMetrics(meeting.meetingId)}
-                    title="View Analytics"
-                  >
-                    <img src={analysis} alt="Analytics" height="16" />
-                  </button>
-
-                  {status === 'running' && meeting.isActive && (
+                  {canViewMetrics && (
                     <button
                       className="btn btn-xsm"
-                      onClick={() => handleCopyLink(meeting.meetingId)}
-                      title="Copy Public Access Link"
-                      disabled={copyingId === meeting.meetingId}
+                      onClick={() => onViewMetrics(meeting.meetingId)}
+                      title="View Analytics"
                     >
-                      {copyingId === meeting.meetingId ? '✓' : '🔗'}
+                      <img src={analysis} alt="Analytics" height="16" />
                     </button>
                   )}
 
-                  {isEditable && (
+                  {canManageMeetings && isEditable && (
                     <button
                       className="btn btn-xsm"
                       onClick={() => onEdit(meeting.meetingId)}
@@ -193,7 +213,7 @@ function MeetingList({
                     </button>
                   )}
 
-                  {isEditable && (
+                  {canManageMeetings && isEditable && (
                     <button
                       className="btn btn-xsm"
                       onClick={() => onDelete(meeting.meetingId)}

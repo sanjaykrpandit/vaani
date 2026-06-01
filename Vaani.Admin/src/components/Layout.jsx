@@ -6,6 +6,7 @@ import './Layout.css'
 function Layout({ children }) {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
+  const isAdmin = user?.role === 'admin'
 
   const handleLogout = () => {
     logout()
@@ -31,6 +32,7 @@ function Layout({ children }) {
           <div className="header-right">
             <span className="user-info">
               Welcome, {user?.fullName || user?.userId}
+              {user?.role ? ` (${user.role})` : ''}
             </span>
             <button
               className="btn btn-secondary btn-xsm"
@@ -54,31 +56,35 @@ function Layout({ children }) {
 
           <button
             className="btn btn-xsm"
-            onClick={() => navigate('/languages')}
-          >
-            🌐 Languages
-          </button>
-
-          <button
-            className="btn btn-xsm"
             onClick={() => navigate('/meetings')}
           >
             📞 Meetings
           </button>
 
-          <button
-            className="btn btn-xsm"
-            onClick={() => navigate('/users')}
-          >
-            👥 Users
-          </button>
+          {isAdmin && (
+            <>
+              <button
+                className="btn btn-xsm"
+                onClick={() => navigate('/languages')}
+              >
+                🌐 Languages
+              </button>
 
-          <button
-            className="btn btn-xsm"
-            onClick={() => navigate('/dictionary')}
-          >
-            📖 Dictionary
-          </button>
+              <button
+                className="btn btn-xsm"
+                onClick={() => navigate('/users')}
+              >
+                👥 Users
+              </button>
+
+              <button
+                className="btn btn-xsm"
+                onClick={() => navigate('/dictionary')}
+              >
+                📖 Dictionary
+              </button>
+            </>
+          )}
         </nav>
       </div>
 

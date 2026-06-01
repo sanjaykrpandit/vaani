@@ -13,7 +13,7 @@ public interface IJwtTokenService
     /// <summary>
     /// Generate a JWT token for admin user
     /// </summary>
-    string GenerateAdminToken(string userId, string fullName, DateTime expiresAt);
+    string GenerateAdminToken(string userId, string fullName, string role, DateTime expiresAt);
     
     /// <summary>
     /// Validate a JWT token and extract claims

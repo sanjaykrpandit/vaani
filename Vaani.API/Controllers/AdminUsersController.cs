@@ -115,6 +115,12 @@ public class AdminUsersController : ControllerBase
                 return BadRequest(new { message = "Email is required" });
             }
 
+            if (!string.Equals(request.Role, "admin", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(request.Role, "subadmin", StringComparison.OrdinalIgnoreCase))
+            {
+                return BadRequest(new { message = "Role must be either admin or subadmin" });
+            }
+
             var adminUser = await _adminService.CreateAdminUserAsync(request);
 
             if (adminUser == null)
@@ -155,6 +161,13 @@ public class AdminUsersController : ControllerBase
             if (string.IsNullOrWhiteSpace(userId))
             {
                 return BadRequest(new { message = "User ID is required" });
+            }
+
+            if (!string.IsNullOrWhiteSpace(request.Role) &&
+                !string.Equals(request.Role, "admin", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(request.Role, "subadmin", StringComparison.OrdinalIgnoreCase))
+            {
+                return BadRequest(new { message = "Role must be either admin or subadmin" });
             }
 
             var adminUser = await _adminService.UpdateAdminUserAsync(userId, request);

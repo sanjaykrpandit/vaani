@@ -9,11 +9,11 @@ namespace Vaani.API.Interfaces;
 public interface IAdminService
 {
     Task<AdminLoginResponse> AuthenticateAsync(string userId, string password);
-    Task<MeetingResponse?> CreateMeetingAsync(CreateMeetingRequest request);
-    Task<MeetingResponse?> UpdateMeetingAsync(string meetingId, UpdateMeetingRequest request);
-    Task<bool> DeleteMeetingAsync(string meetingId);
-    Task<MeetingResponse?> GetMeetingByIdAsync(string meetingId);
-    Task<IEnumerable<MeetingResponse>> GetAllMeetingsAsync();
+    Task<MeetingResponse?> CreateMeetingAsync(CreateMeetingRequest request, string currentUserId);
+    Task<MeetingResponse?> UpdateMeetingAsync(string meetingId, UpdateMeetingRequest request, string currentUserId, string currentUserRole);
+    Task<bool> DeleteMeetingAsync(string meetingId, string currentUserId, string currentUserRole);
+    Task<MeetingResponse?> GetMeetingByIdAsync(string meetingId, string currentUserId, string currentUserRole);
+    Task<IEnumerable<MeetingResponse>> GetAllMeetingsAsync(string currentUserId, string currentUserRole);
     Task<AdminUser?> GetAdminUserByIdAsync(string userId);
     
     // Admin User management methods
@@ -23,10 +23,10 @@ public interface IAdminService
     Task<IEnumerable<AdminUserResponse>> GetAllAdminUsersAsync();
     
     // Meeting token methods
-    Task<GenerateMeetingTokenResponse?> GenerateMeetingTokenAsync(string meetingId);
+    Task<GenerateMeetingTokenResponse?> GenerateMeetingTokenAsync(string meetingId, string currentUserId, string currentUserRole);
     Task<ValidateMeetingTokenResponse> ValidateMeetingTokenAsync(ValidateMeetingTokenRequest request);
     
     // Analytics methods
-    Task<SessionMetricsDto?> GetSessionMetricsAsync(string meetingId);
-    Task<IEnumerable<SessionLogDto>> GetSessionLogsAsync(int sessionId);
+    Task<SessionMetricsDto?> GetSessionMetricsAsync(string meetingId, string currentUserId, string currentUserRole);
+    Task<IEnumerable<SessionLogDto>> GetSessionLogsAsync(int sessionId, string currentUserId, string currentUserRole);
 }

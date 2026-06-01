@@ -49,16 +49,17 @@ public class JwtTokenService : IJwtTokenService
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
 
-    public string GenerateAdminToken(string userId, string fullName, DateTime expiresAt)
+    public string GenerateAdminToken(string userId, string fullName, string role, DateTime expiresAt)
     {
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_secret));
         var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+        var normalizedRole = string.Equals(role, "subadmin", StringComparison.OrdinalIgnoreCase) ? "subadmin" : "admin";
 
         var claims = new[]
         {
             new Claim("userId", userId),
             new Claim("fullName", fullName),
-            new Claim("role", "admin"),
+            new Claim("role", normalizedRole),
             new Claim(JwtRegisteredClaimNames.Sub, userId),
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
             new Claim(JwtRegisteredClaimNames.Iat, DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString())

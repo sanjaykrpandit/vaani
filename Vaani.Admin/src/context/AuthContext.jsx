@@ -14,8 +14,12 @@ export const AuthProvider = ({ children }) => {
     const storedUser = localStorage.getItem('adminUser')
     
     if (storedToken && storedUser) {
+      const parsedUser = JSON.parse(storedUser)
       setToken(storedToken)
-      setUser(JSON.parse(storedUser))
+      setUser({
+        ...parsedUser,
+        role: parsedUser?.role || 'admin'
+      })
     }
     
     setLoading(false)
@@ -27,9 +31,14 @@ export const AuthProvider = ({ children }) => {
       
       if (response.success) {
         setToken(response.accessToken)
-        setUser(response.user)
+        const normalizedUser = {
+          ...response.user,
+          role: response.user?.role || 'admin'
+        }
+
+        setUser(normalizedUser)
         localStorage.setItem('adminToken', response.accessToken)
-        localStorage.setItem('adminUser', JSON.stringify(response.user))
+        localStorage.setItem('adminUser', JSON.stringify(normalizedUser))
         return { success: true }
       }
       

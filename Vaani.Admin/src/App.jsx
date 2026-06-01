@@ -50,7 +50,7 @@ function App() {
       <Route
         path="/meetings/edit/:meetingId"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute allowedRoles={['admin']}>
             <EditMeeting />
           </ProtectedRoute>
         }
@@ -58,7 +58,7 @@ function App() {
       <Route
         path="/meetings/:meetingId/metrics"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute allowedRoles={['admin']}>
             <MeetingMetricsPage />
           </ProtectedRoute>
         }
@@ -66,7 +66,7 @@ function App() {
       <Route
         path="/languages"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute allowedRoles={['admin']}>
             <LanguageList />
           </ProtectedRoute>
         }
@@ -74,7 +74,7 @@ function App() {
       <Route
         path="/users"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute allowedRoles={['admin']}>
             <UserList />
           </ProtectedRoute>
         }

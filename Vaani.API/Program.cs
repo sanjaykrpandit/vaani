@@ -19,6 +19,36 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container
 builder.Services.AddControllers();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "Vaani API",
+        Version = "v1"
+    });
+
+    var jwtSecurityScheme = new OpenApiSecurityScheme
+    {
+        Scheme = "bearer",
+        BearerFormat = "JWT",
+        Name = "Authorization",
+        In = ParameterLocation.Header,
+        Type = SecuritySchemeType.Http,
+        Description = "Enter JWT Bearer token only",
+        Reference = new OpenApiReference
+        {
+            Id = JwtBearerDefaults.AuthenticationScheme,
+            Type = ReferenceType.SecurityScheme
+        }
+    };
+
+    options.AddSecurityDefinition(jwtSecurityScheme.Reference.Id, jwtSecurityScheme);
+    options.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        { jwtSecurityScheme, Array.Empty<string>() }
+    });
+});
 
 // Add IHttpContextAccessor for services that need current user info
 builder.Services.AddHttpContextAccessor();
@@ -35,11 +65,16 @@ Action<DbContextOptionsBuilder> configureDb = options =>
             errorCodesToAdd: null);
     });
 
-    // Log SQL queries in development
+    // Log SQL queries in development only when explicitly enabled.
     if (builder.Environment.IsDevelopment())
     {
-        options.EnableSensitiveDataLogging();
         options.EnableDetailedErrors();
+
+        var enableSensitiveDataLogging = builder.Configuration.GetValue<bool>("Logging:EnableSensitiveDataLogging");
+        if (enableSensitiveDataLogging)
+        {
+            options.EnableSensitiveDataLogging();
+        }
     }
 };
 
@@ -196,10 +231,17 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
 var app = builder.Build();
 
+using (var scope = app.Services.CreateScope())
+{
+    var dbContext = scope.ServiceProvider.GetRequiredService<VaaniDbContext>();
+    dbContext.Database.Migrate();
+}
+
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
-    // Add development exceptions if required
+    app.UseSwagger();
+    app.UseSwaggerUI();
 }
 
 // -------------------------------------------------------------

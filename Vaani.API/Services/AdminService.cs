@@ -68,7 +68,8 @@ public class AdminService : IAdminService
 
             // Generate JWT token
             var expiresAt = DateTime.UtcNow.AddHours(8);
-            var token = _jwtTokenService.GenerateAdminToken(userId, admin.FullName, expiresAt);
+            var normalizedRole = NormalizeRole(admin.Role);
+            var token = _jwtTokenService.GenerateAdminToken(userId, admin.FullName, normalizedRole, expiresAt);
 
             _logger.LogInformation("Admin login successful: {UserId}", userId);
 
@@ -82,7 +83,8 @@ public class AdminService : IAdminService
                 {
                     UserId = admin.UserId,
                     FullName = admin.FullName,
-                    Email = admin.Email
+                    Email = admin.Email,
+                    Role = normalizedRole
                 }
             };
         }
@@ -97,7 +99,7 @@ public class AdminService : IAdminService
         }
     }
 
-    public async Task<MeetingResponse?> CreateMeetingAsync(CreateMeetingRequest request)
+    public async Task<MeetingResponse?> CreateMeetingAsync(CreateMeetingRequest request, string currentUserId)
     {
         try
         {
@@ -111,7 +113,9 @@ public class AdminService : IAdminService
             }
 
             // Verify Azure subscription exists
-            var azureSubscription = await _dbContext.AzureSubscriptions.FirstOrDefaultAsync();
+            var azureSubscription = request.AzureSubscriptionId > 0
+                ? await _dbContext.AzureSubscriptions.FirstOrDefaultAsync(a => a.Id == request.AzureSubscriptionId && a.IsActive)
+                : await _dbContext.AzureSubscriptions.FirstOrDefaultAsync(a => a.IsActive);
             if (azureSubscription == null)
             {
                 _logger.LogWarning("Azure subscription not found: {AzureSubscriptionId}", request.AzureSubscriptionId);
@@ -127,6 +131,8 @@ public class AdminService : IAdminService
                 ValidUntil = request.ValidUntil,
                 IsActive = true,
                 CreatedAt = DateTime.UtcNow,
+                CreatedBy = currentUserId,
+                UpdatedBy = currentUserId,
                 MeetingLanguage = request.MeetingLanguage ?? "en-US",
                 PublicToken = Guid.NewGuid().ToString("N")
             };
@@ -159,12 +165,17 @@ public class AdminService : IAdminService
         }
     }
 
-    public async Task<MeetingResponse?> UpdateMeetingAsync(string meetingId, UpdateMeetingRequest request)
+    public async Task<MeetingResponse?> UpdateMeetingAsync(string meetingId, UpdateMeetingRequest request, string currentUserId, string currentUserRole)
     {
         try
         {
-            var meeting = await _dbContext.Meetings
-                .Include(m => m.AzureSubscription)
+            if (!IsAdminRole(currentUserRole))
+            {
+                _logger.LogWarning("Non-admin user attempted to update meeting: {UserId} {MeetingId}", currentUserId, meetingId);
+                return null;
+            }
+
+            var meeting = await GetAccessibleMeetingQuery(currentUserId, currentUserRole, includeAzureSubscription: true)
                 .FirstOrDefaultAsync(m => m.MeetingId == meetingId.ToUpperInvariant());
 
             if (meeting == null)
@@ -227,6 +238,7 @@ public class AdminService : IAdminService
             }
 
             meeting.UpdatedAt = DateTime.UtcNow;
+            meeting.UpdatedBy = currentUserId;
 
             await _dbContext.SaveChangesAsync();
 
@@ -246,11 +258,17 @@ public class AdminService : IAdminService
         }
     }
 
-    public async Task<bool> DeleteMeetingAsync(string meetingId)
+    public async Task<bool> DeleteMeetingAsync(string meetingId, string currentUserId, string currentUserRole)
     {
         try
         {
-            var meeting = await _dbContext.Meetings
+            if (!IsAdminRole(currentUserRole))
+            {
+                _logger.LogWarning("Non-admin user attempted to delete meeting: {UserId} {MeetingId}", currentUserId, meetingId);
+                return false;
+            }
+
+            var meeting = await GetAccessibleMeetingQuery(currentUserId, currentUserRole)
                 .FirstOrDefaultAsync(m => m.MeetingId == meetingId.ToUpperInvariant());
 
             if (meeting == null)
@@ -272,12 +290,11 @@ public class AdminService : IAdminService
         }
     }
 
-    public async Task<MeetingResponse?> GetMeetingByIdAsync(string meetingId)
+    public async Task<MeetingResponse?> GetMeetingByIdAsync(string meetingId, string currentUserId, string currentUserRole)
     {
         try
         {
-            var meeting = await _dbContext.Meetings
-                .Include(m => m.AzureSubscription)
+            var meeting = await GetAccessibleMeetingQuery(currentUserId, currentUserRole, includeAzureSubscription: true)
                 .FirstOrDefaultAsync(m => m.MeetingId == meetingId.ToUpperInvariant());
 
             return meeting != null ? MapToMeetingResponse(meeting) : null;
@@ -289,12 +306,11 @@ public class AdminService : IAdminService
         }
     }
 
-    public async Task<IEnumerable<MeetingResponse>> GetAllMeetingsAsync()
+    public async Task<IEnumerable<MeetingResponse>> GetAllMeetingsAsync(string currentUserId, string currentUserRole)
     {
         try
         {
-            var meetings = await _dbContext.Meetings
-                .Include(m => m.AzureSubscription)
+            var meetings = await GetAccessibleMeetingQuery(currentUserId, currentUserRole, includeAzureSubscription: true)
                 .OrderByDescending(m => m.CreatedAt)
                 .ToListAsync();
 
@@ -333,6 +349,7 @@ public class AdminService : IAdminService
                 PasswordHash = HashPassword(request.Password),
                 FullName = request.FullName,
                 Email = request.Email,
+                Role = NormalizeRole(request.Role),
                 IsActive = true,
                 CreatedAt = DateTime.UtcNow
             };
@@ -387,6 +404,11 @@ public class AdminService : IAdminService
             if (!string.IsNullOrWhiteSpace(request.Password))
             {
                 adminUser.PasswordHash = HashPassword(request.Password);
+            }
+
+            if (!string.IsNullOrWhiteSpace(request.Role))
+            {
+                adminUser.Role = NormalizeRole(request.Role);
             }
 
             if (request.IsActive.HasValue)
@@ -448,6 +470,7 @@ public class AdminService : IAdminService
             UserId = adminUser.UserId,
             FullName = adminUser.FullName,
             Email = adminUser.Email,
+            Role = NormalizeRole(adminUser.Role),
             IsActive = adminUser.IsActive,
             CreatedAt = adminUser.CreatedAt,
             LastLoginAt = adminUser.LastLoginAt
@@ -482,6 +505,33 @@ public class AdminService : IAdminService
         };
     }
 
+    private static string NormalizeRole(string? role)
+    {
+        return string.Equals(role, "subadmin", StringComparison.OrdinalIgnoreCase) ? "subadmin" : "admin";
+    }
+
+    private static bool IsAdminRole(string? role)
+    {
+        return string.Equals(NormalizeRole(role), "admin", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private IQueryable<Meeting> GetAccessibleMeetingQuery(string currentUserId, string currentUserRole, bool includeAzureSubscription = false)
+    {
+        IQueryable<Meeting> query = _dbContext.Meetings;
+
+        if (includeAzureSubscription)
+        {
+            query = query.Include(m => m.AzureSubscription);
+        }
+
+        if (IsAdminRole(currentUserRole))
+        {
+            return query;
+        }
+
+        return query.Where(m => m.CreatedBy == currentUserId);
+    }
+
     private bool VerifyPassword(string password, string passwordHash)
     {
         var hash = HashPassword(password);
@@ -496,11 +546,17 @@ public class AdminService : IAdminService
         return Convert.ToBase64String(hash);
     }
 
-    public async Task<SessionMetricsDto?> GetSessionMetricsAsync(string meetingId)
+    public async Task<SessionMetricsDto?> GetSessionMetricsAsync(string meetingId, string currentUserId, string currentUserRole)
     {
         try
         {
-            var meeting = await _dbContext.Meetings
+            if (!IsAdminRole(currentUserRole))
+            {
+                _logger.LogWarning("Non-admin user attempted to view metrics: {UserId} {MeetingId}", currentUserId, meetingId);
+                return null;
+            }
+
+            var meeting = await GetAccessibleMeetingQuery(currentUserId, currentUserRole)
                 .FirstOrDefaultAsync(m => m.MeetingId == meetingId.ToUpperInvariant());
 
             if (meeting == null)
@@ -777,10 +833,16 @@ public class AdminService : IAdminService
         }
     }
 
-    public async Task<IEnumerable<SessionLogDto>> GetSessionLogsAsync(int sessionId)
+    public async Task<IEnumerable<SessionLogDto>> GetSessionLogsAsync(int sessionId, string currentUserId, string currentUserRole)
     {
         try
         {
+            if (!IsAdminRole(currentUserRole))
+            {
+                _logger.LogWarning("Non-admin user attempted to view session logs: {UserId} {SessionId}", currentUserId, sessionId);
+                return Enumerable.Empty<SessionLogDto>();
+            }
+
             var logs = await _dbContext.SessionLogs
                 .Where(l => l.SessionId == sessionId)
                 .OrderByDescending(l => l.Timestamp)
@@ -802,11 +864,17 @@ public class AdminService : IAdminService
         }
     }
 
-    public async Task<GenerateMeetingTokenResponse?> GenerateMeetingTokenAsync(string meetingId)
+    public async Task<GenerateMeetingTokenResponse?> GenerateMeetingTokenAsync(string meetingId, string currentUserId, string currentUserRole)
     {
         try
         {
-            var meeting = await _dbContext.Meetings
+            if (!IsAdminRole(currentUserRole))
+            {
+                _logger.LogWarning("Non-admin user attempted to generate token: {UserId} {MeetingId}", currentUserId, meetingId);
+                return null;
+            }
+
+            var meeting = await GetAccessibleMeetingQuery(currentUserId, currentUserRole)
                 .FirstOrDefaultAsync(m => m.MeetingId == meetingId.ToUpperInvariant() && m.IsActive);
 
             if (meeting == null)
@@ -912,7 +980,10 @@ public class AdminService : IAdminService
             }
 
             // Get download link from configuration
-            var downloadLink = _configuration["AppDownload:Link"] ?? string.Empty;
+            var isSubtitleApp = string.Equals(request.AppType, "subtitle", StringComparison.OrdinalIgnoreCase);
+            var downloadLink = isSubtitleApp
+                ? _configuration["AppDownload:SubtitleLink"] ?? string.Empty
+                : _configuration["AppDownload:Link"] ?? string.Empty;
 
             _logger.LogInformation("Token validated successfully for meeting: {MeetingId}", tokenMeetingId);
 

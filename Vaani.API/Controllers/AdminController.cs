@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Vaani.API.Interfaces;
 using Vaani.API.Models.DTOs;
@@ -12,11 +13,13 @@ namespace Vaani.API.Controllers;
 public class AdminController : ControllerBase
 {
     private readonly IAdminService _adminService;
+    private readonly IConfiguration _configuration;
     private readonly ILogger<AdminController> _logger;
 
-    public AdminController(IAdminService adminService, ILogger<AdminController> logger)
+    public AdminController(IAdminService adminService, IConfiguration configuration, ILogger<AdminController> logger)
     {
         _adminService = adminService;
+        _configuration = configuration;
         _logger = logger;
     }
 
@@ -69,5 +72,16 @@ public class AdminController : ControllerBase
                 Message = "An unexpected error occurred"
             });
         }
+    }
+
+    [Authorize]
+    [HttpGet("app-download-links")]
+    public ActionResult<object> GetAppDownloadLinks()
+    {
+        return Ok(new
+        {
+            link = _configuration["AppDownload:Link"] ?? string.Empty,
+            subtitleLink = _configuration["AppDownload:SubtitleLink"] ?? string.Empty
+        });
     }
 }

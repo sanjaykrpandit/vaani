@@ -12,9 +12,11 @@ function UserList() {
   const [editingUser, setEditingUser] = useState(null)
   const [form, setForm] = useState({
     userId: '',
-    FullName: '',
-    Email: '',
-    Password: ''
+    fullName: '',
+    email: '',
+    password: '',
+    role: 'subadmin',
+    isActive: true
   })
 
   useEffect(() => {
@@ -39,9 +41,10 @@ function UserList() {
     setEditingUser(null)
     setForm({
       userId: '',
-      FullName: '',
-      Email: '',
-      Password: '',
+      fullName: '',
+      email: '',
+      password: '',
+      role: 'subadmin',
       isActive: true
     })
     setShowModal(true)
@@ -53,7 +56,8 @@ function UserList() {
       userId: user.userId,
       fullName: user.fullName,
       email: user.email,
-      password: user.password,
+      password: '',
+      role: user.role || 'admin',
       isActive: user.isActive
     })
     setShowModal(true)
@@ -134,13 +138,13 @@ function UserList() {
                       <td>{user.userId}</td>
                       <td>{user.fullName}</td>
                       <td>{user.email}</td>
-                      <td>{user.role || 'Admin'}</td>
+                  <td>{user.role || 'admin'}</td>
                       <td>
                         <span className={`status-badge ${user.isActive ? 'status-active' : 'status-inactive'}`}>
                           {user.isActive ? 'Active' : 'Inactive'}
                         </span>
                       </td>
-                      <td>{user.createdDate ? new Date(user.createdDate).toLocaleDateString() : '-'}</td>
+                      <td>{user.createdAt ? new Date(user.createdAt).toLocaleDateString() : '-'}</td>
                       <td align='right'>
                         <button className="btn btn-xsm" onClick={() => openEdit(user)}>
                           ✏️
@@ -201,14 +205,13 @@ function UserList() {
                     required={!editingUser}
                   />
                 </div>
-                {/* <div className="form-group">
+                <div className="form-group">
                   <label>Role *</label>
                   <select name="role" value={form.role} onChange={handleChange} required>
-                    <option value="Admin">Admin</option>
-                    <option value="SuperAdmin">Super Admin</option>
-                    <option value="Moderator">Moderator</option>
+                    <option value="admin">admin</option>
+                    <option value="subadmin">subadmin</option>
                   </select>
-                </div> */}
+                </div>
                 <div className="form-group">
                   <label>
                     <input

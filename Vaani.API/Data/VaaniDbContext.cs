@@ -36,6 +36,7 @@ public class VaaniDbContext : DbContext
             entity.Property(e => e.PasswordHash).HasColumnName("password_hash").IsRequired().HasMaxLength(255);
             entity.Property(e => e.FullName).HasColumnName("full_name").IsRequired().HasMaxLength(100);
             entity.Property(e => e.Email).HasColumnName("email").IsRequired().HasMaxLength(100);
+            entity.Property(e => e.Role).HasColumnName("role").IsRequired().HasMaxLength(20).HasDefaultValue("admin");
             entity.Property(e => e.IsActive).HasColumnName("is_active").HasDefaultValue(true);
             entity.Property(e => e.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("CURRENT_TIMESTAMP");
             entity.Property(e => e.LastLoginAt).HasColumnName("last_login_at");

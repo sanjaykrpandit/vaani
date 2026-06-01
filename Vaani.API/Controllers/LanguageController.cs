@@ -11,7 +11,7 @@ namespace Vaani.API.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Roles = "admin")]
+[Authorize(Roles = "admin,subadmin")]
 public class LanguageController : ControllerBase
 {
     private readonly ILanguageService _languageService;
@@ -47,6 +47,7 @@ public class LanguageController : ControllerBase
 
     /// <summary> create language </summary>
     [HttpPost]
+    [Authorize(Roles = "admin")]
     [ProducesResponseType(typeof(LanguageDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
@@ -89,6 +90,7 @@ public class LanguageController : ControllerBase
 
     /// <summary> update language </summary>
     [HttpPut]
+    [Authorize(Roles = "admin")]
     [ProducesResponseType(typeof(LanguageDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
@@ -139,6 +141,7 @@ public class LanguageController : ControllerBase
     /// <param name="languageCode"></param>
     /// <returns></returns>
     [HttpDelete("{languageCode}")]
+    [Authorize(Roles = "admin")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]

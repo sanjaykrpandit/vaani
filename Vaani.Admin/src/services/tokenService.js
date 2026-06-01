@@ -21,14 +21,16 @@ export const generateMeetingToken = async (meetingId) => {
  * Backend decrypts token and validates meeting
  * @param {string} meetingId - The meeting ID entered by user
  * @param {string} token - The encrypted token from URL
+ * @param {string} appType - audio | subtitle
  * @returns {Promise<object>} - Meeting details with isValid flag and downloadLink
  */
-export const validateMeetingToken = async (meetingId, token) => {
+export const validateMeetingToken = async (meetingId, token, appType = 'audio') => {
   try {
     // This is a public endpoint that doesn't require admin authentication
     const response = await api.post('/meetings/validate-token', {
       meetingId,
-      token
+      token,
+      appType
     })
     return response.data
   } catch (error) {

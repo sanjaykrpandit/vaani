@@ -26,6 +26,11 @@ export const meetingService = {
     return response.data
   },
 
+  getAppDownloadLinks: async () => {
+    const response = await apiClient.get('/admin/app-download-links')
+    return response.data
+  },
+
   getAzureSubscriptions: async () => {
     const response = await apiClient.get('/admin/AzureSubscriptions')
     return response.data
