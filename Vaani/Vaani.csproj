@@ -6,6 +6,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
 
+    <ApplicationIcon>Assets\icon.ico</ApplicationIcon>
+
     <!-- Avalonia -->
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <ApplicationManifest>app.manifest</ApplicationManifest>
@@ -41,6 +43,14 @@
     <PublishReadyToRun>false</PublishReadyToRun>
   </PropertyGroup>
 
+<ItemGroup>
+  <EmbeddedResource Include="appsettings.json" />
+  <None Update="appsettings.json">
+    <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    <CopyToPublishDirectory>Never</CopyToPublishDirectory>
+  </None>
+</ItemGroup>
+
   <ItemGroup>
     <AvaloniaResource Include="Assets\**" />
   </ItemGroup>
@@ -60,11 +70,11 @@
     <None Remove="Docs\**" />
     <None Remove="installer\**" />
   </ItemGroup>
-<ItemGroup>
+<!-- <ItemGroup>
   <None Include="appsettings.json">
     <CopyToOutputDirectory>Always</CopyToOutputDirectory>
   </None>
-</ItemGroup>
+</ItemGroup> -->
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="11.0.10" />
     <PackageReference Include="Avalonia.Desktop" Version="11.0.10" />
@@ -72,6 +82,7 @@
     <PackageReference Include="Avalonia.Fonts.Inter" Version="11.0.10" />
     <PackageReference Include="Avalonia.ReactiveUI" Version="11.0.10" />
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="8.0.0" />
+    <PackageReference Include="Microsoft.CognitiveServices.Speech" Version="1.43.0" />
     <PackageReference Include="NAudio" Version="2.2.1" />
 	<PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.1" />
   </ItemGroup>

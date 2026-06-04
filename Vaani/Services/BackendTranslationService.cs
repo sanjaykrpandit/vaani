@@ -46,6 +46,7 @@ public class BackendTranslationService : ITranslationService
     private bool _isBypassMode;
     private bool _disposed;
     private bool _isStoppingAudioCapture;
+    private int _stopInProgress;
     private int _micRecoveryInProgress;
     private Task? _audioDeviceMonitorTask;
     private string? _boundMicDeviceId;
@@ -244,6 +245,11 @@ public class BackendTranslationService : ITranslationService
 
     public async Task StopTranslationAsync()
     {
+        if (Interlocked.Exchange(ref _stopInProgress, 1) == 1)
+            return;
+
+        try
+        {
         Log("Stopping backend translation...");
 
         StopAudioCapture();
@@ -252,7 +258,8 @@ public class BackendTranslationService : ITranslationService
         {
             try
             {
-                await _connection.InvokeAsync("StopTranslation", _translationSessionId);
+                using var stopCts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+                await _connection.InvokeAsync("StopTranslation", _translationSessionId, stopCts.Token);
             }
             catch (Exception ex)
             {
@@ -274,6 +281,11 @@ public class BackendTranslationService : ITranslationService
 
         EmitStoppedOnce();
         Log("Backend translation stopped.");
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _stopInProgress, 0);
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────

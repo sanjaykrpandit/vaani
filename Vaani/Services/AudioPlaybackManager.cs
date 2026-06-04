@@ -71,23 +71,52 @@ public static class AudioPlaybackManager
 
     private static async Task PlayAudioInternalAsync(byte[] audioData, MMDevice? device, string logPrefix, CancellationToken ct)
     {
-        using var ms = new MemoryStream(audioData); // ✅ Removed writable: false
+        using var ms = new MemoryStream(audioData);
         using var rs = new RawSourceWaveStream(ms, new WaveFormat(
             AudioConfiguration.SampleRate,
             AudioConfiguration.BitsPerSample,
             AudioConfiguration.Channels));
 
-        // ✅ Single code path - no fallback overhead
+        // Try specific device first.
         if (device != null)
         {
-            await PlayWithWasapiAsync(rs, device, ct);
-        }
-        else
-        {
-            await PlayWithDefaultWasapiAsync(rs, ct);
+            try
+            {
+                await PlayWithWasapiAsync(rs, device, ct);
+                _logger?.Debug(LogCategory.Playback, $"{logPrefix} playback completed");
+                return;
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger?.Warning(LogCategory.Playback, $"{logPrefix} WASAPI device failed: {ex.GetType().Name} - {ex.Message}");
+                ms.Position = 0;
+            }
         }
 
-        _logger?.Debug(LogCategory.Playback, $"{logPrefix} playback completed");
+        // Fallback 1: default WASAPI.
+        try
+        {
+            await PlayWithDefaultWasapiAsync(rs, ct);
+            _logger?.Debug(LogCategory.Playback, $"{logPrefix} playback completed (default WASAPI)");
+            return;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger?.Warning(LogCategory.Playback, $"{logPrefix} default WASAPI failed: {ex.GetType().Name} - {ex.Message}");
+            ms.Position = 0;
+        }
+
+        // Fallback 2: DirectSound.
+        await PlayWithDirectSoundAsync(rs, ct);
+        _logger?.Debug(LogCategory.Playback, $"{logPrefix} playback completed (DirectSound fallback)");
     }
 
     //private static async Task PlayAudioInternalAsync(byte[] audioData, MMDevice? device, string logPrefix, CancellationToken ct)

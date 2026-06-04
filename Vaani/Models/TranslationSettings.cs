@@ -17,6 +17,9 @@ public class TranslationSettings
     /// <summary>When true the desktop uses BackendTranslationService instead of local TranslationService</summary>
     public bool UseBackendTranslation { get; set; } = true;
 
+    /// <summary>When true the desktop uses DirectAzureTranslationService (local Azure SDK, no server pipeline)</summary>
+    public bool UseDirectAzure { get; set; } = false;
+
     /// <summary>
     /// When true, source and target language are the same — both pipelines transcribe in
     /// real-time but no TTS synthesis or audio injection takes place (bypass mode).

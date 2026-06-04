@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using System.Collections.Concurrent;
 using System.Globalization;
 using System.IO;
+using System.Security;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Channels;
@@ -22,6 +23,7 @@ namespace Vaani.API.Services;
 /// </summary>
 public class TranslationService : ITranslationService, IDisposable
 {
+    private const int TtsRatePercent = 10;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IJwtTokenService _jwtTokenService;
     private readonly ILogger<TranslationService> _logger;
@@ -665,7 +667,20 @@ public class TranslationService : ITranslationService, IDisposable
 
         try
         {
-            using var result = await synthesizer.SpeakTextAsync(workItem.Text);
+            var synthesisLanguage = pipeline == AudioPipelineDirection.Incoming
+                ? state.SourceLanguage
+                : state.TargetLanguage;
+            var ssml = BuildFastSsml(workItem.Text, synthesisLanguage);
+            var result = await synthesizer.SpeakSsmlAsync(ssml);
+            if (result.Reason != ResultReason.SynthesizingAudioCompleted)
+            {
+                _logger.LogWarning("[{Id}] {Pipeline} fast SSML fallback triggered. Reason: {Reason}",
+                    state.TranslationSessionId,
+                    pipeline,
+                    result.Reason);
+                result.Dispose();
+                result = await synthesizer.SpeakTextAsync(workItem.Text);
+            }
 
             if (result.Reason == ResultReason.SynthesizingAudioCompleted)
             {
@@ -703,6 +718,8 @@ public class TranslationService : ITranslationService, IDisposable
                     SynthesisDurationMs = synthesisDurationMs,
                     EndToEndLatencyMs = endToEndLatencyMs
                 });
+
+                result.Dispose();
             }
             else
             {
@@ -711,6 +728,7 @@ public class TranslationService : ITranslationService, IDisposable
                     state.TranslationSessionId,
                     pipeline,
                     result.Reason);
+                result.Dispose();
             }
         }
         catch (Exception ex)
@@ -734,6 +752,13 @@ public class TranslationService : ITranslationService, IDisposable
                 SynthesisStartedAtUtc = synthesisStartedAt
             });
         }
+    }
+
+    private static string BuildFastSsml(string text, string language)
+    {
+        var safeText = SecurityElement.Escape(text) ?? string.Empty;
+        var safeLang = string.IsNullOrWhiteSpace(language) ? "en-US" : language;
+        return $"<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='{safeLang}'><prosody rate='+{TtsRatePercent}%'>{safeText}</prosody></speak>";
     }
 
     /// <summary>

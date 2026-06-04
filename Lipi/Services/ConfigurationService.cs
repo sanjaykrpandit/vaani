@@ -63,6 +63,6 @@ public class RealtimeConfig
 
 public class AuthenticationConfig
 {
-    public string ApiBaseUrl { get; set; } = "https://localhost:7020";
+    public string ApiBaseUrl { get; set; } = "http://20.198.120.78";
     public int ApiTimeout { get; set; } = 30;
 }

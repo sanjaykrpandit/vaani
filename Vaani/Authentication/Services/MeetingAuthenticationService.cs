@@ -285,6 +285,68 @@ public class MeetingAuthenticationService
     }
 
     /// <summary>
+    /// Get a short-lived Azure Speech token for Direct Azure mode.
+    /// Reuses the same /api/lipi/direct/token endpoint.
+    /// </summary>
+    public async Task<DirectSpeechTokenResponse> GetDirectSpeechTokenAsync(string meetingId, string sessionId, string sessionToken, string sourceLanguage = "", string targetLanguage = "")
+    {
+        try
+        {
+            var request = new
+            {
+                MeetingId = meetingId,
+                SessionId = sessionId,
+                SourceLanguage = sourceLanguage,
+                TargetLanguages = string.IsNullOrWhiteSpace(targetLanguage) ? [] : new[] { targetLanguage }
+            };
+            var httpRequest = new HttpRequestMessage(HttpMethod.Post, "/api/lipi/direct/token")
+            {
+                Content = JsonContent.Create(request)
+            };
+            httpRequest.Headers.Add("Authorization", $"Bearer {sessionToken}");
+
+            var response = await _httpClient.SendAsync(httpRequest);
+            if (!response.IsSuccessStatusCode)
+                return new DirectSpeechTokenResponse { Success = false, Message = "Failed to acquire Azure token." };
+
+            return await response.Content.ReadFromJsonAsync<DirectSpeechTokenResponse>()
+                ?? new DirectSpeechTokenResponse { Success = false, Message = "Invalid token response." };
+        }
+        catch (Exception ex)
+        {
+            return new DirectSpeechTokenResponse { Success = false, Message = ex.Message };
+        }
+    }
+
+    /// <summary>
+    /// Submit transcript for logging (Direct Azure mode).
+    /// </summary>
+    public async Task SubmitTranscriptAsync(string meetingId, string sessionId, string sourceLanguage, string targetLanguage, string originalText, string translatedText, string sessionToken)
+    {
+        try
+        {
+            var request = new
+            {
+                MeetingId = meetingId,
+                SessionId = sessionId,
+                SourceLanguage = sourceLanguage,
+                TargetLanguages = new[] { targetLanguage },
+                Entries = new[]
+                {
+                    new { OriginalText = originalText, Translations = new Dictionary<string, string> { [targetLanguage] = translatedText }, RecognizedAtUtc = DateTime.UtcNow }
+                }
+            };
+            var httpRequest = new HttpRequestMessage(HttpMethod.Post, "/api/lipi/direct/transcripts")
+            {
+                Content = JsonContent.Create(request)
+            };
+            httpRequest.Headers.Add("Authorization", $"Bearer {sessionToken}");
+            await _httpClient.SendAsync(httpRequest);
+        }
+        catch { }
+    }
+
+    /// <summary>
     /// Get application version
     /// </summary>
     private string GetAppVersion()

@@ -7,18 +7,27 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
 
-    <PublishProtocol>ClickOnce</PublishProtocol>
-    <GenerateManifests>true</GenerateManifests>
-    <SignManifests>false</SignManifests>
-    <TrustUrlParameters>True</TrustUrlParameters>
+    <ApplicationIcon>Assets\icon.ico</ApplicationIcon>
 
-    <Install>False</Install>
-    <UpdateEnabled>False</UpdateEnabled>
-    <UpdateMode>Foreground</UpdateMode>
-    <InstallFrom>Web</InstallFrom>
-    <IsWebBootstrapper>true</IsWebBootstrapper>
-    <InstallUrl>https://vaani-rtt-api.tryzent.com/launcher/</InstallUrl>
+    <!-- Single-file portable publish -->
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <PublishTrimmed>false</PublishTrimmed>
+    <PublishReadyToRun>false</PublishReadyToRun>
   </PropertyGroup>
+
+  <!-- Embed appsettings.json and Moderation txt files into EXE -->
+  <ItemGroup>
+    <EmbeddedResource Include="appsettings.json" />
+    <EmbeddedResource Include="Moderation\**\*.txt" />
+  </ItemGroup>
+
+  <!-- Prevent Moderation files from being copied to output/publish folder -->
+  <ItemGroup>
+    <Content Remove="Moderation\**" />
+    <None Remove="Moderation\**" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="11.0.10" />
@@ -32,36 +41,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="appsettings.json">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-  </ItemGroup>
-
-  <ItemGroup>
     <AvaloniaResource Include="Assets\**" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Content Include="Moderation\BlockedTerms\en.txt">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-    </Content>
-    <Content Include="Moderation\BlockedTerms\fr.txt">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-    </Content>
-    <Content Include="Moderation\BlockedTerms\hi-translit.txt">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-    </Content>
-    <Content Include="Moderation\BlockedTerms\hi.txt">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-    </Content>
-    <Content Include="Moderation\BlockedTerms\ja.txt">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-    </Content>
+ <None Include="Assets\icon.ico" />
   </ItemGroup>
 
 </Project>
