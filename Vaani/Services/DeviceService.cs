@@ -180,7 +180,11 @@ public class DeviceService
         {
             if (_cachedOutgoingCable != null && IsCacheValid())
             {
-                return _cachedOutgoingCable;
+                var fresh = TryResolveFreshDevice(_cachedOutgoingCable);
+                if (fresh != null)
+                    return fresh;
+
+                _cachedOutgoingCable = null;
             }
         }
 
@@ -203,6 +207,25 @@ public class DeviceService
                 }
             }
 
+            // Priority 2: Any active CABLE-A render endpoint containing "Input"
+            if (device == null)
+            {
+                foreach (var dev in devices)
+                {
+                    var name = dev.FriendlyName;
+                    if (name.Contains("CABLE", StringComparison.OrdinalIgnoreCase) &&
+                        (name.Contains("-A", StringComparison.OrdinalIgnoreCase) ||
+                         name.Contains(" A ", StringComparison.OrdinalIgnoreCase) ||
+                         name.Contains("Cable A", StringComparison.OrdinalIgnoreCase)) &&
+                        name.Contains("Input", StringComparison.OrdinalIgnoreCase))
+                    {
+                        Log($"[OUTGOING] Using fallback CABLE-A Input: {name}");
+                        device = dev;
+                        break;
+                    }
+                }
+            }
+
             if (device == null)
             {
                 Log("[OUTGOING] ⚠️ No CABLE output device found!");
@@ -220,6 +243,24 @@ public class DeviceService
         }
 
         return device;
+    }
+
+    private static MMDevice? TryResolveFreshDevice(MMDevice? cachedDevice)
+    {
+        if (cachedDevice == null)
+            return null;
+
+        try
+        {
+            var id = cachedDevice.ID;
+            var enumerator = new MMDeviceEnumerator();
+            var refreshed = enumerator.GetDevice(id);
+            return refreshed?.State == DeviceState.Active ? refreshed : null;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
 

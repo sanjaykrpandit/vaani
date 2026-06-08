@@ -21,6 +21,7 @@ public class MainViewModel : ViewModelBase
     // BackendTranslationService proxies all Azure work to Vaani.API via SignalR
     private readonly BackendTranslationService _backendService;
     private readonly DirectAzureTranslationService _directAzureService;
+    private readonly DirectAzureBypassService _directAzureBypassService;
     private ITranslationService? _activeService;
     private readonly MeetingAuthenticationService _sessionService;
     private readonly ClientService _clientService = new();
@@ -108,6 +109,7 @@ public class MainViewModel : ViewModelBase
         _deviceService = DeviceService.Instance;
         _backendService = new BackendTranslationService();
         _directAzureService = new DirectAzureTranslationService();
+        _directAzureBypassService = new DirectAzureBypassService();
         _sessionService = new MeetingAuthenticationService();
 
         // Read default connection mode from config
@@ -725,8 +727,21 @@ public class MainViewModel : ViewModelBase
             (bool hasStarted, string message, int? startedSessionId) = await _sessionService.StartSessionAsync();
             if (hasStarted)
             {
+                if (startedSessionId.HasValue)
+                {
+                    _settings.SessionId = startedSessionId.Value.ToString();
+                }
+
+                var runtimeSettings = BuildRuntimeSettings();
+                var bypassFromSelection = IsBypassEligible(SelectedSourceLanguage?.Code, SelectedTargetLanguage?.Code);
+                runtimeSettings.IsBypassMode = bypassFromSelection || IsBypassEligible(runtimeSettings.SourceLanguage, runtimeSettings.TargetLanguage);
+
                 // Pick service based on selected connection mode
-                var targetService = _useDirectAzure ? (ITranslationService)_directAzureService : _backendService;
+                var targetService = !_useDirectAzure
+                    ? (ITranslationService)_backendService
+                    : runtimeSettings.IsBypassMode
+                        ? _directAzureBypassService
+                        : _directAzureService;
                 if (_activeService != targetService)
                 {
                     UnwireServiceEvents(_activeService);
@@ -734,12 +749,6 @@ public class MainViewModel : ViewModelBase
                     WireServiceEvents(_activeService);
                 }
 
-                if (startedSessionId.HasValue)
-                {
-                    _settings.SessionId = startedSessionId.Value.ToString();
-                }
-
-                var runtimeSettings = BuildRuntimeSettings();
                 await _activeService.StartTranslationAsync(runtimeSettings);
             }
             else
@@ -1852,6 +1861,7 @@ public class MainViewModel : ViewModelBase
         
         _backendService?.Dispose();
         _directAzureService?.Dispose();
+        _directAzureBypassService?.Dispose();
     }
 
     private void WireServiceEvents(ITranslationService? service)
@@ -1881,6 +1891,7 @@ public class MainViewModel : ViewModelBase
     /// <summary>
     /// Clean up all resources when the application is closing
     /// </summary>
+// No-op patch placeholder to ensure latest file context is in sync after service wiring updates.
     public async Task CleanupAsync()
     {
         if (IsRunning)
@@ -1947,6 +1958,7 @@ public class MainViewModel : ViewModelBase
             AddLog($"⚠️ Error cancelling animations: {Classify(ex)}");
         }
 
+// No-op patch placeholder to ensure latest file context is in sync after service wiring updates.
         AddLog("✅ Application cleanup complete");
     }
     #endregion

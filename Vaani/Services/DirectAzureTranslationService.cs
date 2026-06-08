@@ -4,6 +4,8 @@ using Microsoft.CognitiveServices.Speech.Translation;
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
 using System.Security;
+using System.Text;
+using System.Threading.Channels;
 using Vaani.Authentication.Services;
 using Vaani.Models;
 using AzureAudioConfig = Microsoft.CognitiveServices.Speech.Audio.AudioConfig;
@@ -18,6 +20,11 @@ namespace Vaani.Services;
 public class DirectAzureTranslationService : ITranslationService
 {
     private const int TtsRatePercent = 10;
+    private const int MaxLeadingSilenceTrimMs = 350;
+    private const short LeadingSilenceThreshold = 120;
+    private const int MaxTtsChunkChars = 120;
+    private const int MaxTtsChunkWords = 18;
+    private const int MaxTtsQueueAgeMs = 2500;
     private readonly DeviceService _deviceService;
     private readonly MeetingAuthenticationService _authService;
     private readonly int _tokenRefreshLeadSeconds;
@@ -33,6 +40,10 @@ public class DirectAzureTranslationService : ITranslationService
 
     private SpeechSynthesizer? _outgoingSynthesizer;
     private SpeechSynthesizer? _incomingSynthesizer;
+    private Channel<TtsWorkItem>? _outgoingTtsQueue;
+    private Channel<TtsWorkItem>? _incomingTtsQueue;
+    private Task? _outgoingTtsWorker;
+    private Task? _incomingTtsWorker;
 
     private string _speechToken = string.Empty;
     private string _region = string.Empty;
@@ -43,8 +54,12 @@ public class DirectAzureTranslationService : ITranslationService
     private volatile bool _isSpeakerMuted;
     private int _activeSpeakTasks;  // Interlocked counter — how many SpeakAsync calls are running
     private int _stopInProgress;
+    private int _outgoingPendingTts;
+    private int _incomingPendingTts;
 
     public bool IsRunning => _cts != null && !_cts.IsCancellationRequested;
+
+    private readonly record struct TtsWorkItem(string OriginalText, string TranslatedText, long EnqueuedAtMs);
 
     public event EventHandler<string>? LogMessage;
     public event EventHandler<MessageEventArgs>? MessageReceived;
@@ -78,6 +93,21 @@ public class DirectAzureTranslationService : ITranslationService
         _settings = settings;
         _cts = new CancellationTokenSource();
 
+        _outgoingTtsQueue = Channel.CreateBounded<TtsWorkItem>(new BoundedChannelOptions(3)
+        {
+            SingleReader = true,
+            SingleWriter = false,
+            FullMode = BoundedChannelFullMode.DropOldest
+        });
+        _incomingTtsQueue = Channel.CreateBounded<TtsWorkItem>(new BoundedChannelOptions(3)
+        {
+            SingleReader = true,
+            SingleWriter = false,
+            FullMode = BoundedChannelFullMode.DropOldest
+        });
+        _outgoingTtsWorker = RunTtsQueueAsync(_outgoingTtsQueue, isFromMeeting: false, _cts.Token);
+        _incomingTtsWorker = RunTtsQueueAsync(_incomingTtsQueue, isFromMeeting: true, _cts.Token);
+
         // Always reset mute state at start — stale state from previous session causes silent pipelines
         _isMicMuted = false;
         _isSpeakerMuted = false;
@@ -101,6 +131,12 @@ public class DirectAzureTranslationService : ITranslationService
         Log($"✅ Token acquired, region={_region}, expires={_tokenExpiresAtUtc:HH:mm:ss}");
         Log($"🌐 {settings.SourceLanguage} → {settings.TargetLanguage} | {settings.SourceVoice} / {settings.TargetVoice}");
 
+        // Create persistent synthesizers before warmup so warmup primes the same instances used at runtime.
+        _outgoingSynthesizer = BuildSynthesizer(_settings.TargetVoice);
+        _incomingSynthesizer = BuildSynthesizer(_settings.SourceVoice);
+
+        await WarmUpTtsVoicesAsync(_cts.Token);
+
         StartOutgoing();
         StartIncoming();
         StartTokenRefreshLoop(_cts.Token);
@@ -123,8 +159,15 @@ public class DirectAzureTranslationService : ITranslationService
             Task.WhenAll(StopRecognizer(_outgoingRecognizer), StopRecognizer(_incomingRecognizer)),
             Task.Delay(2000));
 
-        // 2. Wait for any in-flight SpeakAsync calls to finish naturally (they hold their own audio).
-        //    They will exit quickly because _cts is cancelled — playback stops via CancellationToken.
+        // 2. Complete TTS queues and let workers drain in-order for each direction.
+        try { _outgoingTtsQueue?.Writer.TryComplete(); } catch { }
+        try { _incomingTtsQueue?.Writer.TryComplete(); } catch { }
+        if (_outgoingTtsWorker != null)
+            try { await _outgoingTtsWorker.WaitAsync(TimeSpan.FromSeconds(2)); } catch { }
+        if (_incomingTtsWorker != null)
+            try { await _incomingTtsWorker.WaitAsync(TimeSpan.FromSeconds(2)); } catch { }
+
+        // 3. Wait for any in-flight SpeakAsync calls to finish naturally.
         var waitStart = DateTime.UtcNow;
         while (Interlocked.CompareExchange(ref _activeSpeakTasks, 0, 0) > 0)
         {
@@ -132,7 +175,7 @@ public class DirectAzureTranslationService : ITranslationService
             await Task.Delay(50);
         }
 
-        // 3. Stop synthesizers and dispose everything
+        // 4. Stop synthesizers and dispose everything
         await Task.WhenAny(
             Task.WhenAll(StopSynthesizer(_outgoingSynthesizer), StopSynthesizer(_incomingSynthesizer)),
             Task.Delay(1000));
@@ -141,6 +184,10 @@ public class DirectAzureTranslationService : ITranslationService
         _incomingRecognizer?.Dispose();  _incomingRecognizer = null;
         _outgoingSynthesizer?.Dispose(); _outgoingSynthesizer = null;
         _incomingSynthesizer?.Dispose(); _incomingSynthesizer = null;
+        _outgoingTtsQueue = null;
+        _incomingTtsQueue = null;
+        _outgoingTtsWorker = null;
+        _incomingTtsWorker = null;
 
         try { _loopbackCapture?.StopRecording(); } catch { }
         _loopbackCapture?.Dispose();     _loopbackCapture = null;
@@ -173,7 +220,6 @@ public class DirectAzureTranslationService : ITranslationService
             // Azure Speech SDK uses its own audio layer — always use system default mic
             var config = BuildTranslationConfig(_settings.SourceLanguage, _settings.TargetLanguage);
             _outgoingRecognizer = new TranslationRecognizer(config, AzureAudioConfig.FromDefaultMicrophoneInput());
-            _outgoingSynthesizer = BuildSynthesizer(_settings.TargetVoice);
 
             _outgoingRecognizer.Recognizing += (_, e) =>
             {
@@ -192,13 +238,6 @@ public class DirectAzureTranslationService : ITranslationService
                 if (_isMicMuted || e.Result.Reason != ResultReason.TranslatedSpeech || string.IsNullOrWhiteSpace(e.Result.Text)) return;
 
                 var original = e.Result.Text;
-                var targetShort = _settings.TargetLanguage.Split('-')[0];
-                if (!e.Result.Translations.TryGetValue(targetShort, out var translated) || string.IsNullOrWhiteSpace(translated))
-                {
-                    Log($"⚠️ No translation for key '{targetShort}'. Available: {string.Join(", ", e.Result.Translations.Keys)}");
-                    return;
-                }
-
                 MessageReceived?.Invoke(this, new MessageEventArgs
                 {
                     Direction = MessageDirection.Outgoing,
@@ -206,6 +245,14 @@ public class DirectAzureTranslationService : ITranslationService
                     MessageType = MessageType.Recognized,
                     IsFromMeeting = false
                 });
+
+                var targetShort = _settings.TargetLanguage.Split('-')[0];
+                if (!e.Result.Translations.TryGetValue(targetShort, out var translated) || string.IsNullOrWhiteSpace(translated))
+                {
+                    Log($"⚠️ No translation for key '{targetShort}'. Available: {string.Join(", ", e.Result.Translations.Keys)}");
+                    return;
+                }
+
                 TranslationReceived?.Invoke(this, new TranslationEventArgs
                 {
                     Direction = MessageDirection.Outgoing,
@@ -214,7 +261,8 @@ public class DirectAzureTranslationService : ITranslationService
                     IsFromMeeting = false
                 });
 
-                _ = SpeakAsync(translated, original, _outgoingSynthesizer!, isFromMeeting: false, _cts!.Token);
+                if (!TryEnqueueTts(isFromMeeting: false, original, translated))
+                    Log("⚠️ Outgoing TTS queue unavailable, dropped item");
                 _ = LogTranscriptAsync(original, translated);
             };
 
@@ -250,7 +298,6 @@ public class DirectAzureTranslationService : ITranslationService
 
             _incomingPushStream = AudioInputStream.CreatePushStream(AudioStreamFormat.GetWaveFormatPCM(16000, 16, 1));
             var config = BuildTranslationConfig(_settings.TargetLanguage, _settings.SourceLanguage);
-            _incomingSynthesizer = BuildSynthesizer(_settings.SourceVoice);
             _incomingRecognizer = new TranslationRecognizer(config, AzureAudioConfig.FromStreamInput(_incomingPushStream));
 
             _incomingRecognizer.Recognizing += (_, e) =>
@@ -270,10 +317,6 @@ public class DirectAzureTranslationService : ITranslationService
                 if (_isSpeakerMuted || e.Result.Reason != ResultReason.TranslatedSpeech || string.IsNullOrWhiteSpace(e.Result.Text)) return;
 
                 var original = e.Result.Text;
-                var sourceShort = _settings.SourceLanguage.Split('-')[0];
-                if (!e.Result.Translations.TryGetValue(sourceShort, out var translated) || string.IsNullOrWhiteSpace(translated))
-                    return;
-
                 MessageReceived?.Invoke(this, new MessageEventArgs
                 {
                     Direction = MessageDirection.Incoming,
@@ -281,6 +324,11 @@ public class DirectAzureTranslationService : ITranslationService
                     MessageType = MessageType.Recognized,
                     IsFromMeeting = true
                 });
+
+                var sourceShort = _settings.SourceLanguage.Split('-')[0];
+                if (!e.Result.Translations.TryGetValue(sourceShort, out var translated) || string.IsNullOrWhiteSpace(translated))
+                    return;
+
                 TranslationReceived?.Invoke(this, new TranslationEventArgs
                 {
                     Direction = MessageDirection.Incoming,
@@ -289,7 +337,8 @@ public class DirectAzureTranslationService : ITranslationService
                     IsFromMeeting = true
                 });
 
-                _ = SpeakAsync(translated, original, _incomingSynthesizer!, isFromMeeting: true, _cts!.Token);
+                if (!TryEnqueueTts(isFromMeeting: true, original, translated))
+                    Log("⚠️ Incoming TTS queue unavailable, dropped item");
             };
 
             _incomingRecognizer.SessionStarted += (_, e) => Log("🔊 Incoming session started");
@@ -300,9 +349,11 @@ public class DirectAzureTranslationService : ITranslationService
             // Capture directly from CABLE-B Output (the VB-Audio capture endpoint)
             _loopbackCapture = new WasapiCapture(cableDevice);
             var fmt = _loopbackCapture.WaveFormat;
+
             _loopbackCapture.DataAvailable += (_, e) =>
             {
                 if (_incomingPushStream == null || e.BytesRecorded == 0) return;
+
                 var pcm = AudioPcmConverter.ToTarget16kHz(e.Buffer, e.BytesRecorded, fmt);
                 if (pcm.Length > 0)
                     _incomingPushStream.Write(pcm, pcm.Length);
@@ -322,7 +373,7 @@ public class DirectAzureTranslationService : ITranslationService
     // TTS — synthesize then play; bubble clears as soon as synthesis completes
     // ─────────────────────────────────────────────────────────────────────────
 
-    private async Task SpeakAsync(string text, string original, SpeechSynthesizer synthesizer, bool isFromMeeting, CancellationToken ct)
+    private async Task SpeakAsync(string text, string original, SpeechSynthesizer synthesizer, bool isFromMeeting, long enqueuedAtMs, CancellationToken ct)
     {
         if (ct.IsCancellationRequested) return;
 
@@ -330,30 +381,59 @@ public class DirectAzureTranslationService : ITranslationService
         SynthesizingStatusChanged?.Invoke(this, new SynthesizingEventArgs { IsSynthesizing = true, IsFromMeeting = isFromMeeting, OriginalText = original, TranslatedText = text });
         try
         {
+            var speakStartMs = Environment.TickCount64;
+            var queueDelayMs = Math.Max(0, speakStartMs - enqueuedAtMs);
+            var direction = isFromMeeting ? "IN" : "OUT";
+
             var language = isFromMeeting ? _settings.SourceLanguage : _settings.TargetLanguage;
-            var ssml = BuildFastSsml(text, language);
-            var result = await synthesizer.SpeakSsmlAsync(ssml);
-            if (result.Reason != ResultReason.SynthesizingAudioCompleted)
-            {
-                Log($"⚠️ Fast SSML synthesis fallback triggered. Reason: {result.Reason}");
-                result.Dispose();
-                result = await synthesizer.SpeakTextAsync(text);
-            }
+            var voice = isFromMeeting ? _settings.SourceVoice : _settings.TargetVoice;
+            var chunks = SplitForTts(text);
+            var synthTotalMs = 0L;
+            var playTotalMs = 0L;
+            var firstChunkStartLatencyMs = -1L;
 
             SynthesizingStatusChanged?.Invoke(this, new SynthesizingEventArgs { IsSynthesizing = false, IsFromMeeting = isFromMeeting, OriginalText = original, TranslatedText = text });
 
-            if (ct.IsCancellationRequested || result.Reason != ResultReason.SynthesizingAudioCompleted || result.AudioData.Length == 0)
+            for (var i = 0; i < chunks.Count; i++)
             {
-                result.Dispose();
-                return;
+                if (ct.IsCancellationRequested)
+                    break;
+
+                var chunk = chunks[i];
+                var synthStartMs = Environment.TickCount64;
+                using var result = await SynthesizeWithFallbackAsync(synthesizer, chunk, language, voice);
+                var synthDoneMs = Environment.TickCount64;
+                synthTotalMs += Math.Max(0, synthDoneMs - synthStartMs);
+
+                if (result.Reason != ResultReason.SynthesizingAudioCompleted || result.AudioData.Length == 0)
+                    continue;
+
+                var playbackAudio = TrimLeadingSilencePcm16Mono(result.AudioData, MaxLeadingSilenceTrimMs, LeadingSilenceThreshold);
+                var playStartMs = Environment.TickCount64;
+
+                if (firstChunkStartLatencyMs < 0)
+                    firstChunkStartLatencyMs = Math.Max(0, playStartMs - enqueuedAtMs);
+
+                if (isFromMeeting)
+                    await AudioPlaybackManager.PlayAudioToPhysicalSpeakerAsync(playbackAudio, _deviceService.FindPhysicalSpeaker(), ct);
+                else
+                {
+                    var outgoingCable = _deviceService.FindOutgoingCableDevice();
+                    await AudioPlaybackManager.PlayAudioToCableDeviceAsync(playbackAudio, outgoingCable, ct);
+                }
+
+                var chunkDoneMs = Environment.TickCount64;
+                playTotalMs += Math.Max(0, chunkDoneMs - playStartMs);
+
+                if (i < chunks.Count - 1 && HasPendingTts(isFromMeeting))
+                {
+                    Log($"⏭️ TTS[{direction}] truncated remaining chunks to prioritize newer speech");
+                    break;
+                }
             }
 
-            if (isFromMeeting)
-                await AudioPlaybackManager.PlayAudioToPhysicalSpeakerAsync(result.AudioData, _deviceService.FindPhysicalSpeaker(), ct);
-            else
-                await AudioPlaybackManager.PlayAudioToCableDeviceAsync(result.AudioData, _deviceService.FindOutgoingCableDevice(), ct);
-
-            result.Dispose();
+            var doneMs = Environment.TickCount64;
+            Log($"⏱️ TTS[{direction}] queue={queueDelayMs}ms firstStart={Math.Max(0, firstChunkStartLatencyMs)}ms synth={synthTotalMs}ms play={playTotalMs}ms chunks={chunks.Count} total={Math.Max(0, doneMs - enqueuedAtMs)}ms");
         }
         catch (OperationCanceledException) { }
         catch (Exception ex) when (!ct.IsCancellationRequested) { Log($"⚠️ TTS error: {ex.Message}"); }
@@ -365,11 +445,27 @@ public class DirectAzureTranslationService : ITranslationService
         }
     }
 
-    private static string BuildFastSsml(string text, string language)
+    private static string BuildFastSsml(string text, string language, string voiceName)
     {
         var safeText = SecurityElement.Escape(text) ?? string.Empty;
         var safeLang = string.IsNullOrWhiteSpace(language) ? "en-US" : language;
+        var safeVoice = SecurityElement.Escape(voiceName) ?? string.Empty;
+        if (!string.IsNullOrWhiteSpace(safeVoice))
+            return $"<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='{safeLang}'><voice name='{safeVoice}'><prosody rate='+{TtsRatePercent}%'>{safeText}</prosody></voice></speak>";
+
         return $"<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='{safeLang}'><prosody rate='+{TtsRatePercent}%'>{safeText}</prosody></speak>";
+    }
+
+    private static string BuildFastSsmlMultiplier(string text, string language, string voiceName)
+    {
+        var safeText = SecurityElement.Escape(text) ?? string.Empty;
+        var safeLang = string.IsNullOrWhiteSpace(language) ? "en-US" : language;
+        var safeVoice = SecurityElement.Escape(voiceName) ?? string.Empty;
+        var speed = 1.0 + (TtsRatePercent / 100.0);
+        if (!string.IsNullOrWhiteSpace(safeVoice))
+            return $"<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='{safeLang}'><voice name='{safeVoice}'><prosody rate='{speed:0.##}'>{safeText}</prosody></voice></speak>";
+
+        return $"<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='{safeLang}'><prosody rate='{speed:0.##}'>{safeText}</prosody></speak>";
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -510,7 +606,181 @@ public class DirectAzureTranslationService : ITranslationService
         try { await synthesizer.StopSpeakingAsync().WaitAsync(TimeSpan.FromSeconds(2)); } catch { }
     }
 
+    private async Task<SpeechSynthesisResult> SynthesizeWithFallbackAsync(SpeechSynthesizer synthesizer, string text, string language, string voice)
+    {
+        var ssml = BuildFastSsml(text, language, voice);
+        var result = await synthesizer.SpeakSsmlAsync(ssml);
+        if (result.Reason == ResultReason.SynthesizingAudioCompleted)
+            return result;
+
+        result.Dispose();
+        var ssmlMultiplier = BuildFastSsmlMultiplier(text, language, voice);
+        result = await synthesizer.SpeakSsmlAsync(ssmlMultiplier);
+        if (result.Reason == ResultReason.SynthesizingAudioCompleted)
+            return result;
+
+        result.Dispose();
+        return await synthesizer.SpeakTextAsync(text);
+    }
+
+    private static List<string> SplitForTts(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return [string.Empty];
+
+        var words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (words.Length == 0)
+            return [text];
+
+        var chunks = new List<string>();
+        var sb = new StringBuilder();
+        var wordCount = 0;
+
+        foreach (var word in words)
+        {
+            var nextLen = sb.Length == 0 ? word.Length : sb.Length + 1 + word.Length;
+            if (sb.Length > 0 && (nextLen > MaxTtsChunkChars || wordCount >= MaxTtsChunkWords))
+            {
+                chunks.Add(sb.ToString());
+                sb.Clear();
+                wordCount = 0;
+            }
+
+            if (sb.Length > 0)
+                sb.Append(' ');
+            sb.Append(word);
+            wordCount++;
+        }
+
+        if (sb.Length > 0)
+            chunks.Add(sb.ToString());
+
+        return chunks.Count > 0 ? chunks : [text];
+    }
+
+    private async Task WarmUpTtsVoicesAsync(CancellationToken ct)
+    {
+        try
+        {
+            await Task.WhenAll(
+                WarmUpVoiceAsync(_settings.TargetLanguage, _settings.TargetVoice, "OUT", ct),
+                WarmUpVoiceAsync(_settings.SourceLanguage, _settings.SourceVoice, "IN", ct));
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            Log($"⚠️ TTS warmup skipped: {ex.Message}");
+        }
+    }
+
+    private async Task WarmUpVoiceAsync(string language, string voiceName, string direction, CancellationToken ct)
+    {
+        var startMs = Environment.TickCount64;
+        using var synth = BuildSynthesizer(voiceName);
+        var ssml = BuildWarmupSsml(language, voiceName);
+        using var result = await synth.SpeakSsmlAsync(ssml).WaitAsync(ct);
+        var elapsedMs = Math.Max(0, Environment.TickCount64 - startMs);
+        Log($"🔥 TTS warmup[{direction}] {elapsedMs}ms");
+    }
+
+    private static string BuildWarmupSsml(string language, string voiceName)
+    {
+        var safeLang = string.IsNullOrWhiteSpace(language) ? "en-US" : language;
+        var safeVoice = SecurityElement.Escape(voiceName) ?? string.Empty;
+        if (!string.IsNullOrWhiteSpace(safeVoice))
+            return $"<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='{safeLang}'><voice name='{safeVoice}'><prosody volume='silent'>.</prosody></voice></speak>";
+
+        return $"<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='{safeLang}'><prosody volume='silent'>.</prosody></speak>";
+    }
+
+    private static byte[] TrimLeadingSilencePcm16Mono(byte[] pcm, int maxTrimMs, short threshold)
+    {
+        if (pcm.Length < 2)
+            return pcm;
+
+        const int sampleRate = 16000;
+        const int bytesPerSample = 2;
+        var maxTrimBytes = Math.Min(pcm.Length, sampleRate * bytesPerSample * maxTrimMs / 1000);
+        if ((maxTrimBytes & 1) == 1)
+            maxTrimBytes--;
+
+        var cutAt = 0;
+        for (var i = 0; i < maxTrimBytes; i += 2)
+        {
+            var sample = BitConverter.ToInt16(pcm, i);
+            if (Math.Abs(sample) > threshold)
+            {
+                cutAt = i;
+                break;
+            }
+        }
+
+        if (cutAt <= 0)
+            return pcm;
+
+        var trimmed = new byte[pcm.Length - cutAt];
+        Buffer.BlockCopy(pcm, cutAt, trimmed, 0, trimmed.Length);
+        return trimmed;
+    }
+
+    private bool TryEnqueueTts(bool isFromMeeting, string originalText, string translatedText)
+    {
+        var queue = isFromMeeting ? _incomingTtsQueue : _outgoingTtsQueue;
+        if (queue == null)
+            return false;
+
+        var accepted = queue.Writer.TryWrite(new TtsWorkItem(originalText, translatedText, Environment.TickCount64));
+        if (accepted)
+        {
+            if (isFromMeeting)
+                Interlocked.Increment(ref _incomingPendingTts);
+            else
+                Interlocked.Increment(ref _outgoingPendingTts);
+        }
+
+        return accepted;
+    }
+
+    private async Task RunTtsQueueAsync(Channel<TtsWorkItem> queue, bool isFromMeeting, CancellationToken ct)
+    {
+        try
+        {
+            await foreach (var item in queue.Reader.ReadAllAsync(ct))
+            {
+                if (isFromMeeting)
+                    Interlocked.Decrement(ref _incomingPendingTts);
+                else
+                    Interlocked.Decrement(ref _outgoingPendingTts);
+
+                var ageMs = Math.Max(0, Environment.TickCount64 - item.EnqueuedAtMs);
+                if (ageMs > MaxTtsQueueAgeMs)
+                {
+                    Log($"⏭️ TTS[{(isFromMeeting ? "IN" : "OUT")}] dropped stale item aged {ageMs}ms");
+                    continue;
+                }
+
+                var synthesizer = isFromMeeting ? _incomingSynthesizer : _outgoingSynthesizer;
+                if (synthesizer == null)
+                    continue;
+
+                await SpeakAsync(item.TranslatedText, item.OriginalText, synthesizer, isFromMeeting, item.EnqueuedAtMs, ct);
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            Log($"⚠️ TTS queue worker error: {ex.Message}");
+        }
+    }
+
     private void Log(string msg) => LogMessage?.Invoke(this, msg);
+
+    private bool HasPendingTts(bool isFromMeeting)
+    {
+        return isFromMeeting
+            ? Interlocked.CompareExchange(ref _incomingPendingTts, 0, 0) > 0
+            : Interlocked.CompareExchange(ref _outgoingPendingTts, 0, 0) > 0;
+    }
 
     private void FireSystem(string message, string detail, SystemMessageType type) =>
         SystemMessage?.Invoke(this, new SystemMessageEventArgs { Message = message, Detail = detail, MessageType = type });

@@ -670,16 +670,22 @@ public class TranslationService : ITranslationService, IDisposable
             var synthesisLanguage = pipeline == AudioPipelineDirection.Incoming
                 ? state.SourceLanguage
                 : state.TargetLanguage;
-            var ssml = BuildFastSsml(workItem.Text, synthesisLanguage);
+            var voiceName = pipeline == AudioPipelineDirection.Incoming
+                ? state.SourceVoice
+                : state.TargetVoice;
+            var ssml = BuildFastSsml(workItem.Text, synthesisLanguage, voiceName);
             var result = await synthesizer.SpeakSsmlAsync(ssml);
             if (result.Reason != ResultReason.SynthesizingAudioCompleted)
             {
-                _logger.LogWarning("[{Id}] {Pipeline} fast SSML fallback triggered. Reason: {Reason}",
-                    state.TranslationSessionId,
-                    pipeline,
-                    result.Reason);
                 result.Dispose();
-                result = await synthesizer.SpeakTextAsync(workItem.Text);
+
+                var ssmlMultiplier = BuildFastSsmlMultiplier(workItem.Text, synthesisLanguage, voiceName);
+                result = await synthesizer.SpeakSsmlAsync(ssmlMultiplier);
+                if (result.Reason != ResultReason.SynthesizingAudioCompleted)
+                {
+                    result.Dispose();
+                    result = await synthesizer.SpeakTextAsync(workItem.Text);
+                }
             }
 
             if (result.Reason == ResultReason.SynthesizingAudioCompleted)
@@ -754,11 +760,27 @@ public class TranslationService : ITranslationService, IDisposable
         }
     }
 
-    private static string BuildFastSsml(string text, string language)
+    private static string BuildFastSsml(string text, string language, string voiceName)
     {
         var safeText = SecurityElement.Escape(text) ?? string.Empty;
         var safeLang = string.IsNullOrWhiteSpace(language) ? "en-US" : language;
+        var safeVoice = SecurityElement.Escape(voiceName) ?? string.Empty;
+        if (!string.IsNullOrWhiteSpace(safeVoice))
+            return $"<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='{safeLang}'><voice name='{safeVoice}'><prosody rate='+{TtsRatePercent}%'>{safeText}</prosody></voice></speak>";
+
         return $"<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='{safeLang}'><prosody rate='+{TtsRatePercent}%'>{safeText}</prosody></speak>";
+    }
+
+    private static string BuildFastSsmlMultiplier(string text, string language, string voiceName)
+    {
+        var safeText = SecurityElement.Escape(text) ?? string.Empty;
+        var safeLang = string.IsNullOrWhiteSpace(language) ? "en-US" : language;
+        var safeVoice = SecurityElement.Escape(voiceName) ?? string.Empty;
+        var speed = 1.0 + (TtsRatePercent / 100.0);
+        if (!string.IsNullOrWhiteSpace(safeVoice))
+            return $"<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='{safeLang}'><voice name='{safeVoice}'><prosody rate='{speed:0.##}'>{safeText}</prosody></voice></speak>";
+
+        return $"<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='{safeLang}'><prosody rate='{speed:0.##}'>{safeText}</prosody></speak>";
     }
 
     /// <summary>

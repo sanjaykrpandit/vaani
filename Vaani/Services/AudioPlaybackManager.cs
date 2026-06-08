@@ -30,7 +30,7 @@ public static class AudioPlaybackManager
 
         try
         {
-            await PlayAudioInternalAsync(audioData, device, "[OUT] CABLE", ct);
+            await PlayAudioInternalAsync(audioData, device, "[OUT] CABLE", ct, allowDefaultFallback: false);
         }
         catch (Exception ex)
         {
@@ -69,7 +69,7 @@ public static class AudioPlaybackManager
     /// </summary>
     /// 
 
-    private static async Task PlayAudioInternalAsync(byte[] audioData, MMDevice? device, string logPrefix, CancellationToken ct)
+    private static async Task PlayAudioInternalAsync(byte[] audioData, MMDevice? device, string logPrefix, CancellationToken ct, bool allowDefaultFallback = true)
     {
         using var ms = new MemoryStream(audioData);
         using var rs = new RawSourceWaveStream(ms, new WaveFormat(
@@ -95,6 +95,12 @@ public static class AudioPlaybackManager
                 _logger?.Warning(LogCategory.Playback, $"{logPrefix} WASAPI device failed: {ex.GetType().Name} - {ex.Message}");
                 ms.Position = 0;
             }
+        }
+
+        if (!allowDefaultFallback)
+        {
+            _logger?.Warning(LogCategory.Playback, $"{logPrefix} skipping default speaker fallback (strict routing enabled)");
+            return;
         }
 
         // Fallback 1: default WASAPI.
