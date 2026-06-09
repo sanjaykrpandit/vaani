@@ -17,10 +17,17 @@
     <PublishReadyToRun>false</PublishReadyToRun>
   </PropertyGroup>
 
-  <!-- Embed appsettings.json and Moderation txt files into EXE -->
+  <!-- Embed appsettings.json into EXE for published/single-file builds,
+       and also copy to output folder for local development runs. -->
   <ItemGroup>
     <EmbeddedResource Include="appsettings.json" />
     <EmbeddedResource Include="Moderation\**\*.txt" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="appsettings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
   <!-- Prevent Moderation files from being copied to output/publish folder -->

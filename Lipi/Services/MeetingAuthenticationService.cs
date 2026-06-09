@@ -8,21 +8,25 @@ namespace Lipi.Services;
 public class MeetingAuthenticationService
 {
     private readonly HttpClient _httpClient;
-    private readonly string _apiBaseUrl;
 
     public MeetingAuthenticationService()
     {
         var cfg = ConfigurationService.Instance.Config.Authentication;
-        _apiBaseUrl = cfg.ApiBaseUrl;
         _httpClient = new HttpClient
         {
-            BaseAddress = new Uri(cfg.ApiBaseUrl),
             Timeout = TimeSpan.FromSeconds(cfg.ApiTimeout)
         };
         _httpClient.DefaultRequestHeaders.Add("User-Agent", "Lipi-Desktop/1.0.0");
     }
 
-    public string ApiBaseUrl => _apiBaseUrl;
+    // Always reads from config so any Reload() call is reflected immediately.
+    public string ApiBaseUrl => ConfigurationService.Instance.Config.Authentication.ApiBaseUrl;
+
+    private string BuildUrl(string path)
+    {
+        var baseUrl = ConfigurationService.Instance.Config.Authentication.ApiBaseUrl.TrimEnd('/');
+        return $"{baseUrl}{path}";
+    }
 
     public async Task<MeetingValidationResponse> ValidateMeetingAsync(string meetingId, string userName, string? password)
     {
@@ -36,7 +40,7 @@ public class MeetingAuthenticationService
             Password = password
         };
 
-        var response = await _httpClient.PostAsJsonAsync("/api/meetings/validate", request);
+        var response = await _httpClient.PostAsJsonAsync(BuildUrl("/api/meetings/validate"), request);
         if (!response.IsSuccessStatusCode)
         {
             var body = await response.Content.ReadAsStringAsync();
@@ -60,7 +64,7 @@ public class MeetingAuthenticationService
             DeviceId = GetDeviceId()
         };
 
-        var httpRequest = new HttpRequestMessage(HttpMethod.Post, "/api/sessions/start")
+        var httpRequest = new HttpRequestMessage(HttpMethod.Post, BuildUrl("/api/sessions/start"))
         {
             Content = JsonContent.Create(request)
         };
@@ -89,7 +93,7 @@ public class MeetingAuthenticationService
             TargetLanguages = targetLanguages.ToList()
         };
 
-        var httpRequest = new HttpRequestMessage(HttpMethod.Post, "/api/lipi/direct/token")
+        var httpRequest = new HttpRequestMessage(HttpMethod.Post, BuildUrl("/api/lipi/direct/token"))
         {
             Content = JsonContent.Create(request)
         };
@@ -107,7 +111,7 @@ public class MeetingAuthenticationService
         LipiDirectTranscriptBatchRequest request,
         string sessionToken)
     {
-        var httpRequest = new HttpRequestMessage(HttpMethod.Post, "/api/lipi/direct/transcripts")
+        var httpRequest = new HttpRequestMessage(HttpMethod.Post, BuildUrl("/api/lipi/direct/transcripts"))
         {
             Content = JsonContent.Create(request)
         };
@@ -135,7 +139,7 @@ public class MeetingAuthenticationService
             ? string.Empty
             : $"&domain={Uri.EscapeDataString(domain.Trim())}";
 
-        var httpRequest = new HttpRequestMessage(HttpMethod.Get, $"/api/lipi/direct/dictionary?languages={query}{domainQuery}");
+        var httpRequest = new HttpRequestMessage(HttpMethod.Get, BuildUrl($"/api/lipi/direct/dictionary?languages={query}{domainQuery}"));
         httpRequest.Headers.Add("Authorization", $"Bearer {sessionToken}");
 
         var response = await _httpClient.SendAsync(httpRequest, cancellationToken);
@@ -151,7 +155,7 @@ public class MeetingAuthenticationService
         string sessionToken,
         CancellationToken cancellationToken = default)
     {
-        var httpRequest = new HttpRequestMessage(HttpMethod.Post, "/api/lipi/direct/rewrite")
+        var httpRequest = new HttpRequestMessage(HttpMethod.Post, BuildUrl("/api/lipi/direct/rewrite"))
         {
             Content = JsonContent.Create(request)
         };
@@ -184,7 +188,7 @@ public class MeetingAuthenticationService
         string sessionToken,
         CancellationToken cancellationToken = default)
     {
-        var httpRequest = new HttpRequestMessage(HttpMethod.Post, "/api/lipi/direct/errors")
+        var httpRequest = new HttpRequestMessage(HttpMethod.Post, BuildUrl("/api/lipi/direct/errors"))
         {
             Content = JsonContent.Create(request)
         };

@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Globalization;
 using System.Text.RegularExpressions;
@@ -19,11 +20,22 @@ public class DirectAzureLipiRealtimeClient : ILipiRealtimeClient
     private readonly LocalTextModerationEngine _moderationEngine;
     private readonly Queue<byte[]> _preSpeechBuffer = new();
 
+    // Pull stream infrastructure (Plan B)
+    private MicPullStreamCallback? _pullCallback;
+    private PullAudioInputStream? _pullStream;
+
+    // Active recognizer and config (reused across restarts)
+    private TranslationRecognizer? _recognizer;
+    private SpeechTranslationConfig? _speechConfig;
+
+    // Restart coordination (Plan A safety net)
+    private CancellationTokenSource? _restartCts;
+    private int _restartCount;
+    private bool _isStopping;
+
     private WaveInEvent? _waveIn;
     private WasapiLoopbackCapture? _loopbackCapture;
     private MMDevice? _loopbackDevice;
-    private PushAudioInputStream? _pushStream;
-    private TranslationRecognizer? _recognizer;
     private CancellationTokenSource? _tokenRefreshCts;
     private Task? _tokenRefreshTask;
     private string _sessionToken = string.Empty;
@@ -34,6 +46,7 @@ public class DirectAzureLipiRealtimeClient : ILipiRealtimeClient
     private int? _currentInputDeviceNumber;
     private string? _currentOutputDeviceId;
     private AudioSourceMode _currentSourceMode = AudioSourceMode.Microphone;
+    private AudioCaptureSelection _currentCaptureSelection;
     private List<string> _targetLanguages = [];
     private DateTime _tokenExpiresAtUtc = DateTime.MinValue;
     private int _remainingTrailingSilenceChunks;
@@ -42,12 +55,15 @@ public class DirectAzureLipiRealtimeClient : ILipiRealtimeClient
     private long _capturedChunkCount;
     private long _sentChunkCount;
     private long _silenceDroppedChunkCount;
+    private long _queueDroppedChunkCount;
     private long _preRollFlushedChunkCount;
     private long _persistedRecognitionCount;
     private long _tokenRefreshCount;
     private long _tokenRefreshFailureCount;
     private long _rewriteHitCount;
     private long _rewriteMissCount;
+    private long _recognizerRestartCount;
+    private int _quotaRestartCount;
 
     // Client-side conversational dictionary: locale ? ordered rules
     private sealed record ConversationalRule(string Formal, string Conversational, string MatchMode, string Domain);
@@ -87,10 +103,14 @@ public class DirectAzureLipiRealtimeClient : ILipiRealtimeClient
     {
         await StopAsync();
 
+        _isStopping = false;
+        _restartCount = 0;
+        _quotaRestartCount = 0;
         _sessionToken = sessionToken;
         _meetingId = meetingId;
         _sessionId = sessionId;
         _sourceLanguage = sourceLanguage;
+        _currentCaptureSelection = captureSelection;
         _targetLanguages = targetLanguages
             .Where(l => !string.IsNullOrWhiteSpace(l))
             .Select(l => l.Trim())
@@ -117,121 +137,50 @@ public class DirectAzureLipiRealtimeClient : ILipiRealtimeClient
 
         await LoadConversationalDictionaryAsync();
 
-        var config = SpeechTranslationConfig.FromAuthorizationToken(directAccess.SpeechToken, directAccess.Region);
-        config.SpeechRecognitionLanguage = sourceLanguage;
-        config.OutputFormat = OutputFormat.Detailed;
-        config.SetProperty(
-            PropertyId.SpeechServiceResponse_ProfanityOption,
-            NormalizeProfanityOption(_realtimeConfig.DirectProfanityOption));
-        var segmentationSilenceTimeoutMs = Math.Clamp(_realtimeConfig.DirectSegmentationSilenceTimeoutMs, 300, 3000);
-        config.SetProperty(
-            PropertyId.Speech_SegmentationSilenceTimeoutMs,
-            segmentationSilenceTimeoutMs.ToString(CultureInfo.InvariantCulture));
-        config.SetProperty(
-            PropertyId.SpeechServiceConnection_EndSilenceTimeoutMs,
-            segmentationSilenceTimeoutMs.ToString(CultureInfo.InvariantCulture));
+        _speechConfig = BuildSpeechTranslationConfig(directAccess.SpeechToken, directAccess.Region);
 
         _targetMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var fullCode in directAccess.TargetLanguages)
         {
             var shortCode = fullCode.Split('-')[0];
             _targetMap[fullCode] = shortCode;
-            config.AddTargetLanguage(shortCode);
+            _speechConfig.AddTargetLanguage(shortCode);
         }
 
-        _pushStream = AudioInputStream.CreatePushStream(AudioStreamFormat.GetWaveFormatPCM(16000, 16, 1));
-        var audioConfig = AudioConfig.FromStreamInput(_pushStream);
-        _recognizer = new TranslationRecognizer(config, audioConfig);
+        // Plan B: create pull stream + start capture before recognizer
+        var queueCapacityBytes = ComputePullQueueCapacityBytes();
+        _pullCallback = new MicPullStreamCallback(queueCapacityBytes, OnQueueDropped);
+        _pullStream = AudioInputStream.CreatePullStream(_pullCallback, AudioStreamFormat.GetWaveFormatPCM(16000, 16, 1));
 
-        _recognizer.Recognizing += (_, e) =>
-        {
-            if (e.Result.Reason != ResultReason.TranslatingSpeech)
-                return;
-
-            var originalText = e.Result.Text?.Trim();
-            if (string.IsNullOrWhiteSpace(originalText))
-                return;
-
-            var moderatedOriginal = _moderationEngine.Moderate(originalText, [_sourceLanguage]);
-            if (string.IsNullOrWhiteSpace(moderatedOriginal.Text))
-                return;
-
-            var translations = _moderationEngine.ModerateTranslations(BuildTranslations(e.Result.Translations));
-
-            if (_realtimeConfig.DirectEnableConversationalRewrite &&
-                _realtimeConfig.DirectRecognizingRewriteEnabled &&
-                originalText.Length >= _realtimeConfig.DirectRecognizingRewriteMinTextLength &&
-                !originalText.Equals(_lastRecognizingText, StringComparison.Ordinal) &&
-                (DateTime.UtcNow - _lastRecognizingRewriteAt).TotalMilliseconds >= _realtimeConfig.DirectRecognizingRewriteMinIntervalMs)
-            {
-                _lastRecognizingText = originalText;
-                _lastRecognizingRewriteAt = DateTime.UtcNow;
-                var recognizingRuleMatched = false;
-                translations = ApplyConversationalRewrite(translations, out recognizingRuleMatched);
-            }
-
-            RecognizingReceived?.Invoke(moderatedOriginal.Text, translations);
-        };
-
-        _recognizer.Recognized += (_, e) =>
-        {
-            if (e.Result.Reason != ResultReason.TranslatedSpeech || string.IsNullOrWhiteSpace(e.Result.Text))
-                return;
-
-            var transcript = e.Result.Text.Trim();
-            var moderatedTranscript = _moderationEngine.Moderate(transcript, [_sourceLanguage]);
-            if (string.IsNullOrWhiteSpace(moderatedTranscript.Text))
-                return;
-
-            var baseTranslations = BuildTranslations(e.Result.Translations);
-
-            _ = Task.Run(async () =>
-            {
-                var anyRuleMatched = false;
-                var translations = _realtimeConfig.DirectEnableConversationalRewrite
-                    ? ApplyConversationalRewrite(baseTranslations, out anyRuleMatched)
-                    : baseTranslations;
-
-                if (_realtimeConfig.DirectAiFallbackEnabled && !anyRuleMatched)
-                {
-                    Interlocked.Increment(ref _rewriteMissCount);
-                    translations = await ApplyFallbackRewriteAsync(moderatedTranscript.Text, translations);
-                }
-
-                var moderatedTranslations = _moderationEngine.ModerateTranslations(translations);
-                RecognizedReceived?.Invoke(moderatedTranscript.Text, moderatedTranslations);
-                await PersistRecognizedAsync(moderatedTranscript.Text, moderatedTranslations, DateTime.UtcNow);
-            });
-        };
-
-        _recognizer.Canceled += (_, e) =>
-        {
-            if (e.Reason == CancellationReason.Error)
-                ErrorReceived?.Invoke($"Direct Azure speech error: {e.ErrorDetails}");
-        };
-
-        await _recognizer.StartContinuousRecognitionAsync();
-        ResetSilenceFilterState();
-        EnsureTokenRefreshStarted();
         StartCapture(captureSelection);
+
+        await StartRecognizerAsync(_speechConfig, _pullStream);
+
+        EnsureTokenRefreshStarted();
         LogDiagnostics("Direct Azure realtime started");
         RunningStateChanged?.Invoke(true);
     }
 
     public async Task StopAsync()
     {
+        _isStopping = true;
+
+        // Cancel any pending auto-restart
+        var restartCts = _restartCts;
+        _restartCts = null;
+        try { restartCts?.Cancel(); } catch { }
+
         StopCapture();
         await StopTokenRefreshAsync();
+        await TeardownRecognizerAsync();
 
-        if (_recognizer != null)
-        {
-            try { await _recognizer.StopContinuousRecognitionAsync(); } catch { }
-            _recognizer.Dispose();
-            _recognizer = null;
-        }
+        // Tear down pull stream after recognizer is gone
+        _pullStream?.Dispose();
+        _pullStream = null;
+        _pullCallback?.Dispose();
+        _pullCallback = null;
+        _speechConfig = null;
 
-        _pushStream?.Close();
-        _pushStream = null;
         ResetSilenceFilterState();
         LogDiagnostics("Direct Azure realtime stopped");
         RunningStateChanged?.Invoke(false);
@@ -247,10 +196,266 @@ public class DirectAzureLipiRealtimeClient : ILipiRealtimeClient
             || (_loopbackCapture != null && captureSelection.SourceMode == AudioSourceMode.Speaker)))
             return Task.CompletedTask;
 
-        if (_pushStream != null)
+        _currentCaptureSelection = captureSelection;
+
+        if (_pullCallback != null)
             StartCapture(captureSelection);
 
         return Task.CompletedTask;
+    }
+
+    // -------------------------------------------------------------------------
+    // Recognizer event handlers
+    // -------------------------------------------------------------------------
+
+    private void OnRecognizing(object? sender, TranslationRecognitionEventArgs e)
+    {
+        if (e.Result.Reason != ResultReason.TranslatingSpeech)
+            return;
+
+        var originalText = e.Result.Text?.Trim();
+        if (string.IsNullOrWhiteSpace(originalText))
+            return;
+
+        var moderatedOriginal = _moderationEngine.Moderate(originalText, [_sourceLanguage]);
+        if (string.IsNullOrWhiteSpace(moderatedOriginal.Text))
+            return;
+
+        var translations = _moderationEngine.ModerateTranslations(BuildTranslations(e.Result.Translations));
+
+        if (_realtimeConfig.DirectEnableConversationalRewrite &&
+            _realtimeConfig.DirectRecognizingRewriteEnabled &&
+            originalText.Length >= _realtimeConfig.DirectRecognizingRewriteMinTextLength &&
+            !originalText.Equals(_lastRecognizingText, StringComparison.Ordinal) &&
+            (DateTime.UtcNow - _lastRecognizingRewriteAt).TotalMilliseconds >= _realtimeConfig.DirectRecognizingRewriteMinIntervalMs)
+        {
+            _lastRecognizingText = originalText;
+            _lastRecognizingRewriteAt = DateTime.UtcNow;
+            translations = ApplyConversationalRewrite(translations, out _);
+        }
+
+        RecognizingReceived?.Invoke(moderatedOriginal.Text, translations);
+    }
+
+    private void OnRecognized(object? sender, TranslationRecognitionEventArgs e)
+    {
+        if (e.Result.Reason != ResultReason.TranslatedSpeech || string.IsNullOrWhiteSpace(e.Result.Text))
+            return;
+
+        var transcript = e.Result.Text.Trim();
+        var moderatedTranscript = _moderationEngine.Moderate(transcript, [_sourceLanguage]);
+        if (string.IsNullOrWhiteSpace(moderatedTranscript.Text))
+            return;
+
+        var baseTranslations = BuildTranslations(e.Result.Translations);
+
+        _ = Task.Run(async () =>
+        {
+            var anyRuleMatched = false;
+            var translations = _realtimeConfig.DirectEnableConversationalRewrite
+                ? ApplyConversationalRewrite(baseTranslations, out anyRuleMatched)
+                : baseTranslations;
+
+            if (_realtimeConfig.DirectAiFallbackEnabled && !anyRuleMatched)
+            {
+                Interlocked.Increment(ref _rewriteMissCount);
+                translations = await ApplyFallbackRewriteAsync(moderatedTranscript.Text, translations);
+            }
+
+            var moderatedTranslations = _moderationEngine.ModerateTranslations(translations);
+            RecognizedReceived?.Invoke(moderatedTranscript.Text, moderatedTranslations);
+            await PersistRecognizedAsync(moderatedTranscript.Text, moderatedTranslations, DateTime.UtcNow);
+        });
+    }
+
+
+
+    private async Task StartRecognizerAsync(SpeechTranslationConfig config, PullAudioInputStream pullStream)
+    {
+        var audioConfig = AudioConfig.FromStreamInput(pullStream);
+        var recognizer = new TranslationRecognizer(config, audioConfig);
+
+        recognizer.Recognizing += OnRecognizing;
+        recognizer.Recognized += OnRecognized;
+        recognizer.Canceled += OnCanceled;
+
+        await recognizer.StartContinuousRecognitionAsync();
+        _recognizer = recognizer;
+        ResetSilenceFilterState();
+    }
+
+    private async Task TeardownRecognizerAsync()
+    {
+        var recognizer = _recognizer;
+        _recognizer = null;
+
+        if (recognizer == null)
+            return;
+
+        recognizer.Recognizing -= OnRecognizing;
+        recognizer.Recognized -= OnRecognized;
+        recognizer.Canceled -= OnCanceled;
+
+        try { await recognizer.StopContinuousRecognitionAsync(); } catch { }
+        recognizer.Dispose();
+    }
+
+    // -------------------------------------------------------------------------
+    // Plan A: Auto-recovery on Canceled
+    // -------------------------------------------------------------------------
+
+    private enum CanceledErrorKind { BufferOverflow, QuotaExceeded, ConnectionClosed, NonRecoverable }
+
+    private static CanceledErrorKind ClassifyError(string details, int errorCode)
+    {
+        // Buffer overflow — our pull-stream queue should prevent this, but keep as safety net
+        if (details.Contains("client buffer", StringComparison.OrdinalIgnoreCase)
+            || details.Contains("maximum size", StringComparison.OrdinalIgnoreCase)
+            || details.Contains("Resetting the buffer", StringComparison.OrdinalIgnoreCase))
+            return CanceledErrorKind.BufferOverflow;
+
+        // Azure quota / concurrent session limit (error code 1007 or 4429)
+        if (errorCode == 1007 || errorCode == 4429
+            || details.Contains("quota", StringComparison.OrdinalIgnoreCase)
+            || details.Contains("Quota exceeded", StringComparison.OrdinalIgnoreCase)
+            || details.Contains("session limit", StringComparison.OrdinalIgnoreCase))
+            return CanceledErrorKind.QuotaExceeded;
+
+        // Transient connection drop — remote closed WebSocket but not a quota issue
+        if (errorCode is 1000 or 1001 or 1006 or 1011
+            || details.Contains("Connection was closed", StringComparison.OrdinalIgnoreCase)
+            || details.Contains("remote host", StringComparison.OrdinalIgnoreCase))
+            return CanceledErrorKind.ConnectionClosed;
+
+        return CanceledErrorKind.NonRecoverable;
+    }
+
+    private void OnCanceled(object? sender, TranslationRecognitionCanceledEventArgs e)
+    {
+        if (e.Reason != CancellationReason.Error)
+            return;
+
+        var details = e.ErrorDetails ?? string.Empty;
+        var errorCode = (int)e.ErrorCode;
+        var kind = ClassifyError(details, errorCode);
+
+        LogDiagnostics($"Recognizer canceled kind={kind} code={errorCode}: {details}");
+
+        if (_isStopping)
+            return;
+
+        switch (kind)
+        {
+            case CanceledErrorKind.BufferOverflow:
+            case CanceledErrorKind.ConnectionClosed:
+            {
+                var maxRestarts = Math.Max(1, _realtimeConfig.DirectMaxRecognizerRestarts);
+                if (_restartCount < maxRestarts)
+                {
+                    Interlocked.Increment(ref _restartCount);
+                    Interlocked.Increment(ref _recognizerRestartCount);
+                    var delayMs = Math.Max(100, _realtimeConfig.DirectRecognizerRestartDelayMs);
+                    LogDiagnostics($"{kind} — scheduling restart #{_restartCount} in {delayMs}ms");
+                    ScheduleRecognizerRestart(delayMs);
+                }
+                else
+                {
+                    LogDiagnostics($"{kind} — restart limit reached, surfacing error");
+                    ErrorReceived?.Invoke($"Direct Azure speech error: {details}");
+                }
+                break;
+            }
+
+            case CanceledErrorKind.QuotaExceeded:
+            {
+                var maxQuotaRestarts = Math.Max(1, _realtimeConfig.DirectMaxQuotaRestarts);
+                if (_quotaRestartCount < maxQuotaRestarts)
+                {
+                    // Exponential backoff: 3s ? 6s ? 12s
+                    var baseMs = Math.Max(1000, _realtimeConfig.DirectQuotaRetryBaseDelayMs);
+                    var delayMs = baseMs * (int)Math.Pow(2, _quotaRestartCount);
+                    _quotaRestartCount++;
+                    Interlocked.Increment(ref _recognizerRestartCount);
+                    LogDiagnostics($"Quota exceeded — scheduling restart #{_quotaRestartCount} with {delayMs}ms backoff");
+                    ScheduleRecognizerRestart(delayMs);
+                }
+                else
+                {
+                    LogDiagnostics("Quota exceeded — retry limit reached, surfacing error");
+                    ErrorReceived?.Invoke($"Azure Speech quota exceeded. Check active session limits, pricing tier, or usage quota. Direct Azure speech error: {details}");
+                }
+                break;
+            }
+
+            case CanceledErrorKind.NonRecoverable:
+            default:
+                LogDiagnostics($"Recognizer canceled (non-recoverable): {details}");
+                ErrorReceived?.Invoke($"Direct Azure speech error: {details}");
+                break;
+        }
+    }
+
+    private void ScheduleRecognizerRestart(int delayMs)
+    {
+        // Cancel any previous pending restart
+        var previousCts = _restartCts;
+        _restartCts = null;
+        try { previousCts?.Cancel(); } catch { }
+        previousCts?.Dispose();
+
+        var cts = new CancellationTokenSource();
+        _restartCts = cts;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(delayMs, cts.Token);
+
+                if (cts.Token.IsCancellationRequested || _isStopping)
+                    return;
+
+                await RestartRecognizerAsync();
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (Exception ex)
+            {
+                LogDiagnostics($"Recognizer restart task threw: {ex.Message}");
+            }
+        }, cts.Token);
+    }
+
+    private async Task RestartRecognizerAsync()
+    {
+        if (_isStopping || _speechConfig == null || _pullStream == null)
+            return;
+
+        LogDiagnostics("Restarting recognizer (pull stream retained, capture continues)");
+
+        // Tear down the dead recognizer only — capture keeps running into the pull queue
+        await TeardownRecognizerAsync();
+
+        // Always refresh token before restart — quota errors often mean the old token is tainted
+        await RefreshSpeechTokenAsync(CancellationToken.None);
+
+        if (_isStopping)
+            return;
+
+        // Wait for Azure to release the server-side WebSocket slot from the previous session.
+        // Azure's release is async on their side — opening a new recognizer too quickly causes
+        // two sessions to overlap briefly, which triggers quota errors on the same key.
+        // 2s is sufficient for most regions; quota retries already add their own backoff on top.
+        await Task.Delay(2000);
+
+        if (_isStopping)
+            return;
+
+        // Re-wire a new recognizer to the same pull stream — no audio is lost
+        await StartRecognizerAsync(_speechConfig, _pullStream);
+        ResetSilenceFilterState();
+        LogDiagnostics($"Recognizer restarted successfully (total restarts: {Interlocked.Read(ref _recognizerRestartCount)})");
     }
 
     private async Task PersistRecognizedAsync(string transcript, Dictionary<string, string> translations, DateTime recognizedAtUtc)
@@ -467,6 +672,10 @@ public class DirectAzureLipiRealtimeClient : ILipiRealtimeClient
         }
     }
 
+    // -------------------------------------------------------------------------
+    // Capture
+    // -------------------------------------------------------------------------
+
     private void StartCapture(AudioCaptureSelection captureSelection)
     {
         StopCapture();
@@ -493,7 +702,7 @@ public class DirectAzureLipiRealtimeClient : ILipiRealtimeClient
 
         _waveIn.DataAvailable += (_, e) =>
         {
-            if (_pushStream == null)
+            if (_pullCallback == null)
                 return;
 
             var bytes = new byte[e.BytesRecorded];
@@ -510,17 +719,16 @@ public class DirectAzureLipiRealtimeClient : ILipiRealtimeClient
 
             foreach (var chunk in chunks)
             {
-                try
-                {
-                    _pushStream.Write(chunk, chunk.Length);
-                    var sent = Interlocked.Increment(ref _sentChunkCount);
-                    if (_audioCaptureConfig.EnableDiagnostics && sent % 100 == 0)
-                        LogDiagnostics($"Sent {sent} direct Azure audio chunks");
-                }
-                catch
-                {
-                    break;
-                }
+                var sent = _pullCallback.Enqueue(chunk);
+                if (sent)
+                    Interlocked.Increment(ref _sentChunkCount);
+            }
+
+            if (_audioCaptureConfig.EnableDiagnostics)
+            {
+                var sent = Interlocked.Read(ref _sentChunkCount);
+                if (sent > 0 && sent % 100 == 0)
+                    LogDiagnostics($"Enqueued {sent} chunks into pull queue");
             }
         };
 
@@ -529,7 +737,7 @@ public class DirectAzureLipiRealtimeClient : ILipiRealtimeClient
 
     private void StartLoopbackCapture(string? outputDeviceId)
     {
-        if (_pushStream == null)
+        if (_pullCallback == null)
             return;
 
         using var enumerator = new MMDeviceEnumerator();
@@ -543,7 +751,7 @@ public class DirectAzureLipiRealtimeClient : ILipiRealtimeClient
 
         _loopbackCapture.DataAvailable += (_, e) =>
         {
-            if (_pushStream == null)
+            if (_pullCallback == null)
                 return;
 
             var pcm = AudioPcmConverter.ToTarget16kHz(e.Buffer, e.BytesRecorded, captureFormat);
@@ -561,17 +769,16 @@ public class DirectAzureLipiRealtimeClient : ILipiRealtimeClient
 
             foreach (var chunk in chunks)
             {
-                try
-                {
-                    _pushStream.Write(chunk, chunk.Length);
-                    var sent = Interlocked.Increment(ref _sentChunkCount);
-                    if (_audioCaptureConfig.EnableDiagnostics && sent % 100 == 0)
-                        LogDiagnostics($"Sent {sent} direct Azure audio chunks");
-                }
-                catch
-                {
-                    break;
-                }
+                var sent = _pullCallback.Enqueue(chunk);
+                if (sent)
+                    Interlocked.Increment(ref _sentChunkCount);
+            }
+
+            if (_audioCaptureConfig.EnableDiagnostics)
+            {
+                var sent = Interlocked.Read(ref _sentChunkCount);
+                if (sent > 0 && sent % 100 == 0)
+                    LogDiagnostics($"Enqueued {sent} loopback chunks into pull queue");
             }
         };
 
@@ -594,6 +801,12 @@ public class DirectAzureLipiRealtimeClient : ILipiRealtimeClient
         _currentOutputDeviceId = null;
         _currentSourceMode = AudioSourceMode.Microphone;
         ResetSilenceFilterState();
+    }
+
+    private void OnQueueDropped()
+    {
+        Interlocked.Increment(ref _queueDroppedChunkCount);
+        LogDiagnostics($"Pull queue full — dropped oldest chunk (total drops: {Interlocked.Read(ref _queueDroppedChunkCount)})");
     }
 
     private IReadOnlyList<byte[]> GetChunksToSend(byte[] bytes)
@@ -663,11 +876,14 @@ public class DirectAzureLipiRealtimeClient : ILipiRealtimeClient
         Interlocked.Exchange(ref _capturedChunkCount, 0);
         Interlocked.Exchange(ref _sentChunkCount, 0);
         Interlocked.Exchange(ref _silenceDroppedChunkCount, 0);
+        Interlocked.Exchange(ref _queueDroppedChunkCount, 0);
         Interlocked.Exchange(ref _preRollFlushedChunkCount, 0);
         Interlocked.Exchange(ref _persistedRecognitionCount, 0);
         Interlocked.Exchange(ref _tokenRefreshCount, 0);
         Interlocked.Exchange(ref _tokenRefreshFailureCount, 0);
         Interlocked.Exchange(ref _rewriteHitCount, 0);
+        Interlocked.Exchange(ref _rewriteMissCount, 0);
+        Interlocked.Exchange(ref _recognizerRestartCount, 0);
     }
 
     private void EnsureTokenRefreshStarted()
@@ -763,8 +979,35 @@ public class DirectAzureLipiRealtimeClient : ILipiRealtimeClient
         if (!_audioCaptureConfig.EnableDiagnostics)
             return;
 
-        var payload = $"[DirectAzureLipiRealtimeClient] {message} | captured={Interlocked.Read(ref _capturedChunkCount)} sent={Interlocked.Read(ref _sentChunkCount)} silenceDropped={Interlocked.Read(ref _silenceDroppedChunkCount)} preRollFlushed={Interlocked.Read(ref _preRollFlushedChunkCount)} persisted={Interlocked.Read(ref _persistedRecognitionCount)} tokenRefreshes={Interlocked.Read(ref _tokenRefreshCount)} tokenRefreshFailures={Interlocked.Read(ref _tokenRefreshFailureCount)} rewriteHits={Interlocked.Read(ref _rewriteHitCount)} dictVersion={_dictionaryVersion}";
+        var queueUsed = _pullCallback?.QueuedBytes ?? 0;
+        var payload = $"[DirectAzureLipiRealtimeClient] {message} | captured={Interlocked.Read(ref _capturedChunkCount)} sent={Interlocked.Read(ref _sentChunkCount)} silenceDropped={Interlocked.Read(ref _silenceDroppedChunkCount)} queueDropped={Interlocked.Read(ref _queueDroppedChunkCount)} preRollFlushed={Interlocked.Read(ref _preRollFlushedChunkCount)} persisted={Interlocked.Read(ref _persistedRecognitionCount)} tokenRefreshes={Interlocked.Read(ref _tokenRefreshCount)} tokenRefreshFailures={Interlocked.Read(ref _tokenRefreshFailureCount)} rewriteHits={Interlocked.Read(ref _rewriteHitCount)} restarts={Interlocked.Read(ref _recognizerRestartCount)} queueBytes={queueUsed} dictVersion={_dictionaryVersion}";
         Debug.WriteLine(payload);
+    }
+
+    private SpeechTranslationConfig BuildSpeechTranslationConfig(string speechToken, string region)
+    {
+        var config = SpeechTranslationConfig.FromAuthorizationToken(speechToken, region);
+        config.SpeechRecognitionLanguage = _sourceLanguage;
+        config.OutputFormat = OutputFormat.Detailed;
+        config.SetProperty(
+            PropertyId.SpeechServiceResponse_ProfanityOption,
+            NormalizeProfanityOption(_realtimeConfig.DirectProfanityOption));
+        var segmentationSilenceTimeoutMs = Math.Clamp(_realtimeConfig.DirectSegmentationSilenceTimeoutMs, 300, 3000);
+        config.SetProperty(
+            PropertyId.Speech_SegmentationSilenceTimeoutMs,
+            segmentationSilenceTimeoutMs.ToString(CultureInfo.InvariantCulture));
+        config.SetProperty(
+            PropertyId.SpeechServiceConnection_EndSilenceTimeoutMs,
+            segmentationSilenceTimeoutMs.ToString(CultureInfo.InvariantCulture));
+        return config;
+    }
+
+    private int ComputePullQueueCapacityBytes()
+    {
+        // 16kHz, 16-bit mono = 32000 bytes/second
+        const int bytesPerSecond = 32000;
+        var capacitySeconds = Math.Clamp(_realtimeConfig.DirectPullQueueCapacitySeconds, 2, 30);
+        return bytesPerSecond * capacitySeconds;
     }
 
     private static string NormalizeProfanityOption(string? profanityOption)
